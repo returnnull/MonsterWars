@@ -40,13 +40,13 @@ func _physics_process(delta: float) -> void:
 		rotation.y = atan2(-velocity.z, velocity.x)
 		rotation.z = atan2(velocity.y, Vector2(velocity.x, velocity.z).length())
 	_life -= delta
-	var p := Game.player as Kaiju
-	if p and not p.dead and global_position.distance_to(p.hit_center()) < p.hit_radius + 0.6:
-		if p.take_hit(damage, Vector3(signf(velocity.x) * 5.0, 2.0, 0), self):
-			FX.hit_spark(global_position, 8.0)
-			Game.shake(0.2)
-			queue_free()
-			return
+	for p in Game.living_players():
+		if global_position.distance_to(p.hit_center()) < p.hit_radius + 0.6:
+			if p.take_hit(damage, Vector3(signf(velocity.x) * 5.0, 2.0, 0), self):
+				FX.hit_spark(global_position, 8.0)
+				Game.shake(0.2)
+				queue_free()
+				return
 	if global_position.y < 0.2 or _life <= 0.0:
 		FX.hit_spark(global_position, 5.0)
 		queue_free()

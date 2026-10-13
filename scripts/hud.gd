@@ -1,13 +1,12 @@
 class_name Hud
 extends CanvasLayer
-## In-game HUD: health/rage bars, score, destruction, combo counter, boss bar,
-## banner messages, pause menu and end screen. Laid out for a 1920x1080 canvas.
+## In-game HUD: one health/rage panel per player slot (with a join prompt for
+## empty slots), score, destruction, combo counter, boss bar, banner messages,
+## pause menu and end screen. Laid out for a 1920x1080 canvas.
 
-var _hp_bar: ProgressBar
-var _hp_trail: ProgressBar
-var _rage_bar: ProgressBar
-var _rage_fill: StyleBoxFlat
-var _rage_label: Label
+const PANEL_W := 400.0
+
+var _panels: Array[Dictionary] = []
 var _score_label: Label
 var _destroy_label: Label
 var _combo_label: Label
@@ -33,22 +32,16 @@ func _ready() -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(root)
 
-	_label(root, "GORRAX", Vector2(48, 28), 34, Color(0.75, 0.95, 1.0))
-	_hp_trail = _bar(root, Vector2(48, 78), Vector2(560, 28), Color(1, 1, 1, 0.85))
-	_hp_bar = _bar(root, Vector2(48, 78), Vector2(560, 28), Color(0.3, 0.95, 0.55))
-	_hp_bar.get_theme_stylebox("background").bg_color = Color(0, 0, 0, 0)
-	_rage_bar = _bar(root, Vector2(48, 116), Vector2(440, 16), Color(1.0, 0.55, 0.12))
-	_rage_fill = _rage_bar.get_theme_stylebox("fill")
-	_rage_bar.value = 0
-	_rage_label = _label(root, "RAGE", Vector2(500, 108), 22, Color(1.0, 0.7, 0.3))
+	for slot in Game.MAX_PLAYERS:
+		_panels.append(_make_panel(root, slot))
 
-	_score_label = _label(root, "0", Vector2(1420, 24), 46, Color.WHITE)
+	_score_label = _label(root, "0", Vector2(1420, 150), 46, Color.WHITE)
 	_score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_score_label.size = Vector2(450, 60)
-	_destroy_label = _label(root, "DESTRUCTION 0%", Vector2(1420, 84), 26, Color(1.0, 0.75, 0.45))
+	_destroy_label = _label(root, "DESTRUCTION 0%", Vector2(1420, 210), 26, Color(1.0, 0.75, 0.45))
 	_destroy_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_destroy_label.size = Vector2(450, 36)
-	_combo_label = _label(root, "", Vector2(1420, 140), 52, Color(1.0, 0.9, 0.3))
+	_combo_label = _label(root, "", Vector2(1420, 260), 52, Color(1.0, 0.9, 0.3))
 	_combo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_combo_label.size = Vector2(450, 70)
 
@@ -65,9 +58,10 @@ func _ready() -> void:
 	_label(_boss_box, "TYRANNOX, THE CRIMSON KING", Vector2(0, -44), 30, Color(1.0, 0.5, 0.35))
 	_boss_bar = _bar(_boss_box, Vector2(0, 0), Vector2(1000, 22), Color(0.95, 0.25, 0.2))
 
-	_controls = _label(root, "Move: WASD / stick    Jump: Space / B    Light: J / Y    Heavy: K / X\n" +
+	_controls = _label(root, "Players 2-4: press B on another controller to join\n" +
+		"Move: WASD / stick    Jump: Space / B    Light: J / Y    Heavy: K / X\n" +
 		"Dodge: Shift / A    Rage beam: L key / R or ZR    Pause: Esc / +    Attack in the air = stomp",
-		Vector2(48, 980), 22, Color(1, 1, 1, 0.85))
+		Vector2(48, 950), 22, Color(1, 1, 1, 0.85))
 
 	_pause_panel = _overlay(root, "PAUSED", "Press Esc / + to resume")
 	_end_panel = _overlay(root, "", "")
@@ -81,10 +75,17 @@ func _ready() -> void:
 
 
 func bind(player: Player) -> void:
-	player.health_changed.connect(func(hp: float, mx: float) -> void: _hp_bar.value = 100.0 * hp / mx)
-	player.rage_changed.connect(func(r: float, mx: float) -> void: _rage_bar.value = 100.0 * r / mx)
-	_hp_bar.value = 100.0
-	_hp_trail.value = 100.0
+	var p: Dictionary = _panels[player.slot]
+	p["root"].visible = true
+	p["join"].visible = false
+	p["name"].text = player.display_name()
+	p["name"].label_settings.font_color = player.color().lerp(Color.WHITE, 0.4)
+	var hp_bar: ProgressBar = p["hp"]
+	var rage_bar: ProgressBar = p["rage"]
+	player.health_changed.connect(func(hp: float, mx: float) -> void: hp_bar.value = 100.0 * hp / mx)
+	player.rage_changed.connect(func(r: float, mx: float) -> void: rage_bar.value = 100.0 * r / mx)
+	hp_bar.value = 100.0 * player.hp / player.max_hp
+	p["trail"].value = hp_bar.value
 
 
 func show_boss(boss: Kaiju) -> void:
@@ -121,11 +122,15 @@ func show_end(title: String, won: bool) -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
-	_hp_trail.value = move_toward(_hp_trail.value, _hp_bar.value, 25.0 * delta) if _hp_trail.value > _hp_bar.value else _hp_bar.value
-	var full := _rage_bar.value >= 99.9
 	var pulse := 0.5 + 0.5 * sin(_t * 10.0)
-	_rage_fill.bg_color = Color(1.0, 0.55 + pulse * 0.4, 0.12 + pulse * 0.6) if full else Color(1.0, 0.55, 0.12)
-	_rage_label.text = "RAGE READY  [L / R]" if full else "RAGE"
+	for p in _panels:
+		var hp: ProgressBar = p["hp"]
+		var trail: ProgressBar = p["trail"]
+		trail.value = move_toward(trail.value, hp.value, 25.0 * delta) if trail.value > hp.value else hp.value
+		var full: bool = p["rage"].value >= 99.9
+		p["fill"].bg_color = Color(1.0, 0.55 + pulse * 0.4, 0.12 + pulse * 0.6) if full else Color(1.0, 0.55, 0.12)
+		p["rage_label"].text = "READY! [R]" if full else "RAGE"
+		p["join"].modulate.a = 0.35 + 0.4 * pulse
 	if _t > 9.0 and _controls.modulate.a > 0.0:
 		_controls.modulate.a = maxf(_controls.modulate.a - delta, 0.0)
 
@@ -152,6 +157,27 @@ func _on_combo(hits: int) -> void:
 
 
 # --- widgets ---------------------------------------------------------------
+
+func _make_panel(root: Control, slot: int) -> Dictionary:
+	var x := 40.0 + slot * PANEL_W
+	var panel := Control.new()
+	panel.position = Vector2(x, 24)
+	panel.visible = false
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(panel)
+	var name_label := _label(panel, "", Vector2(0, 0), 30, Color.WHITE)
+	_label(panel, "P%d" % (slot + 1), Vector2(PANEL_W - 110, 4), 24, Color(1, 1, 1, 0.6))
+	var trail := _bar(panel, Vector2(0, 44), Vector2(PANEL_W - 60, 24), Color(1, 1, 1, 0.85))
+	var hp := _bar(panel, Vector2(0, 44), Vector2(PANEL_W - 60, 24), Color(0.3, 0.95, 0.55))
+	hp.get_theme_stylebox("background").bg_color = Color(0, 0, 0, 0)
+	var rage := _bar(panel, Vector2(0, 78), Vector2(PANEL_W - 160, 14), Color(1.0, 0.55, 0.12))
+	rage.value = 0.0
+	var rage_label := _label(panel, "RAGE", Vector2(PANEL_W - 150, 70), 20, Color(1.0, 0.7, 0.3))
+	var join := _label(root, "P%d  PRESS B TO JOIN" % (slot + 1), Vector2(x, 40), 26, Color(1, 1, 1))
+	join.visible = slot > 0
+	return {"root": panel, "name": name_label, "hp": hp, "trail": trail, "rage": rage,
+		"fill": rage.get_theme_stylebox("fill"), "rage_label": rage_label, "join": join}
+
 
 func _label(parent: Control, text: String, pos: Vector2, font_size: int, color: Color) -> Label:
 	var l := Label.new()

@@ -1,7 +1,8 @@
 class_name Player
 extends Kaiju
-## The playable kaiju: 3-hit light combo, heavy slam, jump stomp, dodge,
-## and a rage-fuelled atomic beam.
+## A playable kaiju: 3-hit light combo, heavy slam, jump stomp, dodge,
+## and a rage-fuelled atomic beam. `slot` (0-3) picks the controller,
+## name and colours.
 
 signal rage_changed(rage: float, max_rage: float)
 
@@ -15,6 +16,14 @@ const BEAM_LEN := 42.0
 const BEAM_TIME := 2.6
 const BEAM_CHARGE := 0.4
 
+# name, skin, belly, spikes/beam, eyes
+const ROSTER := [
+	["GORRAX", Color(0.2, 0.33, 0.3), Color(0.68, 0.62, 0.48), Color(0.3, 0.85, 1.0), Color(0.5, 0.95, 1.0)],
+	["VOLTRA", Color(0.36, 0.33, 0.18), Color(0.75, 0.68, 0.45), Color(1.0, 0.9, 0.25), Color(1.0, 0.95, 0.5)],
+	["MAGMOS", Color(0.32, 0.16, 0.13), Color(0.7, 0.5, 0.36), Color(1.0, 0.4, 0.15), Color(1.0, 0.6, 0.25)],
+	["SYLVARA", Color(0.25, 0.2, 0.34), Color(0.65, 0.58, 0.7), Color(0.85, 0.4, 1.0), Color(0.95, 0.6, 1.0)],
+]
+
 const ATTACKS := {
 	"light1": {"dur": 0.30, "active": 0.11, "dmg": 7.0, "kb": Vector3(4, 0, 0), "reach": 2.6, "radius": 2.3,
 		"pose": "jab_r", "shake": 0.12, "bdmg": 10.0, "next": "light2"},
@@ -26,6 +35,7 @@ const ATTACKS := {
 		"pose": "slam", "shake": 0.55, "bdmg": 45.0, "next": ""},
 }
 
+var slot := 0
 var state := S.FREE
 var state_t := 0.0
 var rage := 0.0
@@ -39,6 +49,7 @@ var _beam_tick := 0.0
 var _beam: Node3D
 var _beam_light: OmniLight3D
 var _rage_announced := false
+var _death_tween: Tween
 
 
 func _ready() -> void:
@@ -49,11 +60,39 @@ func _ready() -> void:
 	z_max = 3.0
 	model = KaijuModel.new()
 	add_child(model)
-	model.build(Color(0.2, 0.33, 0.3), Color(0.68, 0.62, 0.48), Color(0.3, 0.85, 1.0), Color(0.5, 0.95, 1.0))
-	_beam = _make_beam()
+	var r: Array = ROSTER[slot]
+	model.build(r[1], r[2], r[3], r[4])
+	_beam = _make_beam(r[3])
 	add_child(_beam)
 	_beam.visible = false
-	Game.player = self
+	Game.players.append(self)
+
+
+func display_name() -> String:
+	return ROSTER[slot][0]
+
+
+func color() -> Color:
+	return ROSTER[slot][3]
+
+
+## Brings a downed player back between waves.
+func revive() -> void:
+	if not dead:
+		return
+	if _death_tween:
+		_death_tween.kill()
+	dead = false
+	hp = max_hp * 0.5
+	health_changed.emit(hp, max_hp)
+	invuln = 2.0
+	model.rotation.z = 0.0
+	_set_state(S.FREE)
+	FX.energy(global_position + Vector3(0, 3, 0), color())
+
+
+func _act(action: String) -> String:
+	return "p%d_%s" % [slot, action]
 
 
 func add_rage(amount: float) -> void:
@@ -63,8 +102,9 @@ func add_rage(amount: float) -> void:
 	rage_changed.emit(rage, RAGE_MAX)
 	if rage >= RAGE_MAX and not _rage_announced:
 		_rage_announced = true
+		# In co-op the player's own HUD panel says READY instead of a banner.
 		var hud := get_tree().get_first_node_in_group("hud")
-		if hud:
+		if hud and Game.players.size() == 1:
 			hud.show_message("RAGE READY!", 1.4)
 
 
@@ -73,7 +113,7 @@ func _physics_process(delta: float) -> void:
 	invuln = maxf(invuln - delta, 0.0)
 	_dodge_cd = maxf(_dodge_cd - delta, 0.0)
 	_read_buffer(delta)
-	var input := Vector2(Input.get_axis("move_left", "move_right"), Input.get_axis("move_up", "move_down"))
+	var input := Vector2(Input.get_axis(_act("move_left"), _act("move_right")), Input.get_axis(_act("move_up"), _act("move_down")))
 	if input.length() > 1.0:
 		input = input.normalized()
 
@@ -112,7 +152,7 @@ func _read_buffer(delta: float) -> void:
 	if _buffer_t <= 0.0:
 		_buffered = ""
 	for a in ["light", "heavy", "jump", "dodge", "special"]:
-		if Input.is_action_just_pressed(a):
+		if Input.is_action_just_pressed(_act(a)):
 			_buffered = a
 			_buffer_t = 0.25
 
@@ -223,7 +263,7 @@ func _start_beam() -> void:
 	_beam_tick = 0.0
 	invuln = 0.0
 	Game.shake(0.3)
-	FX.energy(global_position + Vector3(facing * 2.0, 5.0, 0), Color(0.4, 0.9, 1.0))
+	FX.energy(global_position + Vector3(facing * 2.0, 5.0, 0), color())
 
 
 func _state_beam(delta: float) -> void:
@@ -281,6 +321,7 @@ func _on_death() -> void:
 	_set_state(S.DEAD)
 	_beam.visible = false
 	var tw := create_tween()
+	_death_tween = tw
 	tw.tween_property(model, "rotation:z", 1.45, 0.9).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
 	tw.tween_callback(func() -> void:
 		FX.dust(global_position, 2.0)
@@ -354,11 +395,11 @@ func _animate(delta: float) -> void:
 	update_model_facing(delta)
 
 
-func _make_beam() -> Node3D:
+func _make_beam(tint: Color) -> Node3D:
 	var root := Node3D.new()
 	var core_mat := StandardMaterial3D.new()
 	core_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	core_mat.albedo_color = Color(0.85, 1.0, 1.0)
+	core_mat.albedo_color = tint.lerp(Color.WHITE, 0.8)
 	var core := MeshInstance3D.new()
 	var cyl := CylinderMesh.new()
 	cyl.top_radius = 0.35
@@ -375,7 +416,7 @@ func _make_beam() -> Node3D:
 	glow_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	glow_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	glow_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	glow_mat.albedo_color = Color(0.2, 0.7, 1.0, 0.6)
+	glow_mat.albedo_color = Color(tint, 0.6)
 	var outer := MeshInstance3D.new()
 	var cyl2 := CylinderMesh.new()
 	cyl2.top_radius = 1.0
@@ -397,7 +438,7 @@ func _make_beam() -> Node3D:
 	root.add_child(mouth)
 
 	_beam_light = OmniLight3D.new()
-	_beam_light.light_color = Color(0.4, 0.85, 1.0)
+	_beam_light.light_color = tint
 	_beam_light.omni_range = 18.0
 	_beam_light.position.x = 6.0
 	root.add_child(_beam_light)

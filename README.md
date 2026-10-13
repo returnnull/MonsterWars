@@ -1,7 +1,7 @@
 # Kaiju Dawn
 
 En kaiju beat 'em up i stil med *Dawn of the Monsters*, bygget i **Godot 4.4** (GDScript).
-Dette er en spilbar vertical slice: én kaiju, én by-bane der kan smadres, tre bølger fjender og en boss.
+Dette er en spilbar vertical slice: op til 4 spillere lokalt, én by-bane der kan smadres, tre bølger fjender og en boss.
 
 Al grafik er original og genereres i kode (primitive meshes, procedurale shaders og partikler), så der er ingen ophavsretligt beskyttede assets i projektet.
 
@@ -10,6 +10,15 @@ Al grafik er original og genereres i kode (primitive meshes, procedurale shaders
 1. Hent Godot 4.4 eller nyere (standard-udgaven, ikke .NET): https://godotengine.org/download
 2. Åbn Godot, vælg **Import**, og peg på `project.godot` i denne mappe.
 3. Tryk **F5**.
+
+## Op til 4 spillere
+
+- Spiller 1 bruger tastatur eller den første controller.
+- Spiller 2-4 hopper ind når som helst ved at trykke **B** (Switch) / **A** (Xbox) på deres egen controller.
+- Alle deler én skærm. Kameraet zoomer ud når I spreder jer, og I kan højst være ca. én skærmbredde fra hinanden.
+- Hver spiller har sin egen kaiju og farve: Gorrax, Voltra, Magmos og Sylvara.
+- Fjenderne får mere liv jo flere I er, og med 3-4 spillere kommer der en ekstra fjende i hver bølge.
+- Bliver en spiller slået ud, kommer vedkommende tilbage med halvt liv, når bølgen er klaret. Det er først game over, når alle er nede.
 
 ## Styring
 
@@ -60,6 +69,7 @@ Kør den automatiske test (spiller hele banen og afslutter):
 
 ```
 godot --headless --path . res://tests/autoplay.tscn
+AUTOPLAY_PLAYERS=4 godot --headless --path . res://tests/autoplay.tscn
 ```
 
 ## Nintendo Switch
@@ -81,4 +91,4 @@ Projektet er forberedt til det:
 - Rigtige modeller og animationer (f.eks. lavet i Blender) i stedet for de procedurale kaijuer.
 - Lyd og musik.
 - Flere spilbare kaijuer, greb/kast, flere baner og en historie-mode.
-- Co-op for to spillere (Joy-Con-deling).
+- Mulighed for at spille med én Joy-Con pr. spiller (sidelæns).

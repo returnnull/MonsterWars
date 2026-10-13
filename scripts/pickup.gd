@@ -40,8 +40,7 @@ func _process(delta: float) -> void:
 	if _life <= 0.0:
 		queue_free()
 		return
-	var p := Game.player as Kaiju
-	if p and not p.dead:
+	for p in Game.living_players():
 		var d := p.global_position - global_position
 		d.y = 0.0
 		if d.length() < 3.0:
@@ -49,3 +48,4 @@ func _process(delta: float) -> void:
 			p.health_changed.emit(p.hp, p.max_hp)
 			FX.energy(global_position, Color(0.4, 1.0, 0.6))
 			queue_free()
+			return

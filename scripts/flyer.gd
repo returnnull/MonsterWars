@@ -64,7 +64,7 @@ func _process(delta: float) -> void:
 			queue_free()
 		return
 
-	var p := Game.player as Kaiju
+	var p := Game.nearest_player(global_position) as Kaiju
 	if p == null:
 		return
 	# Hover out of reach and shoot, then periodically swoop low across the

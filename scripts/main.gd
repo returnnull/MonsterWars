@@ -10,13 +10,14 @@ const WAVES := [
 	{"x": 225.0, "title": "BOSS", "spawn": ["boss", "flyer"]},
 ]
 
-var player: Player
 var hud: Hud
 var cam: CameraRig
 var _wave := 0
 var _wave_active := false
 var _alive := 0
 var _finished := false
+var _arena_min := -8.0
+var _arena_max := 0.0
 
 
 func _ready() -> void:
@@ -28,46 +29,100 @@ func _ready() -> void:
 	_build_city()
 	_build_skyline()
 
-	player = Player.new()
-	player.position = Vector3(0, 0.2, 0)
-	add_child(player)
-	player.died.connect(_on_player_died)
-
-	cam = CameraRig.new()
-	cam.target = player
-	add_child(cam)
-	Game.camera_rig = cam
-
 	hud = Hud.new()
 	add_child(hud)
-	hud.bind(player)
-	hud.show_message("SMASH THE CITY!", 2.2)
 	_update_limits()
+	_join(0)
+
+	cam = CameraRig.new()
+	add_child(cam)
+	Game.camera_rig = cam
+	hud.show_message("SMASH THE CITY!", 2.2)
 
 
 func _physics_process(_delta: float) -> void:
+	_check_joins()
+	_leash_players()
 	if _finished or _wave_active or _wave >= WAVES.size():
 		return
-	if player.global_position.x >= WAVES[_wave]["x"] - 4.0:
-		_start_wave()
+	for p in Game.living_players():
+		if p.global_position.x >= WAVES[_wave]["x"] - 4.0:
+			_start_wave()
+			return
+
+
+## Drop-in co-op: pressing jump on an unused controller spawns that player.
+func _check_joins() -> void:
+	if _finished:
+		return
+	for slot in range(1, Game.MAX_PLAYERS):
+		if _player_in_slot(slot) == null and Input.is_action_just_pressed("p%d_jump" % slot):
+			_join(slot)
+
+
+func _player_in_slot(slot: int) -> Player:
+	for p in Game.players:
+		if is_instance_valid(p) and p.slot == slot:
+			return p
+	return null
+
+
+func _join(slot: int) -> void:
+	var p := Player.new()
+	p.slot = slot
+	var living := Game.living_players()
+	var x := 0.0
+	if not living.is_empty():
+		for q in living:
+			x += q.global_position.x
+		x /= living.size()
+	p.position = Vector3(clampf(x + randf_range(-3.0, 3.0), _arena_min + 2.0, _arena_max - 2.0), 14.0 if slot > 0 else 0.2, -1.5 + slot)
+	add_child(p)
+	p.died.connect(_on_player_died)
+	hud.bind(p)
+	if slot > 0:
+		hud.show_message("%s JOINS!" % p.display_name(), 1.2)
+
+
+## Keeps everyone inside the arena and within one screen of each other.
+func _leash_players() -> void:
+	var living := Game.living_players()
+	for p in Game.players:
+		if not is_instance_valid(p):
+			continue
+		var lo := _arena_min
+		var hi := _arena_max
+		for q in living:
+			if q != p:
+				lo = maxf(lo, q.global_position.x - 30.0)
+				hi = minf(hi, q.global_position.x + 30.0)
+		p.x_min = lo
+		p.x_max = maxf(hi, lo)
 
 
 func _update_limits() -> void:
-	player.x_min = -8.0
-	player.x_max = (WAVES[_wave]["x"] + 4.0) if _wave < WAVES.size() else STAGE_END
+	_arena_min = -8.0
+	_arena_max = (WAVES[_wave]["x"] + 4.0) if _wave < WAVES.size() else STAGE_END
 
 
 func _start_wave() -> void:
 	_wave_active = true
 	var w: Dictionary = WAVES[_wave]
 	var cx: float = w["x"]
-	player.x_min = cx - 20.0
-	player.x_max = cx + 20.0
+	_arena_min = cx - 20.0
+	_arena_max = cx + 20.0
 	hud.show_message(w["title"], 1.6)
-	var kinds: Array = w["spawn"]
+	var kinds: Array = w["spawn"].duplicate()
+	if Game.players.size() >= 3 and w["title"] != "BOSS":
+		kinds.append("brute")
 	_alive = kinds.size()
 	for i in kinds.size():
 		_spawn(kinds[i], cx, i)
+
+
+## Enemy health scales with the number of players.
+func _hp_mul() -> float:
+	return 1.0 + 0.5 * (Game.players.size() - 1)
 
 
 func _spawn(kind: String, cx: float, i: int) -> void:
@@ -75,12 +130,14 @@ func _spawn(kind: String, cx: float, i: int) -> void:
 	var side := 1.0 if i % 2 == 0 else -1.0
 	if kind == "flyer":
 		var f := Flyer.new()
+		f.hp *= _hp_mul()
 		f.position = Vector3(cx + side * 26.0, 14.0, -2.0)
 		add_child(f)
 		f.died.connect(_on_enemy_died)
 	else:
 		var b := Brute.new()
 		b.is_boss = kind == "boss"
+		b.hp_mul = _hp_mul()
 		b.position = Vector3(cx + side * 23.0, 0.2, randf_range(-3.0, 2.0))
 		b.facing = -side
 		add_child(b)
@@ -103,10 +160,13 @@ func _on_enemy_died(_who: Node) -> void:
 	else:
 		hud.show_message("GO  >>", 1.6)
 		_update_limits()
+		for p in Game.players:
+			if is_instance_valid(p) and p.dead:
+				p.revive()
 
 
 func _on_player_died(_who: Node) -> void:
-	if _finished:
+	if _finished or not Game.living_players().is_empty():
 		return
 	_finished = true
 	hud.show_end("GAME OVER", false)

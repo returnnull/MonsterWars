@@ -12,6 +12,7 @@ const PALETTES := [
 ]
 
 var is_boss := false
+var hp_mul := 1.0
 var state := S.APPROACH
 var state_t := 0.0
 var cooldown := 1.2
@@ -31,6 +32,7 @@ func _ready() -> void:
 		dmg = 18.0
 	else:
 		max_hp = 90.0
+	max_hp *= hp_mul
 	init_body(1.2 * size_mul, 6.0 * size_mul, Game.LAYER_ENEMY)
 	hit_radius = 1.6 * size_mul
 	hit_height = 3.0 * size_mul
@@ -52,7 +54,7 @@ func _physics_process(delta: float) -> void:
 	state_t += delta
 	cooldown -= delta
 	var move := Vector3.ZERO
-	var p := Game.player as Kaiju
+	var p := Game.nearest_player(global_position) as Kaiju
 	match state:
 		S.DEAD:
 			pass
