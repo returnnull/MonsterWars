@@ -1,17 +1,11 @@
 extends Node3D
-## Stage 1, "Neon Harbor District": builds the lighting, street, city and
-## skyline, then runs the arena waves until the boss is down.
-
-const STAGE_END := 250.0
-const WAVES := [
-	{"x": 35.0, "title": "WAVE 1", "spawn": ["brute", "brute"]},
-	{"x": 95.0, "title": "WAVE 2", "spawn": ["brute", "flyer", "flyer"]},
-	{"x": 155.0, "title": "WAVE 3", "spawn": ["brute", "brute", "flyer", "flyer"]},
-	{"x": 225.0, "title": "BOSS", "spawn": ["boss", "flyer"]},
-]
+## Plays one level (Game.level, from Content.level()): builds the country's
+## stage, spawns the party, runs the arena waves and handles win/lose.
 
 var hud: Hud
 var cam: CameraRig
+var lvl: Dictionary
+var waves: Array = []
 var _wave := 0
 var _wave_active := false
 var _alive := 0
@@ -24,40 +18,55 @@ func _ready() -> void:
 	randomize()
 	Game.reset()
 	Game.world = self
-	_build_environment()
-	_build_ground()
-	_build_city()
-	_build_skyline()
+	if Game.level.is_empty():
+		Game.level = Content.level(0, 0)
+	lvl = Game.level
+	waves = lvl["waves"]
+	var country := Content.country(lvl["country"])
+	var builder := StageBuilder.new(self, country, lvl["length"], lvl["seed"])
+	builder.build()
 
 	hud = Hud.new()
 	add_child(hud)
 	_update_limits()
-	_join(0)
+	var slots: Array = Game.party.keys()
+	slots.sort()
+	for slot in slots:
+		_join(slot, Game.party[slot])
 
 	cam = CameraRig.new()
 	add_child(cam)
 	Game.camera_rig = cam
-	hud.show_message("SMASH THE CITY!", 2.2)
+	var weather := builder.make_weather()
+	if weather:
+		cam.add_child(weather)
+	hud.show_message(lvl["title"], 2.2)
 
 
 func _physics_process(_delta: float) -> void:
 	_check_joins()
 	_leash_players()
-	if _finished or _wave_active or _wave >= WAVES.size():
+	if _finished or _wave_active or _wave >= waves.size():
 		return
 	for p in Game.living_players():
-		if p.global_position.x >= WAVES[_wave]["x"] - 4.0:
+		if p.global_position.x >= waves[_wave]["x"] - 4.0:
 			_start_wave()
 			return
 
 
-## Drop-in co-op: pressing jump on an unused controller spawns that player.
+## Drop-in co-op: pressing jump on an unused controller spawns that player
+## with the first hero nobody else is using.
 func _check_joins() -> void:
 	if _finished:
 		return
-	for slot in range(1, Game.MAX_PLAYERS):
+	for slot in range(Game.MAX_PLAYERS):
 		if _player_in_slot(slot) == null and Input.is_action_just_pressed("p%d_jump" % slot):
-			_join(slot)
+			var used: Array = Game.players.map(func(p: Node3D) -> int: return p.hero)
+			var hero := 0
+			while hero in used:
+				hero += 1
+			Game.party[slot] = hero
+			_join(slot, hero)
 
 
 func _player_in_slot(slot: int) -> Player:
@@ -67,20 +76,23 @@ func _player_in_slot(slot: int) -> Player:
 	return null
 
 
-func _join(slot: int) -> void:
+func _join(slot: int, hero: int) -> void:
 	var p := Player.new()
 	p.slot = slot
+	p.hero = hero
 	var living := Game.living_players()
 	var x := 0.0
 	if not living.is_empty():
 		for q in living:
 			x += q.global_position.x
 		x /= living.size()
-	p.position = Vector3(clampf(x + randf_range(-3.0, 3.0), _arena_min + 2.0, _arena_max - 2.0), 14.0 if slot > 0 else 0.2, -1.5 + slot)
+	var dropping := not living.is_empty()
+	p.position = Vector3(clampf(x + randf_range(-3.0, 3.0) + slot * 2.0, _arena_min + 2.0, _arena_max - 2.0),
+		14.0 if dropping else 0.2, -1.5 + slot)
 	add_child(p)
 	p.died.connect(_on_player_died)
 	hud.bind(p)
-	if slot > 0:
+	if dropping:
 		hud.show_message("%s JOINS!" % p.display_name(), 1.2)
 
 
@@ -102,12 +114,12 @@ func _leash_players() -> void:
 
 func _update_limits() -> void:
 	_arena_min = -8.0
-	_arena_max = (WAVES[_wave]["x"] + 4.0) if _wave < WAVES.size() else STAGE_END
+	_arena_max = (waves[_wave]["x"] + 4.0) if _wave < waves.size() else float(lvl["length"])
 
 
 func _start_wave() -> void:
 	_wave_active = true
-	var w: Dictionary = WAVES[_wave]
+	var w: Dictionary = waves[_wave]
 	var cx: float = w["x"]
 	_arena_min = cx - 20.0
 	_arena_max = cx + 20.0
@@ -120,8 +132,8 @@ func _start_wave() -> void:
 		_spawn(kinds[i], cx, i)
 
 
-## Enemy health scales with the number of players.
-func _hp_mul() -> float:
+## Enemy health scales with the level and the number of players.
+func _player_mul() -> float:
 	return 1.0 + 0.5 * (Game.players.size() - 1)
 
 
@@ -130,21 +142,35 @@ func _spawn(kind: String, cx: float, i: int) -> void:
 	var side := 1.0 if i % 2 == 0 else -1.0
 	if kind == "flyer":
 		var f := Flyer.new()
-		f.hp *= _hp_mul()
+		f.hp *= float(lvl["hp_mul"]) * _player_mul()
 		f.position = Vector3(cx + side * 26.0, 14.0, -2.0)
 		add_child(f)
 		f.died.connect(_on_enemy_died)
-	else:
-		var b := Brute.new()
-		b.is_boss = kind == "boss"
-		b.hp_mul = _hp_mul()
-		b.position = Vector3(cx + side * 23.0, 0.2, randf_range(-3.0, 2.0))
-		b.facing = -side
-		add_child(b)
-		b.died.connect(_on_enemy_died)
-		if b.is_boss:
-			hud.show_boss(b)
-			Game.shake(0.8)
+		return
+	var b := Brute.new()
+	b.kind = kind
+	b.hp_mul = float(lvl["hp_mul"]) * _player_mul()
+	b.dmg_mul = lvl["dmg_mul"]
+	if kind == "boss":
+		# Boss stats already grow per country (Content.boss).
+		b.boss_def = Content.boss(lvl["country"])
+		b.hp_mul = _player_mul()
+	b.position = Vector3(cx + side * 23.0, 0.2, randf_range(-3.0, 2.0))
+	b.facing = -side
+	add_child(b)
+	b.died.connect(_on_enemy_died)
+	b.spawned_minion.connect(add_enemy)
+	if kind == "boss":
+		hud.show_boss(b)
+		hud.show_message(b.boss_def["name"], 1.6)
+		Game.shake(0.8)
+
+
+## Registers an enemy spawned mid-wave (e.g. a boss summon) so the wave
+## only ends once it is dead too.
+func add_enemy(e: Node) -> void:
+	_alive += 1
+	e.died.connect(_on_enemy_died)
 
 
 func _on_enemy_died(_who: Node) -> void:
@@ -153,8 +179,9 @@ func _on_enemy_died(_who: Node) -> void:
 		return
 	_wave_active = false
 	_wave += 1
-	if _wave >= WAVES.size():
+	if _wave >= waves.size():
 		_finished = true
+		Game.complete_level(lvl, Game.score)
 		await get_tree().create_timer(2.5, false).timeout
 		hud.show_end("STAGE CLEAR", true)
 	else:
@@ -172,200 +199,16 @@ func _on_player_died(_who: Node) -> void:
 	hud.show_end("GAME OVER", false)
 
 
-# --- stage construction ----------------------------------------------------
-
-func _build_environment() -> void:
-	var sky_mat := ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = Color(0.09, 0.11, 0.3)
-	sky_mat.sky_horizon_color = Color(0.95, 0.5, 0.32)
-	sky_mat.sky_curve = 0.12
-	sky_mat.ground_horizon_color = Color(0.55, 0.32, 0.26)
-	sky_mat.ground_bottom_color = Color(0.06, 0.05, 0.08)
-	sky_mat.sun_angle_max = 20.0
-	sky_mat.sun_curve = 0.08
-	var sky := Sky.new()
-	sky.sky_material = sky_mat
-
-	var env := Environment.new()
-	env.background_mode = Environment.BG_SKY
-	env.sky = sky
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.9
-	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
-	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.tonemap_exposure = 1.1
-	env.glow_enabled = true
-	env.glow_intensity = 0.55
-	env.glow_bloom = 0.0
-	env.glow_hdr_threshold = 1.4
-	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
-	env.set_glow_level(1, 0.6)
-	env.set_glow_level(3, 0.8)
-	env.set_glow_level(5, 0.5)
-	env.ssao_enabled = true
-	env.ssao_radius = 1.5
-	env.ssao_intensity = 1.6
-	env.ssr_enabled = true
-	env.ssr_max_steps = 48
-	env.fog_enabled = true
-	env.fog_light_color = Color(0.75, 0.5, 0.45)
-	env.fog_density = 0.0055
-	env.fog_sun_scatter = 0.35
-	env.fog_aerial_perspective = 0.4
-	env.adjustment_enabled = true
-	env.adjustment_saturation = 1.12
-	env.adjustment_contrast = 1.06
-	var we := WorldEnvironment.new()
-	we.environment = env
-	add_child(we)
-
-	# Low sun behind the skyline (rim light), plus a cool fill from the camera side.
-	var sun := DirectionalLight3D.new()
-	sun.light_color = Color(1.0, 0.72, 0.5)
-	sun.light_energy = 1.7
-	sun.rotation_degrees = Vector3(-18, 155, 0)
-	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 140.0
-	sun.directional_shadow_blend_splits = true
-	add_child(sun)
-	var fill := DirectionalLight3D.new()
-	fill.light_color = Color(0.55, 0.65, 1.0)
-	fill.light_energy = 1.3
-	fill.rotation_degrees = Vector3(-35, 20, 0)
-	fill.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
-	add_child(fill)
-
-
-func _build_ground() -> void:
-	var body := StaticBody3D.new()
-	body.collision_layer = Game.LAYER_WORLD
-	body.collision_mask = 0
-	var col := CollisionShape3D.new()
-	var shape := BoxShape3D.new()
-	shape.size = Vector3(2000, 2, 400)
-	col.shape = shape
-	col.position = Vector3(120, -1, 0)
-	body.add_child(col)
-	add_child(body)
-
-	var rough := NoiseTexture2D.new()
-	rough.seamless = true
-	var n := FastNoiseLite.new()
-	n.frequency = 0.02
-	n.fractal_octaves = 4
-	rough.noise = n
-
-	var asphalt := StandardMaterial3D.new()
-	asphalt.albedo_color = Color(0.12, 0.12, 0.13)
-	asphalt.roughness = 1.0
-	asphalt.roughness_texture = rough
-	asphalt.uv1_triplanar = true
-	asphalt.uv1_scale = Vector3(0.05, 0.05, 0.05)
-	_plane(Vector2(900, 400), asphalt, Vector3(120, 0, -60))
-
-	var street := StandardMaterial3D.new()
-	street.albedo_color = Color(0.09, 0.09, 0.1)
-	street.roughness = 0.55
-	street.roughness_texture = rough
-	street.uv1_triplanar = true
-	street.uv1_scale = Vector3(0.08, 0.08, 0.08)
-	_plane(Vector2(900, 11), street, Vector3(120, 0.01, -1.0))
-
-	var curb := StandardMaterial3D.new()
-	curb.albedo_color = Color(0.36, 0.35, 0.34)
-	curb.roughness = 0.9
-	_box(Vector3(900, 0.25, 1.6), curb, Vector3(120, 0.12, -7.3))
-	_box(Vector3(900, 0.25, 1.6), curb, Vector3(120, 0.12, 5.3))
-
-	var paint := StandardMaterial3D.new()
-	paint.albedo_color = Color(0.95, 0.75, 0.2)
-	paint.emission_enabled = true
-	paint.emission = Color(0.9, 0.65, 0.15)
-	paint.emission_energy_multiplier = 0.3
-	for i in 90:
-		_box(Vector3(3.0, 0.03, 0.25), paint, Vector3(-80 + i * 6.0, 0.02, -1.0))
-
-	# Street lamps along the back sidewalk.
-	var pole_mat := StandardMaterial3D.new()
-	pole_mat.albedo_color = Color(0.15, 0.15, 0.17)
-	pole_mat.metallic = 0.7
-	pole_mat.roughness = 0.4
-	var bulb_mat := StandardMaterial3D.new()
-	bulb_mat.albedo_color = Color(1, 0.9, 0.7)
-	bulb_mat.emission_enabled = true
-	bulb_mat.emission = Color(1.0, 0.8, 0.5)
-	bulb_mat.emission_energy_multiplier = 3.0
-	for i in 22:
-		var x := -20.0 + i * 14.0
-		var pole := CylinderMesh.new()
-		pole.top_radius = 0.08
-		pole.bottom_radius = 0.12
-		pole.height = 4.5
-		_mesh(pole, pole_mat, Vector3(x, 2.25, -6.9))
-		_box(Vector3(1.2, 0.1, 0.1), pole_mat, Vector3(x + 0.5, 4.5, -6.9))
-		var bulb := SphereMesh.new()
-		bulb.radius = 0.18
-		bulb.height = 0.3
-		_mesh(bulb, bulb_mat, Vector3(x + 1.0, 4.4, -6.9))
-
-	# A low railing along the near sidewalk.
-	for i in 90:
-		_box(Vector3(0.12, 1.0, 0.12), pole_mat, Vector3(-80 + i * 6.0, 0.5, 6.3))
-	_box(Vector3(900, 0.1, 0.1), pole_mat, Vector3(120, 1.0, 6.3))
-	_box(Vector3(900, 0.25, 6.0), curb, Vector3(120, 0.12, 9.0))
-
-
-func _build_city() -> void:
-	# Back row: tall towers you can smash from the far side of the street.
-	var x := -20.0
-	while x < STAGE_END + 30.0:
-		var w := randf_range(6.0, 10.0)
-		var d := randf_range(6.0, 9.0)
-		var h := randf_range(6.0, 17.0)
-		_building(Vector3(w, h, d), Vector3(x + w * 0.5, 0, -7.0 - d * 0.5))
-		x += w + randf_range(1.0, 3.5)
-
-
-func _building(size: Vector3, pos: Vector3) -> void:
-	var b := Building.new()
-	b.size = size
-	b.position = pos
-	add_child(b)
-
-
-func _build_skyline() -> void:
-	var mats: Array[ShaderMaterial] = []
-	for i in 6:
-		mats.append(Building.make_material(randf() * 10.0, randf_range(0.15, 0.35), 1.1))
-	for row in 3:
-		var x := -120.0
-		while x < 420.0:
-			var w := randf_range(8.0, 16.0)
-			var d := randf_range(8.0, 14.0)
-			var h := randf_range(18.0, 55.0) * (1.0 + row * 0.35)
-			var box := BoxMesh.new()
-			box.size = Vector3(w, h, d)
-			var mi := _mesh(box, mats.pick_random(), Vector3(x, h * 0.5, -32.0 - row * 26.0 - randf() * 8.0))
-			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if row > 0 else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-			x += w + randf_range(1.0, 6.0)
-
-
-func _plane(size: Vector2, mat: Material, pos: Vector3) -> void:
-	var p := PlaneMesh.new()
-	p.size = size
-	_mesh(p, mat, pos)
-
-
-func _box(size: Vector3, mat: Material, pos: Vector3) -> void:
-	var b := BoxMesh.new()
-	b.size = size
-	_mesh(b, mat, pos)
-
-
-func _mesh(mesh: Mesh, mat: Material, pos: Vector3) -> MeshInstance3D:
-	var mi := MeshInstance3D.new()
-	mi.mesh = mesh
-	mi.material_override = mat
-	mi.position = pos
-	add_child(mi)
-	return mi
+## Called from the end screen: after a win, continue to the next level;
+## after a loss, retry. Otherwise back to the world map.
+func on_end_choice(cont: bool) -> void:
+	if not cont:
+		Game.go_to_menu("map")
+		return
+	var g: int = lvl["global"]
+	if hud.won:
+		g += 1
+		if g >= Content.COUNTRIES.size() * Content.LEVELS_PER_COUNTRY:
+			Game.go_to_menu("map")
+			return
+	Game.start_level(g / Content.LEVELS_PER_COUNTRY, g % Content.LEVELS_PER_COUNTRY)

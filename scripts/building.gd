@@ -8,6 +8,10 @@ const WALLS := [Color(0.34, 0.36, 0.4), Color(0.45, 0.4, 0.34), Color(0.28, 0.3,
 	Color(0.5, 0.48, 0.45), Color(0.3, 0.25, 0.24)]
 const LIGHTS := [Color(1.0, 0.78, 0.45), Color(0.75, 0.9, 1.0), Color(1.0, 0.9, 0.7)]
 
+## Country look for buildings created from now on: walls (Array of Color),
+## window (Color), lit (lit-window ratio), emission. Set by the stage builder.
+static var style := {}
+
 var size := Vector3(8, 16, 7)
 var hp := 60.0
 var max_hp := 60.0
@@ -23,10 +27,12 @@ var _t := 0.0
 static func make_material(seed_value: float, lit_ratio: float, emission: float) -> ShaderMaterial:
 	var m := ShaderMaterial.new()
 	m.shader = SHADER
-	var wall: Color = WALLS[int(seed_value * 7.0) % WALLS.size()]
+	var walls: Array = style.get("walls", WALLS)
+	var wall: Color = walls[int(seed_value * 7.0) % walls.size()]
+	wall = wall.darkened(fmod(seed_value * 3.7, 1.0) * 0.2)
 	m.set_shader_parameter("wall_color", wall)
 	m.set_shader_parameter("trim_color", wall.darkened(0.35))
-	m.set_shader_parameter("lit_color", LIGHTS[int(seed_value * 13.0) % LIGHTS.size()])
+	m.set_shader_parameter("lit_color", style.get("window", LIGHTS[int(seed_value * 13.0) % LIGHTS.size()]))
 	m.set_shader_parameter("seed", seed_value)
 	m.set_shader_parameter("lit_ratio", lit_ratio)
 	m.set_shader_parameter("emission_strength", emission)
@@ -40,7 +46,8 @@ func _ready() -> void:
 	hp = max_hp
 	_holder = Node3D.new()
 	add_child(_holder)
-	_mat = make_material(randf() * 10.0, randf_range(0.2, 0.4), 1.3)
+	var lit: float = style.get("lit", 0.3)
+	_mat = make_material(randf() * 10.0, clampf(lit + randf_range(-0.1, 0.1), 0.0, 1.0), style.get("emission", 1.3))
 	var box := BoxMesh.new()
 	box.size = size
 	var mi := MeshInstance3D.new()

@@ -1,7 +1,7 @@
 # Kaiju Dawn
 
 En kaiju beat 'em up i stil med *Dawn of the Monsters*, bygget i **Godot 4.4** (GDScript).
-Dette er en spilbar vertical slice: op til 4 spillere lokalt, én by-bane der kan smadres, tre bølger fjender og en boss.
+10 spilbare kaijuer, 100 baner fordelt over 10 lande, en boss i hvert land og op til 4 spillere lokalt.
 
 Al grafik er original og genereres i kode (primitive meshes, procedurale shaders og partikler), så der er ingen ophavsretligt beskyttede assets i projektet.
 
@@ -11,12 +11,57 @@ Al grafik er original og genereres i kode (primitive meshes, procedurale shaders
 2. Åbn Godot, vælg **Import**, og peg på `project.godot` i denne mappe.
 3. Tryk **F5**.
 
+## Sådan spilles
+
+1. **Titelskærm:** tryk B / mellemrum.
+2. **Vælg kaiju:** hver spiller trykker B på sin controller for at være med, vælger kaiju med venstre/højre og trykker B igen for klar. Når alle er klar, går I videre.
+3. **Verdenskort:** vælg land. Et land låses op, når bossen i landet før er besejret.
+4. **Banevalg:** 10 baner pr. land. Bane 10 er altid bossen. Bane 5 og 8 slutter med en elite-kaiju.
+5. Efter en bane: B for næste bane (eller prøv igen), A for verdenskortet. Fremskridt og bedste score gemmes automatisk.
+
+Tryk **F9** i menuen for at låse alle baner op, hvis du vil teste.
+
+## Helte
+
+| Kaiju | Type | Rage-angreb |
+|---|---|---|
+| Gorrax | Allround | Atomic Beam |
+| Voltra | Hurtig, lidt liv | Atomic Beam |
+| Magmos | Tung og stærk | Earthquake |
+| Sylvara | Hurtig | Nova Burst |
+| Terraxa | Masser af liv, langsom | Earthquake |
+| Glacior | Allround | Atomic Beam |
+| Noctyr | Hurtigst, lidt liv | Nova Burst |
+| Coralis | Allround | Atomic Beam |
+| Solar Rex | Stærk | Nova Burst |
+| Rustfang | Tung og stærk | Earthquake |
+
+- **Atomic Beam:** en lang stråle fremad.
+- **Nova Burst:** tre energieksplosioner rundt om dig.
+- **Earthquake:** jordskælv der bevæger sig fremad langs gaden.
+
+## Lande og bosser
+
+| # | Land | By | Stemning | Vartegn | Boss | Bossens angreb |
+|---|---|---|---|---|---|---|
+| 1 | Danmark | København | Overskyet, regn | Vindmøller | Havtrold | Slag, stormløb |
+| 2 | Frankrig | Paris | Solnedgang | Jerntårn | Gargouille | Slag, spring |
+| 3 | USA | New York | Nat | Art deco-spir | Ironclaw | Slag, stormløb, tilkalder droner |
+| 4 | Brasilien | Rio | Solskin | Bjerge og statue | Jaguaron | Slag, spring, stormløb |
+| 5 | Egypten | Kairo | Ørkenhede | Pyramider | Sphinxar | Slag, ild-ånde, jordslag |
+| 6 | Indien | Mumbai | Diset skumring | Tempel | Nagaraj | Slag, ild-ånde, tilkalder droner |
+| 7 | Australien | Sydney | Morgen | Operahuset | Crocodon | Slag, stormløb, jordslag, spring |
+| 8 | Rusland | Moskva | Vinter, sne | Løgkupler | Mammothrax | Slag, jordslag, stormløb, is-ånde |
+| 9 | Island | Reykjavik | Nordlys, sne | Vulkan | Surtur | Alt undtagen stormløb |
+| 10 | Japan | Tokyo | Neon-nat | Radiotårn | Ryujin Prime | Alle seks angreb |
+
+Fjender: brute, crawler (lille og hurtig), elite (mini-boss) og militærdroner. Fjenderne bliver stærkere bane for bane, og bosserne bliver større og hårdere land for land. Jordslag kan undgås ved at hoppe.
+
 ## Op til 4 spillere
 
 - Spiller 1 bruger tastatur eller den første controller.
-- Spiller 2-4 hopper ind når som helst ved at trykke **B** (Switch) / **A** (Xbox) på deres egen controller.
+- Spiller 2-4 vælger kaiju i menuen eller hopper ind midt i en bane ved at trykke **B** (Switch) / **A** (Xbox) på deres egen controller.
 - Alle deler én skærm. Kameraet zoomer ud når I spreder jer, og I kan højst være ca. én skærmbredde fra hinanden.
-- Hver spiller har sin egen kaiju og farve: Gorrax, Voltra, Magmos og Sylvara.
 - Fjenderne får mere liv jo flere I er, og med 3-4 spillere kommer der en ekstra fjende i hver bølge.
 - Bliver en spiller slået ud, kommer vedkommende tilbage med halvt liv, når bølgen er klaret. Det er først game over, når alle er nede.
 
@@ -30,7 +75,7 @@ Al grafik er original og genereres i kode (primitive meshes, procedurale shaders
 | Tungt angreb (slam) | K | X | Y |
 | Angreb i luften = stomp | J/K i luften | Y/X i luften | X/Y i luften |
 | Undvig (usårlig kort tid) | Shift | A eller L | B eller LB |
-| Rage-beam (når RAGE er fuld) | L | R eller ZR | RB eller RT |
+| Rage-angreb (når RAGE er fuld) | L | R eller ZR | RB eller RT |
 | Pause | Esc / Enter | + | Start |
 
 Knapperne er mappet efter position, så de sidder rigtigt på en Switch Pro Controller og Joy-Cons.
@@ -48,12 +93,16 @@ Knapperne er mappet efter position, så de sidder rigtigt på en Switch Pro Cont
 
 ```
 project.godot              Indstillinger, renderer, autoload
-scenes/main.tscn           Startscene (bygger banen i kode)
-scripts/main.gd            Bane, lys, by, bølger og win/lose
+scenes/menu.tscn           Startscene: titel, heltevalg, verdenskort, banevalg
+scenes/main.tscn           En bane (bygges i kode ud fra Game.level)
+scripts/menu.gd            Menuerne
+scripts/content.gd         Alt indhold som data: helte, lande, bosser, banegenerator
+scripts/stage_builder.gd   Bygger et lands bane: lys, vejr, by, skyline, vartegn
+scripts/main.gd            Bølger, spillere og win/lose for en bane
 scripts/autoload/game.gd   Global tilstand, point, hitstop, input-mapping
 scripts/kaiju.gd           Fælles krop for kaijuer: liv, knockback, strike()
 scripts/player.gd          Spillerens kaiju og angreb
-scripts/brute.gd           Nærkamps-fjende og boss
+scripts/brute.gd           Fjende-kaijuer (crawler, brute, elite) og bosser
 scripts/flyer.gd           Drone-fjende
 scripts/projectile.gd      Plasma-skud
 scripts/building.gd        Destruerbare bygninger
@@ -70,6 +119,8 @@ Kør den automatiske test (spiller hele banen og afslutter):
 ```
 godot --headless --path . res://tests/autoplay.tscn
 AUTOPLAY_PLAYERS=4 godot --headless --path . res://tests/autoplay.tscn
+AUTOPLAY_LEVELS=bosses godot --headless --path . res://tests/autoplay.tscn   # alle 10 bosser
+AUTOPLAY_LEVELS=all AUTOPLAY_SECONDS=0 godot --headless --path . res://tests/autoplay.tscn   # byg alle 100 baner
 ```
 
 ## Nintendo Switch
@@ -90,5 +141,5 @@ Projektet er forberedt til det:
 
 - Rigtige modeller og animationer (f.eks. lavet i Blender) i stedet for de procedurale kaijuer.
 - Lyd og musik.
-- Flere spilbare kaijuer, greb/kast, flere baner og en historie-mode.
+- Greb og kast, unikke angreb pr. helt og en historie-mode mellem landene.
 - Mulighed for at spille med én Joy-Con pr. spiller (sidelæns).

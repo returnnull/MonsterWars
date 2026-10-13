@@ -1,17 +1,18 @@
 class_name Projectile
 extends Node3D
-## Plasma bolt fired by drones. Dodging (i-frames) lets it pass through.
+## Plasma bolt fired by drones and fire-breathing bosses. Dodging (i-frames) lets it pass through.
 
 var velocity := Vector3.ZERO
+var color := Color(1.0, 0.45, 0.1)
 var damage := 8.0
 var _life := 4.0
 
 
 func _ready() -> void:
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(1.0, 0.6, 0.3)
+	mat.albedo_color = color.lerp(Color.WHITE, 0.4)
 	mat.emission_enabled = true
-	mat.emission = Color(1.0, 0.45, 0.1)
+	mat.emission = color
 	mat.emission_energy_multiplier = 6.0
 	var s := SphereMesh.new()
 	s.radius = 0.35

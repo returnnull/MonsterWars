@@ -25,10 +25,12 @@ var _flash := 0.0
 var _t := 0.0
 var _walk := 0.0
 var _phase := 0.0
+var _spike_color := Color.WHITE
 var _cur := {"arm_r": 0.25, "arm_l": 0.25, "jaw": 0.0, "lean": 0.0}
 
 
 func build(skin: Color, belly: Color, spike: Color, eye: Color, horns: bool = false) -> void:
+	_spike_color = spike
 	var skin_mat := _skin(skin, 0.7, true)
 	var belly_mat := _skin(belly, 0.55, false)
 	var claw_mat := _skin(Color(0.85, 0.82, 0.75), 0.3, false)
@@ -132,6 +134,10 @@ func build(skin: Color, belly: Color, spike: Color, eye: Color, horns: bool = fa
 		_tail.append(seg)
 		parent = seg
 		offset = Vector3(-0.95, -0.1, 0)
+
+
+func spike_color() -> Color:
+	return _spike_color
 
 
 func flash() -> void:

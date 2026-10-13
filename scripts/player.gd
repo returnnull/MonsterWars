@@ -1,8 +1,8 @@
 class_name Player
 extends Kaiju
 ## A playable kaiju: 3-hit light combo, heavy slam, jump stomp, dodge,
-## and a rage-fuelled atomic beam. `slot` (0-3) picks the controller,
-## name and colours.
+## and a rage-fuelled special (beam, nova or quake, depending on the hero).
+## `slot` (0-3) picks the controller; `hero` picks a Content.HEROES entry.
 
 signal rage_changed(rage: float, max_rage: float)
 
@@ -16,14 +16,6 @@ const BEAM_LEN := 42.0
 const BEAM_TIME := 2.6
 const BEAM_CHARGE := 0.4
 
-# name, skin, belly, spikes/beam, eyes
-const ROSTER := [
-	["GORRAX", Color(0.2, 0.33, 0.3), Color(0.68, 0.62, 0.48), Color(0.3, 0.85, 1.0), Color(0.5, 0.95, 1.0)],
-	["VOLTRA", Color(0.36, 0.33, 0.18), Color(0.75, 0.68, 0.45), Color(1.0, 0.9, 0.25), Color(1.0, 0.95, 0.5)],
-	["MAGMOS", Color(0.32, 0.16, 0.13), Color(0.7, 0.5, 0.36), Color(1.0, 0.4, 0.15), Color(1.0, 0.6, 0.25)],
-	["SYLVARA", Color(0.25, 0.2, 0.34), Color(0.65, 0.58, 0.7), Color(0.85, 0.4, 1.0), Color(0.95, 0.6, 1.0)],
-]
-
 const ATTACKS := {
 	"light1": {"dur": 0.30, "active": 0.11, "dmg": 7.0, "kb": Vector3(4, 0, 0), "reach": 2.6, "radius": 2.3,
 		"pose": "jab_r", "shake": 0.12, "bdmg": 10.0, "next": "light2"},
@@ -36,6 +28,9 @@ const ATTACKS := {
 }
 
 var slot := 0
+var hero := 0
+var speed_mul := 1.0
+var power := 1.0
 var state := S.FREE
 var state_t := 0.0
 var rage := 0.0
@@ -50,30 +45,38 @@ var _beam: Node3D
 var _beam_light: OmniLight3D
 var _rage_announced := false
 var _death_tween: Tween
+var _h: Dictionary
+var _special := "beam"
+var _special_step := 0
 
 
 func _ready() -> void:
-	max_hp = 260.0
+	_h = Content.hero(hero)
+	max_hp = _h["hp"]
+	speed_mul = _h["speed"]
+	power = _h["power"]
+	_special = _h["special"]
 	add_to_group("player")
 	init_body(1.2, 6.0, Game.LAYER_PLAYER)
 	z_min = -5.2
 	z_max = 3.0
 	model = KaijuModel.new()
 	add_child(model)
-	var r: Array = ROSTER[slot]
-	model.build(r[1], r[2], r[3], r[4])
-	_beam = _make_beam(r[3])
+	model.build(_h["skin"], _h["belly"], _h["accent"], _h["eye"], _h["horns"])
+	model.scale = Vector3.ONE * _h["size"]
+	hit_radius = 1.6 * _h["size"]
+	_beam = _make_beam(_h["accent"])
 	add_child(_beam)
 	_beam.visible = false
 	Game.players.append(self)
 
 
 func display_name() -> String:
-	return ROSTER[slot][0]
+	return _h["name"]
 
 
 func color() -> Color:
-	return ROSTER[slot][3]
+	return _h["accent"]
 
 
 ## Brings a downed player back between waves.
@@ -192,7 +195,7 @@ func _state_free(input: Vector2) -> Vector3:
 				_consume()
 				_start_beam()
 				return Vector3.ZERO
-	return Vector3(input.x * SPEED, 0, input.y * DEPTH_SPEED)
+	return Vector3(input.x * SPEED * speed_mul, 0, input.y * DEPTH_SPEED * speed_mul)
 
 
 func _start_attack(attack_name: String) -> void:
@@ -226,8 +229,8 @@ func _do_hit() -> void:
 	var center := global_position + Vector3(facing * reach, 3.2, 0)
 	if atk["pose"] == "spin":
 		center = global_position + Vector3(0, 2.6, 0)
-	var dmg: float = atk["dmg"]
-	var hits := strike(center, atk["radius"], dmg, atk["kb"], "enemies", atk["bdmg"])
+	var dmg: float = atk["dmg"] * power
+	var hits := strike(center, atk["radius"], dmg, atk["kb"], "enemies", atk["bdmg"] * power)
 	if atk["pose"] == "slam":
 		FX.shockwave(global_position + Vector3(facing * 3.0, 0, 0), 5.0, Color(1.0, 0.8, 0.5))
 		FX.dust(global_position + Vector3(facing * 3.0, 0, 0), 1.2)
@@ -246,7 +249,7 @@ func _start_stomp() -> void:
 
 
 func _stomp_land() -> void:
-	var hits := strike(global_position + Vector3(0, 1.2, 0), 5.5, 16.0, Vector3(10, 12, 0), "enemies", 30.0)
+	var hits := strike(global_position + Vector3(0, 1.2, 0), 5.5, 16.0 * power, Vector3(10, 12, 0), "enemies", 30.0 * power)
 	FX.shockwave(global_position, 7.0)
 	FX.dust(global_position, 1.6)
 	Game.shake(0.6)
@@ -261,14 +264,22 @@ func _stomp_land() -> void:
 func _start_beam() -> void:
 	_set_state(S.BEAM)
 	_beam_tick = 0.0
+	_special_step = 0
 	invuln = 0.0
 	Game.shake(0.3)
 	FX.energy(global_position + Vector3(facing * 2.0, 5.0, 0), color())
 
 
+## Runs the hero's rage special. All three last BEAM_TIME and drain rage.
 func _state_beam(delta: float) -> void:
 	rage = RAGE_MAX * (1.0 - state_t / BEAM_TIME)
 	rage_changed.emit(rage, RAGE_MAX)
+	if _special == "nova":
+		_state_nova()
+		return
+	if _special == "quake":
+		_state_quake()
+		return
 	if state_t < BEAM_CHARGE:
 		return
 	_beam.visible = true
@@ -290,6 +301,49 @@ func _state_beam(delta: float) -> void:
 		_set_state(S.FREE)
 
 
+func _end_special() -> void:
+	rage = 0.0
+	_rage_announced = false
+	rage_changed.emit(rage, RAGE_MAX)
+	_set_state(S.FREE)
+
+
+## Three expanding energy blasts centred on the hero.
+func _state_nova() -> void:
+	var pulse_t := BEAM_CHARGE + 0.15 + _special_step * 0.6
+	if _special_step < 3 and state_t >= pulse_t:
+		_special_step += 1
+		var c := global_position + Vector3(0, 3.0, 0)
+		var hits := strike(c, 9.0, 18.0 * power, Vector3(14, 10, 0), "enemies", 45.0 * power)
+		FX.shockwave(global_position, 10.0, color())
+		FX.energy(c, color())
+		Game.shake(0.5)
+		for i in hits:
+			Game.register_hit()
+	if state_t >= BEAM_TIME:
+		_end_special()
+
+
+## Stomps that send eruptions marching forward along the street.
+func _state_quake() -> void:
+	var step_t := BEAM_CHARGE + _special_step * 0.2
+	if _special_step < 9 and state_t >= step_t:
+		var x := global_position.x + facing * (3.0 + _special_step * 4.5)
+		var c := Vector3(x, 1.5, global_position.z)
+		_special_step += 1
+		var hits := strike(c, 3.8, 14.0 * power, Vector3(6, 16, 0), "enemies", 0.0)
+		for b in get_tree().get_nodes_in_group("buildings"):
+			b.try_hit(Vector3(x, 1.5, clampf(global_position.z - 3.0, -7.6, 5.0)), 3.5, 40.0 * power)
+		FX.dust(c, 1.4)
+		FX.debris_burst(c, 1.2)
+		FX.shockwave(Vector3(x, 0, c.z), 4.0, color())
+		Game.shake(0.35)
+		for i in hits:
+			Game.register_hit()
+	if state_t >= BEAM_TIME:
+		_end_special()
+
+
 func _beam_damage() -> void:
 	var origin := global_position + Vector3(facing * 2.2, 4.85, 0)
 	for t in get_tree().get_nodes_in_group("enemies"):
@@ -299,7 +353,7 @@ func _beam_damage() -> void:
 		var along := (tc.x - origin.x) * facing
 		var r: float = t.hit_radius
 		if along > -1.0 and along < BEAM_LEN and absf(tc.z - origin.z) < 2.5 + r and absf(tc.y - origin.y) < 3.0 + r:
-			if t.take_hit(5.0, Vector3(facing * 4.0, 1.0, 0), self):
+			if t.take_hit(5.0 * power, Vector3(facing * 4.0, 1.0, 0), self):
 				Game.register_hit()
 				FX.hit_spark(Vector3(tc.x - facing * r, origin.y, tc.z), 6.0)
 	for b in get_tree().get_nodes_in_group("buildings"):
@@ -378,9 +432,20 @@ func _animate(delta: float) -> void:
 			al = -0.4
 		S.BEAM:
 			jaw = 1.0
-			lean = -0.05 if state_t > BEAM_CHARGE else -0.35
-			ar = 0.8
-			al = 0.8
+			match _special:
+				"nova":
+					ar = 2.6
+					al = 2.6
+					lean = -0.3
+				"quake":
+					var up := fmod(state_t, 0.4) < 0.2
+					ar = 2.6 if up else 0.9
+					al = ar
+					lean = -0.2 if up else 0.45
+				_:
+					lean = -0.05 if state_t > BEAM_CHARGE else -0.35
+					ar = 0.8
+					al = 0.8
 		S.STOMP:
 			ar = 2.4
 			al = 2.4

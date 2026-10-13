@@ -16,6 +16,7 @@ const LAYER_PLAYER := 2
 const LAYER_ENEMY := 4
 const LAYER_DEBRIS := 8
 const MAX_PLAYERS := 4
+const SAVE_PATH := "user://save.json"
 
 var score := 0
 var buildings_total := 0
@@ -25,6 +26,13 @@ var best_combo := 0
 var world: Node3D
 var camera_rig: Node
 var players: Array[Node3D] = []
+## Chosen heroes per slot, set in the menu: {slot: hero_index}.
+var party := {0: 0}
+## The level being played (a Content.level() dictionary).
+var level: Dictionary = {}
+## Highest unlocked global level (0-99) and best scores per level.
+var unlocked := 0
+var best_scores := {}
 
 var _combo_timer := 0.0
 var _hitstop_active := false
@@ -33,6 +41,7 @@ var _hitstop_active := false
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_setup_input()
+	load_progress()
 
 
 func _process(delta: float) -> void:
@@ -99,6 +108,47 @@ func destruction_percent() -> int:
 	return int(round(100.0 * buildings_destroyed / buildings_total))
 
 
+func start_level(country_idx: int, level_idx: int) -> void:
+	level = Content.level(country_idx, level_idx)
+	get_tree().paused = false
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
+
+
+func go_to_menu(screen: String = "map") -> void:
+	get_tree().paused = false
+	Engine.time_scale = 1.0
+	set_meta("menu_screen", screen)
+	get_tree().change_scene_to_file("res://scenes/menu.tscn")
+
+
+func complete_level(lvl: Dictionary, final_score: int) -> void:
+	var g: int = lvl["global"]
+	unlocked = maxi(unlocked, mini(g + 1, Content.COUNTRIES.size() * Content.LEVELS_PER_COUNTRY - 1))
+	best_scores[str(g)] = maxi(int(best_scores.get(str(g), 0)), final_score)
+	save_progress()
+
+
+func save_progress() -> void:
+	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify({"unlocked": unlocked, "best": best_scores, "party": party}))
+
+
+func load_progress() -> void:
+	if not FileAccess.file_exists(SAVE_PATH):
+		return
+	var f := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	var data = JSON.parse_string(f.get_as_text()) if f else null
+	if data is Dictionary:
+		unlocked = int(data.get("unlocked", 0))
+		best_scores = data.get("best", {})
+		var saved_party = data.get("party", {})
+		if saved_party is Dictionary and not saved_party.is_empty():
+			party = {}
+			for k in saved_party:
+				party[int(k)] = int(saved_party[k])
+
+
 func shake(amount: float) -> void:
 	if camera_rig and is_instance_valid(camera_rig):
 		camera_rig.shake(amount)
@@ -130,6 +180,7 @@ func _setup_input() -> void:
 		_action(pre + "special", [KEY_L] if kb else [], [JOY_BUTTON_RIGHT_SHOULDER], [[JOY_AXIS_TRIGGER_RIGHT, 1.0]], slot)
 	_action("jump", [KEY_SPACE], [JOY_BUTTON_A], [], -1)
 	_action("pause", [KEY_ESCAPE, KEY_ENTER], [JOY_BUTTON_START], [], -1)
+	_action("back", [KEY_SHIFT, KEY_BACKSPACE], [JOY_BUTTON_B], [], -1)
 
 
 func _action(action: String, keys: Array, buttons: Array, axes: Array, device: int) -> void:

@@ -19,6 +19,8 @@ var _end_panel: Control
 var _end_title: Label
 var _end_stats: Label
 var _ended := false
+var won := false
+var _boss_name: Label
 var _boss: Kaiju
 var _msg_tween: Tween
 var _t := 0.0
@@ -55,15 +57,15 @@ func _ready() -> void:
 	_boss_box.position = Vector2(460, 960)
 	_boss_box.visible = false
 	root.add_child(_boss_box)
-	_label(_boss_box, "TYRANNOX, THE CRIMSON KING", Vector2(0, -44), 30, Color(1.0, 0.5, 0.35))
+	_boss_name = _label(_boss_box, "", Vector2(0, -44), 30, Color(1.0, 0.5, 0.35))
 	_boss_bar = _bar(_boss_box, Vector2(0, 0), Vector2(1000, 22), Color(0.95, 0.25, 0.2))
 
 	_controls = _label(root, "Players 2-4: press B on another controller to join\n" +
 		"Move: WASD / stick    Jump: Space / B    Light: J / Y    Heavy: K / X\n" +
-		"Dodge: Shift / A    Rage beam: L key / R or ZR    Pause: Esc / +    Attack in the air = stomp",
+		"Dodge: Shift / A    Rage attack: L key / R or ZR    Pause: Esc / +    Attack in the air = stomp",
 		Vector2(48, 950), 22, Color(1, 1, 1, 0.85))
 
-	_pause_panel = _overlay(root, "PAUSED", "Press Esc / + to resume")
+	_pause_panel = _overlay(root, "PAUSED", "Resume: Esc / +      World map: Shift / A")
 	_end_panel = _overlay(root, "", "")
 	_end_title = _end_panel.get_child(1)
 	_end_stats = _end_panel.get_child(2)
@@ -90,6 +92,7 @@ func bind(player: Player) -> void:
 
 func show_boss(boss: Kaiju) -> void:
 	_boss = boss
+	_boss_name.text = boss.display_name()
 	_boss_box.visible = true
 	_boss_bar.value = 100.0
 	boss.health_changed.connect(func(hp: float, mx: float) -> void: _boss_bar.value = 100.0 * hp / mx)
@@ -108,13 +111,14 @@ func show_message(text: String, duration: float = 2.0) -> void:
 	_msg_tween.tween_property(_msg_label, "modulate:a", 0.0, 0.4)
 
 
-func show_end(title: String, won: bool) -> void:
+func show_end(title: String, did_win: bool) -> void:
 	_ended = true
+	won = did_win
 	_boss_box.visible = false
 	_end_title.text = title
 	_end_title.label_settings.font_color = Color(0.5, 1.0, 0.7) if won else Color(1.0, 0.35, 0.3)
-	_end_stats.text = "Score %d\nDestruction %d%%   Best combo %d\n\nPress Space / B to play again" % [
-		Game.score, Game.destruction_percent(), Game.best_combo]
+	_end_stats.text = "Score %d\nDestruction %d%%   Best combo %d\n\n%s: Space / B      World map: Shift / A" % [
+		Game.score, Game.destruction_percent(), Game.best_combo, "Next level" if won else "Retry"]
 	_end_panel.visible = true
 	_end_panel.modulate.a = 0.0
 	create_tween().tween_property(_end_panel, "modulate:a", 1.0, 0.6)
@@ -138,12 +142,15 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if _ended:
 		if event.is_action_pressed("jump") or event.is_action_pressed("pause"):
-			get_tree().paused = false
-			get_tree().reload_current_scene()
+			get_parent().on_end_choice(true)
+		elif event.is_action_pressed("back"):
+			get_parent().on_end_choice(false)
 		return
 	if event.is_action_pressed("pause"):
 		get_tree().paused = not get_tree().paused
 		_pause_panel.visible = get_tree().paused
+	elif get_tree().paused and event.is_action_pressed("back"):
+		Game.go_to_menu("map")
 
 
 func _on_combo(hits: int) -> void:

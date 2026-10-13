@@ -1,13 +1,19 @@
 extends Node
-## Dev smoke test: plays the stage by pressing each player's actions.
+## Dev smoke test: bots play levels by pressing each player's actions.
 ##   godot --headless --path . res://tests/autoplay.tscn
-## Env: AUTOPLAY_PLAYERS (1-4), AUTOPLAY_SPEED, AUTOPLAY_MAX (seconds),
-##      AUTOPLAY_SHOTS (comma-separated times to save screenshots), AUTOPLAY_RAGE.
+## Env:
+##   AUTOPLAY_LEVELS  "c-l,c-l,..." (1-based, e.g. "1-1,1-10"), "bosses", or "all". Default "1-1".
+##   AUTOPLAY_PLAYERS 1-4 (heroes are picked in order, or AUTOPLAY_HEROES "0,5,9")
+##   AUTOPLAY_SECONDS max game seconds per level (0 = just build the level and run 3 s)
+##   AUTOPLAY_SPEED   time scale; AUTOPLAY_SHOTS "t1,t2" screenshot times;
+##   AUTOPLAY_MORTAL  let players die; AUTOPLAY_RAGE start with full rage.
 
 var t := 0.0
 var main: Node
+var queue: Array = []
+var results: Array = []
+var current := ""
 var log_t := 0.0
-var want_players := 1
 
 
 func _env(key: String, fallback: String) -> String:
@@ -16,10 +22,42 @@ func _env(key: String, fallback: String) -> String:
 
 
 func _ready() -> void:
+	var spec := _env("AUTOPLAY_LEVELS", "1-1")
+	if spec == "all":
+		for c in 10:
+			for l in 10:
+				queue.append([c, l])
+	elif spec == "bosses":
+		for c in 10:
+			queue.append([c, 9])
+	else:
+		for part in spec.split(","):
+			var cl := part.split("-")
+			queue.append([int(cl[0]) - 1, int(cl[1]) - 1])
+	var heroes := _env("AUTOPLAY_HEROES", "")
+	Game.party = {}
+	for slot in int(_env("AUTOPLAY_PLAYERS", "1")):
+		Game.party[slot] = int(heroes.split(",")[slot]) if heroes != "" else slot
+	Engine.time_scale = float(_env("AUTOPLAY_SPEED", "1"))
+	_next()
+
+
+func _next() -> void:
+	if main:
+		main.queue_free()
+		main = null
+		await get_tree().process_frame
+		await get_tree().process_frame
+	if queue.is_empty():
+		print("RESULTS: ", " ".join(results))
+		get_tree().quit()
+		return
+	var cl: Array = queue.pop_front()
+	Game.level = Content.level(cl[0], cl[1])
+	current = Game.level["title"]
+	t = 0.0
 	main = load("res://scenes/main.tscn").instantiate()
 	add_child(main)
-	want_players = int(_env("AUTOPLAY_PLAYERS", "1"))
-	Engine.time_scale = float(_env("AUTOPLAY_SPEED", "1"))
 
 
 func _press(slot: int, a: String) -> void:
@@ -31,11 +69,9 @@ func _press(slot: int, a: String) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if main == null or not main.is_node_ready():
+		return
 	t += delta
-	# Join extra players one by one during the first seconds.
-	for slot in range(1, want_players):
-		if absf(t - slot * 1.5) < delta:
-			_press(slot, "jump")
 	for p in Game.players:
 		if not is_instance_valid(p):
 			continue
@@ -45,35 +81,27 @@ func _physics_process(delta: float) -> void:
 			if _env("AUTOPLAY_RAGE", "") != "":
 				p.add_rage(100.0)
 		_drive(p, delta)
-	# AUTOPLAY_KILL: down P2 early (should revive after the wave), then everyone (game over).
-	if _env("AUTOPLAY_KILL", "") != "":
-		if absf(t - 8.0) < delta and Game.players.size() > 1:
-			Game.players[1].take_hit(1e6, Vector3.ZERO)
-			print("killed P2")
-		if absf(t - 60.0) < delta:
-			print("P2 dead before kill-all: ", Game.players[1].dead)
-			for p in Game.players:
-				p.take_hit(1e6, Vector3.ZERO)
-			print("killed all")
-		if main._finished and main.hud._ended:
-			print("END SCREEN: ", main.hud._end_title.text)
-			get_tree().quit()
-	log_t += delta
 	for st in _env("AUTOPLAY_SHOTS", "").split(",", false):
 		if t - delta < float(st) and t >= float(st):
-			get_viewport().get_texture().get_image().save_png("user://shot_%03d.png" % int(float(st)))
+			get_viewport().get_texture().get_image().save_png("user://shot_%s_%03d.png" % [current.replace(" ", "_"), int(float(st))])
 			print("shot ", st)
-	if log_t > 5.0:
+	log_t += delta
+	if log_t > 10.0:
 		log_t = 0.0
-		var xs := Game.players.map(func(p): return "%.0f" % p.global_position.x)
-		print("t=%.0f players=%d x=%s wave=%d enemies=%d score=%d destroyed=%d/%d" % [t, Game.players.size(), ",".join(xs),
-			main._wave, _enemies().size(), Game.score, Game.buildings_destroyed, Game.buildings_total])
-	if main._finished and main._wave >= main.WAVES.size():
-		print("STAGE CLEARED at t=%.1f score=%d players=%d" % [t, Game.score, Game.players.size()])
-		get_tree().quit()
-	if t > float(_env("AUTOPLAY_MAX", "400")):
-		print("TIMEOUT")
-		get_tree().quit()
+		print("%s t=%.0f wave=%d/%d enemies=%d score=%d" % [current, t, main._wave, main.waves.size(), _enemies().size(), Game.score])
+	var limit := float(_env("AUTOPLAY_SECONDS", "400"))
+	if limit == 0.0 and t > 3.0:
+		results.append("%s:built" % current)
+		_next()
+	elif main._finished:
+		var res := "CLEAR" if main._wave >= main.waves.size() else "LOST"
+		print("%s %s at t=%.1f score=%d" % [current, res, t, Game.score])
+		results.append("%s:%s" % [current, res])
+		_next()
+	elif limit > 0.0 and t > limit:
+		print("%s TIMEOUT wave=%d" % [current, main._wave])
+		results.append("%s:TIMEOUT" % current)
+		_next()
 
 
 func _enemies() -> Array:
