@@ -5,11 +5,36 @@ var menu: Node
 
 
 func _ready() -> void:
+	Game.set_meta("no_save", true)
 	Game.unlocked = 23
 	menu = load("res://scenes/menu.tscn").instantiate()
 	add_child(menu)
 	await _wait(1.0)
 	await _press("p0_jump")
+	await _wait(0.5)
+	# Skill tree for hero 0 at about level 17.
+	Game.hero_xp[0] = 8000
+	Game.reset_skills(0)
+	await _press("p0_heavy")
+	await _wait(0.3)
+	await _press("p0_jump")
+	await _press("p0_move_down")
+	for i in 5:
+		await _press("p0_jump")
+	await _press("p0_move_down")
+	for i in 5:
+		await _press("p0_jump")
+	await _press("p0_move_down")
+	await _press("p0_jump")
+	await _press("p0_move_left")
+	await _press("p0_move_up")
+	await _press("p0_move_up")
+	for i in 4:
+		await _press("p0_jump")
+	await _press("p0_move_down")
+	await _wait(0.6)
+	_shot("menu_skills")
+	await _press("p0_dodge")
 	await _wait(0.5)
 	await _press("p1_jump")
 	await _press("p2_jump")

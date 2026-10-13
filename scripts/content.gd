@@ -50,6 +50,11 @@ const COUNTRIES := [
 		"fog": Color(0.7, 0.72, 0.75), "fog_density": 0.008, "ground": Color(0.25, 0.3, 0.22),
 		"walls": [Color(0.75, 0.35, 0.25), Color(0.85, 0.75, 0.45), Color(0.45, 0.55, 0.6), Color(0.8, 0.8, 0.75)],
 		"window": Color(1.0, 0.9, 0.7), "lit": 0.15, "emission": 0.6, "height": Vector2(5, 11),
+		"look": {"facades": [0.15, 0.7, 0.1, 0.05], "roofs": ["gable", "gable", "mansard", "hip", "flat"],
+			"roof_colors": [Color(0.32, 0.55, 0.46), Color(0.24, 0.26, 0.3), Color(0.55, 0.24, 0.17)],
+			"cloud_cover": 0.85, "cloud_color": Color(0.82, 0.83, 0.86), "cloud_shade": Color(0.45, 0.47, 0.52),
+			"sun_strength": 0.3, "wet": 1.0, "tree": Color(0.2, 0.34, 0.18), "skyline": 1.0,
+			"grade_shadow": Color(0.0, 0.02, 0.05), "saturation": 1.05},
 		"boss": {"name": "HAVTROLD", "title": "The Sea Troll", "skin": Color(0.15, 0.3, 0.32), "belly": Color(0.5, 0.6, 0.5),
 			"accent": Color(0.3, 0.9, 0.8), "eye": Color(0.9, 1.0, 0.6), "moves": ["swipe", "charge"]}},
 	{"name": "FRANCE", "city": "Paris", "landmark": "iron_tower",
@@ -59,6 +64,10 @@ const COUNTRIES := [
 		"fog": Color(0.85, 0.6, 0.5), "fog_density": 0.006, "ground": Color(0.3, 0.28, 0.24),
 		"walls": [Color(0.85, 0.8, 0.68), Color(0.78, 0.72, 0.6), Color(0.7, 0.68, 0.62)],
 		"window": Color(1.0, 0.8, 0.5), "lit": 0.3, "emission": 1.2, "height": Vector2(7, 13),
+		"look": {"facades": [0.1, 0.8, 0.05, 0.05], "roofs": ["mansard", "mansard", "mansard", "flat"],
+			"roof_colors": [Color(0.36, 0.4, 0.46), Color(0.26, 0.28, 0.33)], "neon": 0.15,
+			"cloud_cover": 0.4, "cloud_color": Color(1.0, 0.72, 0.52), "cloud_shade": Color(0.42, 0.3, 0.42),
+			"tree": Color(0.24, 0.32, 0.16), "skyline": 1.1, "grade_shadow": Color(0.03, 0.0, 0.06)},
 		"boss": {"name": "GARGOUILLE", "title": "Stone Watcher", "skin": Color(0.4, 0.4, 0.42), "belly": Color(0.6, 0.58, 0.55),
 			"accent": Color(0.6, 0.8, 1.0), "eye": Color(1.0, 0.3, 0.2), "moves": ["swipe", "leap"]}},
 	{"name": "USA", "city": "New York", "landmark": "spires",
@@ -68,6 +77,11 @@ const COUNTRIES := [
 		"fog": Color(0.2, 0.18, 0.3), "fog_density": 0.007, "ground": Color(0.12, 0.12, 0.14),
 		"walls": [Color(0.3, 0.32, 0.38), Color(0.4, 0.38, 0.36), Color(0.25, 0.27, 0.32)],
 		"window": Color(1.0, 0.85, 0.55), "lit": 0.35, "emission": 1.5, "height": Vector2(10, 24),
+		"look": {"night": true, "neon": 0.55, "facades": [0.3, 0.1, 0.25, 0.35],
+			"roofs": ["flat", "tank", "tank", "crown", "helipad", "flat"], "roof_colors": [Color(0.3, 0.3, 0.32)],
+			"cloud_cover": 0.35, "cloud_color": Color(0.16, 0.14, 0.24), "cloud_shade": Color(0.05, 0.05, 0.1),
+			"city_glow": Color(0.28, 0.16, 0.12), "stars": 0.5, "shop": 1.6, "skyline": 1.7,
+			"tree": Color(0.12, 0.2, 0.12), "grade_shadow": Color(0.0, 0.01, 0.05)},
 		"boss": {"name": "IRONCLAW", "title": "Steel Colossus", "skin": Color(0.3, 0.32, 0.35), "belly": Color(0.5, 0.45, 0.4),
 			"accent": Color(1.0, 0.3, 0.2), "eye": Color(1.0, 0.2, 0.1), "moves": ["swipe", "charge", "summon"]}},
 	{"name": "BRAZIL", "city": "Rio de Janeiro", "landmark": "sugarloaf",
@@ -77,6 +91,9 @@ const COUNTRIES := [
 		"fog": Color(0.75, 0.85, 0.9), "fog_density": 0.004, "ground": Color(0.3, 0.42, 0.22),
 		"walls": [Color(0.95, 0.85, 0.4), Color(0.4, 0.75, 0.6), Color(0.95, 0.55, 0.45), Color(0.9, 0.9, 0.85)],
 		"window": Color(1.0, 0.95, 0.85), "lit": 0.05, "emission": 0.3, "height": Vector2(6, 16),
+		"look": {"facades": [0.35, 0.3, 0.25, 0.1], "roofs": ["flat", "flat", "tank", "helipad"],
+			"roof_colors": [Color(0.6, 0.35, 0.25)], "cloud_cover": 0.3, "cloud_color": Color(1, 1, 1),
+			"cloud_shade": Color(0.62, 0.7, 0.82), "tree": Color(0.15, 0.4, 0.15), "skyline": 1.2, "saturation": 1.18},
 		"boss": {"name": "JAGUARON", "title": "Jungle Fury", "skin": Color(0.6, 0.45, 0.15), "belly": Color(0.85, 0.75, 0.5),
 			"accent": Color(0.3, 1.0, 0.3), "eye": Color(0.6, 1.0, 0.2), "moves": ["swipe", "leap", "charge"]}},
 	{"name": "EGYPT", "city": "Cairo", "landmark": "pyramids",
@@ -86,6 +103,10 @@ const COUNTRIES := [
 		"fog": Color(0.9, 0.8, 0.6), "fog_density": 0.007, "ground": Color(0.75, 0.62, 0.42),
 		"walls": [Color(0.85, 0.75, 0.55), Color(0.75, 0.62, 0.45), Color(0.9, 0.85, 0.7)],
 		"window": Color(1.0, 0.85, 0.6), "lit": 0.08, "emission": 0.4, "height": Vector2(5, 12),
+		"look": {"facades": [0.2, 0.7, 0.05, 0.05], "roofs": ["flat", "flat", "tank", "dome"],
+			"roof_colors": [Color(0.75, 0.62, 0.42), Color(0.3, 0.55, 0.5)], "roof_flat": Color(0.62, 0.55, 0.45),
+			"cloud_cover": 0.12, "cloud_color": Color(1.0, 0.97, 0.9), "cloud_shade": Color(0.8, 0.72, 0.62),
+			"tree": Color(0.3, 0.42, 0.16), "skyline": 1.0, "grade_shadow": Color(0.04, 0.02, 0.0)},
 		"boss": {"name": "SPHINXAR", "title": "Riddle of Sand", "skin": Color(0.7, 0.55, 0.3), "belly": Color(0.85, 0.75, 0.5),
 			"accent": Color(1.0, 0.8, 0.2), "eye": Color(0.3, 0.8, 1.0), "moves": ["swipe", "breath", "slam"]}},
 	{"name": "INDIA", "city": "Mumbai", "landmark": "temple",
@@ -95,6 +116,10 @@ const COUNTRIES := [
 		"fog": Color(0.9, 0.6, 0.55), "fog_density": 0.01, "ground": Color(0.4, 0.3, 0.22),
 		"walls": [Color(0.9, 0.6, 0.4), Color(0.85, 0.85, 0.75), Color(0.6, 0.75, 0.8), Color(0.9, 0.5, 0.55)],
 		"window": Color(1.0, 0.75, 0.45), "lit": 0.3, "emission": 1.2, "height": Vector2(6, 15),
+		"look": {"neon": 0.3, "facades": [0.35, 0.45, 0.1, 0.1], "roofs": ["flat", "tank", "dome", "flat"],
+			"roof_colors": [Color(0.85, 0.65, 0.3), Color(0.7, 0.4, 0.3)], "cloud_cover": 0.45,
+			"cloud_color": Color(1.0, 0.62, 0.55), "cloud_shade": Color(0.4, 0.28, 0.45), "shop": 1.0,
+			"tree": Color(0.18, 0.32, 0.14), "skyline": 1.3},
 		"boss": {"name": "NAGARAJ", "title": "Serpent King", "skin": Color(0.2, 0.35, 0.2), "belly": Color(0.75, 0.7, 0.35),
 			"accent": Color(1.0, 0.85, 0.2), "eye": Color(1.0, 0.4, 0.8), "moves": ["swipe", "breath", "summon"]}},
 	{"name": "AUSTRALIA", "city": "Sydney", "landmark": "sails",
@@ -104,6 +129,9 @@ const COUNTRIES := [
 		"fog": Color(0.75, 0.8, 0.9), "fog_density": 0.005, "ground": Color(0.35, 0.4, 0.3),
 		"walls": [Color(0.8, 0.82, 0.85), Color(0.55, 0.6, 0.7), Color(0.75, 0.65, 0.55)],
 		"window": Color(0.9, 0.95, 1.0), "lit": 0.1, "emission": 0.5, "height": Vector2(8, 20),
+		"look": {"facades": [0.3, 0.15, 0.45, 0.1], "roofs": ["flat", "helipad", "crown", "flat"],
+			"roof_colors": [Color(0.4, 0.4, 0.42)], "cloud_cover": 0.25, "cloud_color": Color(1.0, 0.95, 0.92),
+			"cloud_shade": Color(0.6, 0.62, 0.75), "tree": Color(0.25, 0.38, 0.2), "skyline": 1.4},
 		"boss": {"name": "CROCODON", "title": "Harbour Terror", "skin": Color(0.25, 0.32, 0.15), "belly": Color(0.65, 0.6, 0.4),
 			"accent": Color(0.9, 0.9, 0.3), "eye": Color(1.0, 0.8, 0.1), "moves": ["swipe", "charge", "slam", "leap"]}},
 	{"name": "RUSSIA", "city": "Moscow", "landmark": "domes",
@@ -113,6 +141,10 @@ const COUNTRIES := [
 		"fog": Color(0.7, 0.7, 0.8), "fog_density": 0.012, "ground": Color(0.85, 0.87, 0.92),
 		"walls": [Color(0.75, 0.3, 0.25), Color(0.85, 0.82, 0.75), Color(0.5, 0.55, 0.5), Color(0.9, 0.85, 0.6)],
 		"window": Color(1.0, 0.8, 0.5), "lit": 0.3, "emission": 0.9, "height": Vector2(7, 16),
+		"look": {"neon": 0.15, "facades": [0.2, 0.6, 0.05, 0.15], "roofs": ["flat", "hip", "gable", "crown"],
+			"roof_colors": [Color(0.24, 0.42, 0.32), Color(0.45, 0.18, 0.16)], "snow": 1.0,
+			"cloud_cover": 0.6, "cloud_color": Color(0.95, 0.75, 0.75), "cloud_shade": Color(0.4, 0.38, 0.52),
+			"tree": Color(0.12, 0.22, 0.16), "skyline": 1.3, "grade_shadow": Color(0.0, 0.01, 0.05)},
 		"boss": {"name": "MAMMOTHRAX", "title": "Winter Behemoth", "skin": Color(0.4, 0.3, 0.25), "belly": Color(0.6, 0.55, 0.5),
 			"accent": Color(0.6, 0.9, 1.0), "eye": Color(0.6, 0.9, 1.0), "moves": ["swipe", "slam", "charge", "breath"]}},
 	{"name": "ICELAND", "city": "Reykjavik", "landmark": "volcano",
@@ -122,6 +154,10 @@ const COUNTRIES := [
 		"fog": Color(0.15, 0.3, 0.3), "fog_density": 0.009, "ground": Color(0.75, 0.8, 0.85),
 		"walls": [Color(0.85, 0.85, 0.85), Color(0.75, 0.3, 0.25), Color(0.3, 0.45, 0.6)],
 		"window": Color(1.0, 0.85, 0.6), "lit": 0.35, "emission": 1.3, "height": Vector2(4, 10),
+		"look": {"night": true, "neon": 0.12, "facades": [0.1, 0.8, 0.05, 0.05], "roofs": ["gable", "gable", "hip", "flat"],
+			"roof_colors": [Color(0.7, 0.18, 0.15), Color(0.2, 0.35, 0.6), Color(0.2, 0.45, 0.35)], "snow": 1.0,
+			"cloud_cover": 0.2, "cloud_color": Color(0.1, 0.18, 0.2), "cloud_shade": Color(0.02, 0.05, 0.07),
+			"stars": 1.0, "city_glow": Color(0.12, 0.1, 0.06), "shop": 1.2, "tree": Color(0.1, 0.2, 0.15), "skyline": 0.9},
 		"boss": {"name": "SURTUR", "title": "Lord of Lava", "skin": Color(0.15, 0.1, 0.1), "belly": Color(0.5, 0.2, 0.1),
 			"accent": Color(1.0, 0.35, 0.05), "eye": Color(1.0, 0.6, 0.1), "moves": ["breath", "slam", "leap", "summon", "swipe"]}},
 	{"name": "JAPAN", "city": "Tokyo", "landmark": "radio_tower",
@@ -131,6 +167,11 @@ const COUNTRIES := [
 		"fog": Color(0.3, 0.12, 0.3), "fog_density": 0.008, "ground": Color(0.1, 0.1, 0.12),
 		"walls": [Color(0.3, 0.3, 0.35), Color(0.45, 0.42, 0.45), Color(0.25, 0.25, 0.3)],
 		"window": Color(1.0, 0.5, 0.85), "lit": 0.3, "emission": 1.4, "height": Vector2(10, 22),
+		"look": {"night": true, "neon": 1.0, "facades": [0.45, 0.1, 0.3, 0.15], "roofs": ["flat", "helipad", "crown", "flat", "tank"],
+			"roof_colors": [Color(0.3, 0.3, 0.32)], "cloud_cover": 0.5, "cloud_color": Color(0.3, 0.12, 0.3),
+			"cloud_shade": Color(0.06, 0.03, 0.1), "city_glow": Color(0.4, 0.1, 0.32), "stars": 0.15, "shop": 2.0,
+			"neon_colors": [Color(1.0, 0.2, 0.55), Color(0.2, 0.85, 1.0), Color(1.0, 0.7, 0.15), Color(0.65, 0.35, 1.0), Color(0.3, 1.0, 0.5)],
+			"tree": Color(0.12, 0.2, 0.14), "skyline": 1.6, "grade_shadow": Color(0.02, 0.0, 0.05)},
 		"boss": {"name": "RYUJIN PRIME", "title": "The Last Dragon", "skin": Color(0.08, 0.1, 0.12), "belly": Color(0.35, 0.3, 0.35),
 			"accent": Color(0.8, 0.3, 1.0), "eye": Color(1.0, 0.2, 0.5), "moves": ["swipe", "charge", "slam", "breath", "summon", "leap"]}},
 ]
@@ -166,20 +207,32 @@ static func level(country_idx: int, level_idx: int) -> Dictionary:
 	var wave_count := 3 if is_boss else 2 + level_idx / 4
 	var waves: Array = []
 	var x := 35.0
+	var pool := Enemies.pool(country_idx, level_idx)
 	for w in wave_count:
 		var spawn: Array = []
 		if is_boss and w == wave_count - 1:
-			spawn = ["boss", "flyer"] if country_idx < 5 else ["boss", "crawler", "flyer"]
+			spawn = ["boss"]
+			var support := 1 if country_idx < 5 else 2
+			for i in support:
+				spawn.append(_pick_small(rng, pool))
 		else:
-			var n := mini(2 + d / 18 + rng.randi_range(0, 1) + w / 2, 7)
-			for i in n:
-				var r := rng.randf()
-				if d >= 3 and r < 0.25:
-					spawn.append("crawler")
-				elif d >= 1 and r < 0.5:
-					spawn.append("flyer")
-				else:
-					spawn.append("brute")
+			# Spend a threat budget on enemies from this level's pool. The
+			# types this level introduces are guaranteed in wave 1.
+			var budget := minf(1.5 * (2.0 + d / 18.0 + rng.randf() + w * 0.5), 11.0)
+			if w == 0:
+				for id in Enemies.introduced(country_idx, level_idx):
+					budget -= _add(spawn, id)
+			var guard := 0
+			while budget > 0.4 and spawn.size() < 8 and guard < 20:
+				guard += 1
+				var id := Enemies.pick(rng, pool)
+				# Every wave leads with something on the ground.
+				if spawn.is_empty() and Enemies.get_def(id)["class"] == "air":
+					continue
+				var cost: float = float(Enemies.get_def(id)["cost"]) * Enemies.get_def(id).get("group", 1)
+				if cost > budget + 0.8 and not spawn.is_empty():
+					continue
+				budget -= _add(spawn, id)
 			if w == wave_count - 1 and (level_idx == 4 or level_idx == 7):
 				spawn.append("elite")
 		var title := "BOSS" if (is_boss and w == wave_count - 1) else "WAVE %d" % (w + 1)
@@ -196,3 +249,21 @@ static func level(country_idx: int, level_idx: int) -> Dictionary:
 		"dmg_mul": 1.0 + d * 0.012,
 		"seed": rng.seed,
 	}
+
+
+## Appends `id` (as many times as its group size) and returns its threat cost.
+static func _add(spawn: Array, id: String) -> float:
+	var def := Enemies.get_def(id)
+	var n: int = def.get("group", 1)
+	for i in n:
+		spawn.append(id)
+	return float(def["cost"]) * n
+
+
+## A cheap support enemy for boss waves (air units preferred).
+static func _pick_small(rng: RandomNumberGenerator, pool: Array) -> String:
+	var small := pool.filter(func(e: Array) -> bool:
+		return float(Enemies.get_def(e[0])["cost"]) <= 2.0 and Enemies.get_def(e[0]).get("group", 1) == 1)
+	if small.is_empty():
+		return "drone"
+	return Enemies.pick(rng, small)

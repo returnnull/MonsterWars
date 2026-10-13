@@ -62,8 +62,9 @@ func _ready() -> void:
 
 	_controls = _label(root, "Players 2-4: press B on another controller to join\n" +
 		"Move: WASD / stick    Jump: Space / B    Light: J / Y    Heavy: K / X\n" +
-		"Dodge: Shift / A    Rage mode, then rage attack: L key / R    Super: U key / ZL    Pause: Esc / +",
-		Vector2(48, 950), 22, Color(1, 1, 1, 0.85))
+		"Dodge: Shift / A    Rage mode, then rage attack: L key / R    Super: U key / ZL    Pause: Esc / +\n" +
+		"Knock down buildings, then press heavy (K / X) on the wreckage to pick up a weapon",
+		Vector2(48, 925), 22, Color(1, 1, 1, 0.85))
 
 	_pause_panel = _overlay(root, "PAUSED", "Resume: Esc / +      World map: Shift / A")
 	_end_panel = _overlay(root, "", "")
@@ -77,6 +78,11 @@ func _ready() -> void:
 	Game.destruction_changed.connect(func(_d: int, _t2: int) -> void:
 		_destroy_label.text = "DESTRUCTION %d%%" % Game.destruction_percent())
 	Game.combo_changed.connect(_on_combo)
+	Input.joy_connection_changed.connect(func(device: int, connected: bool) -> void:
+		show_message("CONTROLLER %d %s" % [device + 1, "CONNECTED" if connected else "DISCONNECTED"], 1.4)
+		if not connected and not get_tree().paused and not _ended:
+			get_tree().paused = true
+			_pause_panel.visible = true)
 
 
 func bind(player: Player) -> void:
@@ -154,6 +160,9 @@ func _process(delta: float) -> void:
 		else:
 			p["fill"].bg_color = Color(1.0, 0.55 + pulse * 0.4, 0.12 + pulse * 0.6) if full else Color(1.0, 0.55, 0.12)
 			p["rage_label"].text = "RAGE! [R]" if full else "RAGE"
+		if p.has("player") and is_instance_valid(p["player"]):
+			var pl: Player = p["player"]
+			p["weapon"].text = ("%s  x%d   (Y: swing   X: throw)" % [Weapon.KINDS[pl.weapon]["name"], pl.weapon_uses]) if pl.weapon != "" else ""
 		var sfull: bool = p["super"].value >= 99.9
 		p["super_fill"].bg_color = Color(0.75 + pulse * 0.25, 0.4 + pulse * 0.5, 1.0) if sfull else Color(0.6, 0.35, 1.0)
 		p["super_label"].text = "SUPER! [ZL]" if sfull else "SUPER"
@@ -207,11 +216,12 @@ func _make_panel(root: Control, slot: int) -> Dictionary:
 	var sup := _bar(panel, Vector2(0, 100), Vector2(PANEL_W - 160, 10), Color(0.6, 0.35, 1.0))
 	sup.value = 0.0
 	var super_label := _label(panel, "SUPER", Vector2(PANEL_W - 150, 94), 18, Color(0.8, 0.65, 1.0))
+	var weapon_label := _label(panel, "", Vector2(0, 116), 20, Color(1.0, 0.85, 0.55))
 	var join := _label(root, "P%d  PRESS B TO JOIN" % (slot + 1), Vector2(x, 40), 26, Color(1, 1, 1))
 	join.visible = slot > 0
 	return {"root": panel, "name": name_label, "hp": hp, "trail": trail, "rage": rage,
 		"fill": rage.get_theme_stylebox("fill"), "rage_label": rage_label, "join": join,
-		"level": level_label, "super": sup, "super_fill": sup.get_theme_stylebox("fill"), "super_label": super_label}
+		"level": level_label, "super": sup, "super_fill": sup.get_theme_stylebox("fill"), "super_label": super_label, "weapon": weapon_label}
 
 
 func _label(parent: Control, text: String, pos: Vector2, font_size: int, color: Color) -> Label:

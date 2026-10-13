@@ -31,7 +31,15 @@ const ATTACKS := {
 		"pose": "spin", "shake": 0.35, "bdmg": 18.0, "next": ""},
 	"heavy": {"dur": 0.72, "active": 0.38, "dmg": 22.0, "kb": Vector3(20, 10, 0), "reach": 3.0, "radius": 3.0,
 		"pose": "slam", "shake": 0.55, "bdmg": 45.0, "next": ""},
+	# With a building piece in hand (damage is multiplied by the weapon).
+	"swing1": {"dur": 0.42, "active": 0.16, "dmg": 9.0, "kb": Vector3(10, 4, 0), "reach": 3.4, "radius": 2.9,
+		"pose": "swing", "shake": 0.25, "bdmg": 30.0, "next": "swing2"},
+	"swing2": {"dur": 0.5, "active": 0.18, "dmg": 11.0, "kb": Vector3(18, 9, 0), "reach": 3.4, "radius": 3.1,
+		"pose": "swing", "shake": 0.35, "bdmg": 30.0, "next": ""},
+	"throw": {"dur": 0.45, "active": 0.2, "dmg": 0.0, "kb": Vector3.ZERO, "reach": 0.0, "radius": 0.0,
+		"pose": "throw", "shake": 0.0, "bdmg": 0.0, "next": ""},
 }
+const GRAB_RANGE := 4.5
 
 var slot := 0
 var hero := 0
@@ -69,6 +77,10 @@ var _barrier_t := 0.0
 var _barrier_fx: MeshInstance3D
 var _second_wind_used := false
 var _aura_t := 0.0
+## Building piece in hand ("" for none, else a Weapon.KINDS key) and swings left.
+var weapon := ""
+var weapon_uses := 0
+var _held: Node3D
 
 
 func _ready() -> void:
@@ -176,6 +188,12 @@ func on_enemy_killed() -> void:
 		FX.energy(global_position + Vector3(0, 3, 0), Color(1.0, 0.2, 0.3))
 
 
+## Controller rumble for this player's gamepad (slot N = gamepad N).
+func rumble(weak: float, strong: float, duration: float) -> void:
+	if slot in Input.get_connected_joypads():
+		Input.start_joy_vibration(slot, weak, strong, duration)
+
+
 func _act(action: String) -> String:
 	return "p%d_%s" % [slot, action]
 
@@ -198,6 +216,7 @@ func add_rage(amount: float) -> void:
 ## and pressing special again spends what's left on the rage attack.
 func _enter_rage_mode() -> void:
 	raging = true
+	rumble(0.6, 0.8, 0.4)
 	_rage_announced = false
 	Game.shake(0.5)
 	Game.hitstop(0.12)
@@ -312,10 +331,14 @@ func _state_free(input: Vector2) -> Vector3:
 				velocity.y = JUMP_VEL
 		"light", "heavy":
 			var b := _consume()
-			if is_on_floor():
-				_start_attack("light1" if b == "light" else "heavy")
-			else:
+			if not is_on_floor():
 				_start_stomp()
+			elif b == "heavy" and weapon == "" and _grab_weapon():
+				pass
+			elif weapon != "":
+				_start_attack("swing1" if b == "light" else "throw")
+			else:
+				_start_attack("light1" if b == "light" else "heavy")
 			return Vector3.ZERO
 		"dodge":
 			if _dodge_cd <= 0.0:
@@ -362,12 +385,13 @@ func _state_attack() -> Vector3:
 		_do_hit()
 	if state_t >= active:
 		var next: String = atk["next"]
-		if _buffered == "light" and next != "":
+		var armed := weapon != ""
+		if _buffered == "light" and next != "" and (armed or atk["pose"] != "swing"):
 			_consume()
 			_start_attack(next)
-		elif _buffered == "heavy" and atk["pose"] != "slam":
+		elif _buffered == "heavy" and atk["pose"] != "slam" and atk["pose"] != "throw":
 			_consume()
-			_start_attack("heavy")
+			_start_attack("throw" if armed else "heavy")
 		elif state_t >= atk["dur"]:
 			_set_state(S.FREE)
 	if state_t < active:
@@ -375,7 +399,83 @@ func _state_attack() -> Vector3:
 	return Vector3.ZERO
 
 
+## Picks up the nearest building piece in reach. Returns false if none.
+func _grab_weapon() -> bool:
+	var best: Weapon = null
+	var best_d := GRAB_RANGE
+	for w in get_tree().get_nodes_in_group("weapons"):
+		if w.thrower != null:
+			continue
+		var d := Vector2(w.global_position.x - global_position.x, w.global_position.z - global_position.z).length()
+		if d < best_d:
+			best_d = d
+			best = w
+	if best == null:
+		return false
+	_set_weapon(best.kind)
+	best.queue_free()
+	FX.dust(best.global_position, 0.8)
+	Game.shake(0.15)
+	return true
+
+
+func _set_weapon(kind: String) -> void:
+	weapon = kind
+	if _held:
+		_held.queue_free()
+		_held = null
+	if kind == "":
+		return
+	weapon_uses = Weapon.KINDS[kind]["uses"]
+	_held = Weapon.make_mesh(kind)
+	_held.scale = Vector3.ONE * 0.85
+	var hand: Node3D = model.parts.get("arm_r_fore", model)
+	hand.add_child(_held)
+	_held.position = Vector3(0.1, -1.3, 0)
+	_held.rotation.z = -PI / 2
+
+
+func _swing_weapon(center: Vector3) -> void:
+	var w: Dictionary = Weapon.KINDS[weapon]
+	var reach_c := global_position + Vector3(facing * (atk["reach"] + w["reach"]), 3.0, 0)
+	var dmg: float = atk["dmg"] * w["dmg"] * power * _boost()
+	var hits := strike(reach_c, atk["radius"], dmg, atk["kb"], "enemies", atk["bdmg"] * power * _bdmg())
+	if hits > 0:
+		Game.shake(atk["shake"])
+		Game.hitstop(0.08)
+		for i in hits:
+			Game.register_hit()
+		add_rage(dmg * 0.4 * hits)
+		weapon_uses -= 1
+		if weapon_uses <= 0:
+			FX.debris_burst(reach_c, 1.2)
+			FX.dust(reach_c, 1.0)
+			_set_weapon("")
+	FX.dust(center, 0.4)
+
+
+func _throw_weapon() -> void:
+	var w := Weapon.new()
+	w.kind = weapon
+	var vel := Vector3(facing * 34.0, 0.0, 0.0)
+	if weapon == "slab":
+		vel = Vector3(facing * 24.0, 11.0, 0.0)
+	w.launch(self, vel, float(Weapon.KINDS[weapon]["throw_dmg"]) * power * _boost())
+	get_parent().add_child(w)
+	w.global_position = global_position + Vector3(facing * 2.5, 4.5, 0)
+	_set_weapon("")
+	Game.shake(0.2)
+
+
 func _do_hit() -> void:
+	if atk["pose"] == "throw":
+		if weapon != "":
+			_throw_weapon()
+		return
+	if atk["pose"] == "swing":
+		if weapon != "":
+			_swing_weapon(global_position)
+		return
 	var reach: float = atk["reach"]
 	var center := global_position + Vector3(facing * reach, 3.2, 0)
 	if atk["pose"] == "spin":
@@ -397,6 +497,7 @@ func _do_hit() -> void:
 	if finisher and hits > 0 and _m("shock") > 0.0:
 		_chain_lightning(center, _m("shock") * power * _boost())
 	if hits > 0:
+		rumble(0.3, 0.15 if dmg < 15.0 else 0.5, 0.1)
 		Game.shake(atk["shake"])
 		Game.hitstop(0.05 if dmg < 15.0 else 0.09)
 		for i in hits:
@@ -613,6 +714,7 @@ func _on_strike_hit(target: Node, dmg: float) -> void:
 
 
 func _on_hurt(dmg: float, from: Node3D) -> void:
+	rumble(0.4, clampf(dmg / 30.0, 0.2, 1.0), 0.18)
 	add_rage(dmg * 0.35)
 	Game.combo = 0
 	if _m("thorns") > 0.0 and from is Kaiju and from.is_in_group("enemies"):
@@ -629,6 +731,7 @@ func _on_hurt(dmg: float, from: Node3D) -> void:
 func _on_death() -> void:
 	_set_state(S.DEAD)
 	_beam.visible = false
+	_set_weapon("")
 	if raging:
 		_exit_rage_mode()
 	var tw := create_tween()
@@ -673,6 +776,16 @@ func _animate(delta: float) -> void:
 					model.spin = -TAU * clampf(state_t / (active * 1.6), 0.0, 1.0)
 					ar = 1.4
 					al = 1.4
+				"swing":
+					if after == 0.0:
+						ar = lerpf(0.5, 3.0, p)
+						lean = -0.15 * p
+					else:
+						ar = lerpf(3.0, -0.6, minf(after * 3.0, 1.0))
+						lean = 0.3
+				"throw":
+					ar = lerpf(0.5, 3.2, p) if after == 0.0 else lerpf(3.2, 1.2, minf(after * 3.0, 1.0))
+					lean = -0.2 if after == 0.0 else 0.35
 				"slam":
 					if after == 0.0:
 						ar = lerpf(0.3, 3.0, p)
@@ -803,6 +916,7 @@ func _start_super() -> void:
 	_super_step = 0
 	_super_targets = []
 	_set_state(S.SUPER)
+	rumble(1.0, 1.0, SUPER_TIME)
 	Game.shake(0.8)
 	Game.hitstop(0.25)
 	FX.shockwave(global_position, 12.0, color())

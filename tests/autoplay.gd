@@ -7,6 +7,9 @@ extends Node
 ##   AUTOPLAY_SECONDS max game seconds per level (0 = just build the level and run 3 s)
 ##   AUTOPLAY_SPEED   time scale; AUTOPLAY_SHOTS "t1,t2" screenshot times;
 ##   AUTOPLAY_MORTAL  let players die; AUTOPLAY_RAGE start with full rage.
+##   AUTOPLAY_ROSTER  replace each level's waves with every regular enemy type
+##                    (N per wave, default 3), to check they can all be killed.
+##                    AUTOPLAY_ROSTER_IDS "tank,heli,..." limits it to those ids.
 
 var t := 0.0
 var main: Node
@@ -23,6 +26,7 @@ func _env(key: String, fallback: String) -> String:
 
 
 func _ready() -> void:
+	Game.set_meta("no_save", true)
 	var spec := _env("AUTOPLAY_LEVELS", "1-1")
 	if spec == "all":
 		for c in 10:
@@ -63,10 +67,27 @@ func _next() -> void:
 		return
 	var cl: Array = queue.pop_front()
 	Game.level = Content.level(cl[0], cl[1])
+	if _env("AUTOPLAY_ROSTER", "") != "":
+		_roster_waves(int(_env("AUTOPLAY_ROSTER", "3")))
 	current = Game.level["title"]
 	t = 0.0
 	main = load("res://scenes/main.tscn").instantiate()
 	add_child(main)
+
+
+func _roster_waves(per: int) -> void:
+	per = maxi(per, 1)
+	var ids := Enemies.regular_ids()
+	var only := _env("AUTOPLAY_ROSTER_IDS", "")
+	if only != "":
+		ids = Array(only.split(","))
+	var waves: Array = []
+	var x := 35.0
+	for i in range(0, ids.size(), per):
+		waves.append({"x": x, "title": "ROSTER %d" % (i / per + 1), "spawn": ids.slice(i, i + per)})
+		x += 60.0
+	Game.level["waves"] = waves
+	Game.level["length"] = x - 30.0
 
 
 func _press(slot: int, a: String) -> void:
@@ -99,7 +120,8 @@ func _physics_process(delta: float) -> void:
 	log_t += delta
 	if log_t > 10.0:
 		log_t = 0.0
-		print("%s t=%.0f wave=%d/%d enemies=%d score=%d" % [current, t, main._wave, main.waves.size(), _enemies().size(), Game.score])
+		var held := Game.players.filter(func(q) -> bool: return is_instance_valid(q) and q.weapon != "").size()
+		print("%s t=%.0f wave=%d/%d enemies=%d score=%d armed=%d" % [current, t, main._wave, main.waves.size(), _enemies().size(), Game.score, held])
 	var limit := float(_env("AUTOPLAY_SECONDS", "400"))
 	if limit == 0.0 and t > 3.0:
 		results.append("%s:built" % current)
@@ -110,7 +132,7 @@ func _physics_process(delta: float) -> void:
 		results.append("%s:%s" % [current, res])
 		_next()
 	elif limit > 0.0 and t > limit:
-		print("%s TIMEOUT wave=%d" % [current, main._wave])
+		print("%s TIMEOUT wave=%d %s" % [current, main._wave, main.waves[mini(main._wave, main.waves.size() - 1)]["spawn"]])
 		results.append("%s:TIMEOUT" % current)
 		_next()
 
@@ -134,6 +156,12 @@ func _drive(p: Player, delta: float) -> void:
 	var off := s * 0.07
 	if fmod(t + off, 0.35) < delta: _press(s, "light")
 	if fmod(t + off, 2.1) < delta: _press(s, "heavy")
+	# Grab building pieces lying close by.
+	if p.weapon == "" and fmod(t + off, 0.4) < delta:
+		for w in get_tree().get_nodes_in_group("weapons"):
+			if w.thrower == null and Vector2(w.global_position.x - p.global_position.x, w.global_position.z - p.global_position.z).length() < Player.GRAB_RANGE:
+				_press(s, "heavy")
+				break
 	if fmod(t + off, 3.3) < delta: _press(s, "jump")
 	if fmod(t + off, 3.6) < delta: _press(s, "light")
 	if (p.rage >= 100.0 or (p.raging and p.rage < 70.0)) and fmod(t + off, 0.5) < delta: _press(s, "special")

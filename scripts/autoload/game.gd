@@ -176,6 +176,9 @@ func complete_level(lvl: Dictionary, final_score: int) -> void:
 
 
 func save_progress() -> void:
+	# Dev tests (tests/*.tscn) set this so they never touch the player's save.
+	if has_meta("no_save"):
+		return
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify({"unlocked": unlocked, "best": best_scores, "party": party,

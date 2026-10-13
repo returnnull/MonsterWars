@@ -103,7 +103,8 @@ const TREES := [
 		"super": {"name": "SCRAP BARRAGE", "pattern": "scrap"}},
 ]
 
-const XP_KILL := {"crawler": 10, "brute": 18, "flyer": 12, "elite": 60, "boss": 250}
+## Fallback kill XP; regular enemies take theirs from Enemies.DEFS.
+const XP_KILL := {"crawler": 10, "brute": 18, "flyer": 12, "drone": 12, "elite": 60, "boss": 250}
 
 
 ## Returns [name, kind, branch, tier] for node 0-9 of a hero's tree.

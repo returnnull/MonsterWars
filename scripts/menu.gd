@@ -184,9 +184,9 @@ func _show_heroes(restore: Array = []) -> void:
 			bar.add_theme_stylebox_override("fill", _card_style(Color(1.0, 0.6, 0.2), Color(0, 0, 0, 0)))
 			box.add_child(bar)
 			d["bars"].append(bar)
-		d["special"] = _label(box, "", Vector2(30, 704), 24, Color(1.0, 0.8, 0.4))
-		d["lvl"] = _label(box, "", Vector2(30, 740), 24, Color(1.0, 0.95, 0.6))
-		d["status"] = _label(box, "", Vector2(0, 790), 32, Color.WHITE)
+		d["special"] = _label(box, "", Vector2(30, 700), 22, Color(1.0, 0.8, 0.4))
+		d["lvl"] = _label(box, "", Vector2(30, 758), 24, Color(1.0, 0.95, 0.6))
+		d["status"] = _label(box, "", Vector2(0, 800), 32, Color.WHITE)
 		d["status"].size.x = SLOT_W - 20
 		d["status"].horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_slots.append(d)
@@ -263,7 +263,7 @@ func _set_hero(slot: int, hero: int) -> void:
 	d["bars"][0].value = 100.0 * float(h["hp"]) / 360.0
 	d["bars"][1].value = 100.0 * float(h["speed"]) / 1.3
 	d["bars"][2].value = 100.0 * float(h["power"]) / 1.3
-	d["special"].text = "Rage: %s   Super: %s" % [Content.SPECIAL_NAMES[h["special"]],
+	d["special"].text = "Rage attack: %s\nSuper: %s" % [Content.SPECIAL_NAMES[h["special"]],
 		String(Skills.super_def(hero)["name"]).capitalize()]
 	var pts := Game.free_points(hero)
 	d["lvl"].text = "LV %d%s" % [Game.hero_level(hero), ("   -   %d skill points  [X]" % pts) if pts > 0 else ""]
@@ -462,11 +462,15 @@ func _build_skills() -> void:
 		var rank_label := _label(card, "%d / %d" % [r, mx], Vector2(300, 14), 26, Color(0.6, 1.0, 0.7) if r == mx else Color.WHITE)
 		rank_label.size.x = 130
 		rank_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		var desc := _label(card, Skills.describe(_sk_hero, i, r), Vector2(18, 76), 21, Color(1, 1, 1, 0.85))
-		desc.size = Vector2(414, 50)
+		var desc := _label(card, "", Vector2(18, 76), 20, Color(1, 1, 1, 0.85))
 		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		var cost_text := "MAXED" if r == mx else "Cost %d" % Skills.cost(i)
-		_label(card, cost_text, Vector2(18, 126), 18, Color(1.0, 0.8, 0.4) if block == "" else Color(1, 1, 1, 0.4))
+		desc.custom_minimum_size = Vector2(414, 0)
+		desc.size = Vector2(414, 50)
+		desc.text = Skills.describe(_sk_hero, i, r)
+		var cost_text := "MAXED" if r == mx else "COST %d" % Skills.cost(i)
+		var cost_label := _label(card, cost_text, Vector2(300, 50), 18, Color(1.0, 0.8, 0.4) if block == "" else Color(1, 1, 1, 0.4))
+		cost_label.size.x = 130
+		cost_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		if r == 0 and block != "" and block != "NOT ENOUGH POINTS":
 			card.modulate = Color(0.6, 0.6, 0.65)
 		_sk_cards.append(card)

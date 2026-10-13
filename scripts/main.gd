@@ -139,31 +139,57 @@ func _player_mul() -> float:
 
 func _spawn(kind: String, cx: float, i: int) -> void:
 	await get_tree().create_timer(0.3 + i * 0.9, false).timeout
-	var side := 1.0 if i % 2 == 0 else -1.0
-	if kind == "flyer":
-		var f := Flyer.new()
-		f.hp *= float(lvl["hp_mul"]) * _player_mul()
-		f.position = Vector3(cx + side * 26.0, 14.0, -2.0)
-		add_child(f)
-		f.died.connect(_on_enemy_died)
-		return
+	var e = make_enemy(kind, cx, 1.0 if i % 2 == 0 else -1.0)
+	add_child(e)
+	e.died.connect(_on_enemy_died)
+	if e.has_signal("spawned_minion"):
+		e.spawned_minion.connect(add_enemy)
+	if kind == "boss":
+		hud.show_boss(e)
+		hud.show_message(e.boss_def["name"], 1.6)
+		Game.shake(0.8)
+
+
+## Builds any enemy by its Enemies.DEFS id (or "boss") for the arena centred
+## on `cx`, entering from `side`, scaled to the level and the party size.
+func make_enemy(kind: String, cx: float, side: float) -> Node3D:
+	var def := Enemies.get_def(kind)
+	var hp_mul := float(lvl["hp_mul"]) * _player_mul()
+	var dmg_mul := float(lvl["dmg_mul"])
+	match def.get("class", "kaiju") if kind != "boss" else "kaiju":
+		"air":
+			var f := Flyer.new()
+			f.kind = kind
+			f.def = def
+			f.hp_mul = hp_mul
+			f.dmg_mul = dmg_mul
+			f.position = Vector3(cx + side * 26.0, 14.0 if kind != "bomber" else 9.0, -2.0)
+			return f
+		"ground":
+			var v := Vehicle.new()
+			v.kind = kind
+			v.def = def
+			v.hp_mul = hp_mul
+			v.dmg_mul = dmg_mul
+			v.arena = Vector2(cx - 18.0, cx + 18.0)
+			v.position = Vector3(cx + side * 23.0, 0.2, randf_range(-3.0, 2.0))
+			v.facing = -side
+			return v
 	var b := Brute.new()
 	b.kind = kind
-	b.hp_mul = float(lvl["hp_mul"]) * _player_mul()
-	b.dmg_mul = lvl["dmg_mul"]
+	b.hp_mul = hp_mul
+	b.dmg_mul = dmg_mul
 	if kind == "boss":
 		# Boss stats already grow per country (Content.boss).
 		b.boss_def = Content.boss(lvl["country"])
 		b.hp_mul = _player_mul()
-	b.position = Vector3(cx + side * 23.0, 0.2, randf_range(-3.0, 2.0))
+	else:
+		b.def = def
+	b.x_min = cx - 22.5
+	b.x_max = cx + 22.5
+	b.position = Vector3(cx + side * 22.0, 0.2, randf_range(-3.0, 2.0))
 	b.facing = -side
-	add_child(b)
-	b.died.connect(_on_enemy_died)
-	b.spawned_minion.connect(add_enemy)
-	if kind == "boss":
-		hud.show_boss(b)
-		hud.show_message(b.boss_def["name"], 1.6)
-		Game.shake(0.8)
+	return b
 
 
 ## Registers an enemy spawned mid-wave (e.g. a boss summon) so the wave
@@ -175,8 +201,9 @@ func add_enemy(e: Node) -> void:
 
 func _on_enemy_died(who: Node) -> void:
 	_alive -= 1
-	var kind: String = who.kind if "kind" in who else "flyer"
-	var xp := int(Skills.XP_KILL.get(kind, 12) * (1.0 + lvl["global"] * 0.04))
+	var kind: String = who.kind if "kind" in who else "drone"
+	var base := Enemies.xp(kind) if kind != "boss" else int(Skills.XP_KILL.get(kind, 250))
+	var xp := int(base * (1.0 + lvl["global"] * 0.04))
 	for p in Game.living_players():
 		p.on_enemy_killed()
 		_give_xp(p, xp)

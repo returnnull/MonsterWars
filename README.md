@@ -21,6 +21,48 @@ Al grafik er original og genereres i kode (primitive meshes, procedurale shaders
 
 Tryk **F9** i menuen for at låse alle baner op, hvis du vil teste.
 
+## Level, evner og færdighedstræ
+
+- Hver helt har sin egen XP og kan nå **level 25**. XP får man for hver fjende der bliver besejret (alle spillere på banen får den) og en bonus når banen er klaret. Man beholder XP selv om man taber.
+- Hvert level giver **2 færdighedspoint** (50 i alt ved level 25) og lidt mere liv og skade.
+- Hver helt har **10 evner** i et færdighedstræ: en rod-evne og tre grene med tre evner hver.
+  - Rod: 1 point. Låser de tre grene op.
+  - Trin 1: op til 5 rang, 1 point pr. rang.
+  - Trin 2: op til 5 rang, 2 point pr. rang. Kræver 3 rang i trin 1.
+  - Grenens ende: 6 point. Kræver at trin 2 er fyldt helt op.
+- At nå enden af en gren koster mindst 19 point. Med 50 point kan man altså nå enden af to grene, men aldrig alle tre, så man skal vælge.
+- Træet åbnes fra kaiju-valget med **X** (Switch) / **K**. Lær med B, nulstil alle point gratis med Y, tilbage med A.
+- Evnerne er forskellige fra helt til helt og bygger på 27 effekter: mere skade, liv, fart, rage, panser, livsdræn, brand, frost, kædelyn, chokbølger fra slam, større stomp, eksplosion når man undviger, kritiske slag, ekstra skade på svækkede fjender, og grene-ender som Berserk, Second Wind (overlev et dødeligt slag), Overdrive (rage fylder sig selv), Meteor-stomp, brændende aura, skjold, nova ved combo-afslutning og livsdræn ved drab.
+
+## Rage og super
+
+- **Rage** fyldes op når du slår, bliver slået og vælter bygninger. Når baren er fuld, trykker du **R** for **rage-tilstand**: kaijuen gløder, slår 30 % hårdere, er 20 % hurtigere, tager mindre skade og kan ikke blive slået ud af balance. Baren tømmes over 10 sekunder.
+- Tryk **R** igen mens rage-tilstanden kører for at bruge resten på heltens **rage-angreb** (Atomic Beam, Nova Burst eller Earthquake).
+- **Super** er en ekstra måler, der fyldes langsomt når du gør skade og besejrer fjender. Når den er fuld, trykker du **ZL** for heltens unikke super-special:
+
+| Helt | Super-special |
+|---|---|
+| Gorrax | Omega Breath: kæmpe stråle hen over hele skærmen |
+| Voltra | Thunderstorm: lyn slår ned i alle fjender |
+| Magmos | Magma Rain: meteorregn |
+| Sylvara | Singularity: suger fjenderne ind og eksploderer |
+| Terraxa | Tectonic Rift: jorden sprænges op til begge sider |
+| Glacior | Absolute Zero: fryser alle fjender og knuser dem |
+| Noctyr | Shadow Frenzy: teleporterer rundt og flår i fjenderne |
+| Coralis | Tidal Wave: en flodbølge skyller hen over gaden |
+| Solar Rex | Supernova: tre enorme solflammer |
+| Rustfang | Scrap Barrage: regn af skrot |
+
+## Bygninger som våben
+
+Når en bygning vælter, ligger der ofte et stykke tilbage i ruinerne med en gylden ring om. Stil dig ved det og tryk **tungt angreb** for at samle det op.
+
+- **Stålbjælke**: lang rækkevidde. Kastet snurrer den og rammer den første fjende.
+- **Betonblok**: slår hårdest. Kastet lander den med en eksplosion.
+- **Antennemast**: længst rækkevidde. Kastet borer den sig gennem alle fjender på rækken.
+
+Med våben i hånden er let angreb et sving (2-hits combo) og tungt angreb et kast. Våbnet går i stykker efter nogle slag.
+
 ## Helte
 
 | Kaiju | Type | Rage-angreb |
@@ -55,7 +97,22 @@ Tryk **F9** i menuen for at låse alle baner op, hvis du vil teste.
 | 9 | Island | Reykjavik | Nordlys, sne | Vulkan | Surtur | Alt undtagen stormløb |
 | 10 | Japan | Tokyo | Neon-nat | Radiotårn | Ryujin Prime | Alle seks angreb |
 
-Fjender: brute, crawler (lille og hurtig), elite (mini-boss) og militærdroner. Fjenderne bliver stærkere bane for bane, og bosserne bliver større og hårdere land for land. Jordslag kan undgås ved at hoppe.
+Fjender: 31 almindelige fjendetyper (se `scripts/enemies.gd`) plus elite-kaijuer og bosser. Hvert land introducerer 1-3 nye typer og har sine egne lokale fjender, så blandingen bliver mere varieret undervejs:
+
+| Land | Nye fjender | Lokal fjende |
+|---|---|---|
+| Danmark | Brawler, Drone, Skitter, Tank | Mossback (tung sump-kaiju, jordslag) |
+| Frankrig | Rhinox (stormløb), Gunship (helikopter, salver) | Gargling (vinget, springer) |
+| USA | Mite (sværm), SAM Launcher (målsøgende missiler), Bomber Jet | Mech Walker |
+| Brasilien | Scythe (mantis, kombo-hug), Boomtick (eksploderer) | Venomaw (syre-spytter) |
+| Egypten | Pyrodon (ild-ånde, brænder), Artillery (granater på markerede felter) | Scorpex (giftspyt) |
+| Indien | Wasp Drone (kamikaze), Broodmother (udklækker mites) | Nagling (kobra) |
+| Australien | Shellback (pansret) | Saltjaw (krokodille, stormløb) |
+| Rusland | Frostfang (is-ånde, gør dig langsom), Maser Cannon (ladet stråle), Titanodon (kæmpe) | |
+| Island | Geysirwurm (graver sig ned og bryder op under dig), Saucer | Magmite (lava) |
+| Japan | Voltwyrm (kalder lyn ned) | Mechadon (robot-kaiju) |
+
+Fjenderne bliver stærkere bane for bane, og bosserne bliver større og hårdere land for land. Jordslag kan undgås ved at hoppe.
 
 ## Op til 4 spillere
 
@@ -75,10 +132,14 @@ Fjender: brute, crawler (lille og hurtig), elite (mini-boss) og militærdroner. 
 | Tungt angreb (slam) | K | X | Y |
 | Angreb i luften = stomp | J/K i luften | Y/X i luften | X/Y i luften |
 | Undvig (usårlig kort tid) | Shift | A eller L | B eller LB |
-| Rage-angreb (når RAGE er fuld) | L | R eller ZR | RB eller RT |
+| Rage-tilstand, og så rage-angreb | L | R eller ZR | RB eller RT |
+| Super-special (når SUPER er fuld) | U | ZL | LT |
+| Saml bygningsstykke op / kast det | K ved stykket | X ved stykket | Y ved stykket |
 | Pause | Esc / Enter | + | Start |
 
 Knapperne er mappet efter position, så de sidder rigtigt på en Switch Pro Controller og Joy-Cons.
+
+Alle gamepads som Godot kender virker (Switch Pro, Joy-Con par, Xbox, PlayStation og de fleste andre). Controller 1 er spiller 1 sammen med tastaturet, controller 2 er spiller 2 og så videre. Controllerne rumler når du bliver ramt, slår hårdt, går i rage og bruger super. Hvis en controller mister forbindelsen midt i en bane, pauses spillet.
 
 ## Hvad er med
 
@@ -98,7 +159,9 @@ scenes/main.tscn           En bane (bygges i kode ud fra Game.level)
 scripts/menu.gd            Menuerne
 scripts/content.gd         Alt indhold som data: helte, lande, bosser, banegenerator
 scripts/stage_builder.gd   Bygger et lands bane: lys, vejr, by, skyline, vartegn
-scripts/main.gd            Bølger, spillere og win/lose for en bane
+scripts/skills.gd          Færdighedstræer, evner, XP-kurve og super-specials
+scripts/weapon.gd          Bygningsstykker der kan samles op og kastes
+scripts/main.gd            Bølger, spillere, XP og win/lose for en bane
 scripts/autoload/game.gd   Global tilstand, point, hitstop, input-mapping
 scripts/kaiju.gd           Fælles krop for kaijuer: liv, knockback, strike()
 scripts/player.gd          Spillerens kaiju og angreb
@@ -121,6 +184,7 @@ godot --headless --path . res://tests/autoplay.tscn
 AUTOPLAY_PLAYERS=4 godot --headless --path . res://tests/autoplay.tscn
 AUTOPLAY_LEVELS=bosses godot --headless --path . res://tests/autoplay.tscn   # alle 10 bosser
 AUTOPLAY_LEVELS=all AUTOPLAY_SECONDS=0 godot --headless --path . res://tests/autoplay.tscn   # byg alle 100 baner
+AUTOPLAY_SKILLS=1 AUTOPLAY_SUPER=1 godot --headless --path . res://tests/autoplay.tscn   # alle evner og supers i brug
 ```
 
 ## Nintendo Switch

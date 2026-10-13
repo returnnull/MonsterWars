@@ -1,10 +1,23 @@
 class_name KaijuModel
 extends Node3D
-## A kaiju assembled from primitive meshes, with procedural animation.
+## A kaiju sculpted from primitive meshes, with procedural animation.
 ## Faces +X and has its origin at the feet. The owner sets the pose targets
 ## (walk_amount, arm_r, arm_l, jaw, lean, spin, glow) every frame.
+## Named pivots live in `parts` (hips, torso, neck, head, jaw, arm_r/arm_l,
+## arm_r_fore/arm_l_fore, leg_r/leg_l, tail0..tail6); the right hand sits at
+## about (0.1, -1.3, 0) in arm_r_fore. The static pieces on each pivot are
+## merged into one mesh per material to keep draw calls low.
+##
+## The look varies with the colours passed to build(): a stable hash of them
+## picks the dorsal spike shape (leaf plates, cone spikes or swept blades),
+## how many spike rows, their size, and extras such as a chest gem, glowing
+## seams between the belly plates, a head crest or forearm spikes.
 
-static var _scale_normal: NoiseTexture2D
+const SKIN_SHADER := preload("res://shaders/kaiju_skin.gdshader")
+const SPIKE_SHADER := preload("res://shaders/kaiju_spike.gdshader")
+
+static var _tex := {}
+static var _meshes := {}
 
 var parts := {}
 var walk_amount := 0.0
@@ -17,9 +30,10 @@ var spin := 0.0
 var glow := 0.0
 var eye_glow := 0.0
 
-var _body_mats: Array[StandardMaterial3D] = []
+var _body_mats: Array[ShaderMaterial] = []
 var _eye_mat: StandardMaterial3D
-var _spike_mat: StandardMaterial3D
+var _spike_mat: ShaderMaterial
+var _seam_mat: ShaderMaterial
 var _tail: Array[Node3D] = []
 var _flash := 0.0
 var _t := 0.0
@@ -27,113 +41,183 @@ var _walk := 0.0
 var _phase := 0.0
 var _spike_color := Color.WHITE
 var _cur := {"arm_r": 0.25, "arm_l": 0.25, "jaw": 0.0, "lean": 0.0}
+var _pending := {}  # pivot -> {material -> [[mesh, transform], ...]}
+var _v := {}  # look variant
 
 
 func build(skin: Color, belly: Color, spike: Color, eye: Color, horns: bool = false) -> void:
 	_spike_color = spike
-	var skin_mat := _skin(skin, 0.7, true)
-	var belly_mat := _skin(belly, 0.55, false)
-	var claw_mat := _skin(Color(0.85, 0.82, 0.75), 0.3, false)
+	_v = _variant(skin, belly, spike)
+	var skin_mat := _skin(skin, skin.darkened(0.35).lerp(spike.darkened(0.75), 0.12), 0.58, 1.0, 1.0, 0.0)
+	var plate_col := belly.lerp(skin, 0.25)
+	var belly_mat := _skin(belly, belly.darkened(0.25), 0.45, 0.35, 0.4, 0.0)
+	var plate_mat := _skin(plate_col, plate_col.darkened(0.3), 0.4, 0.3, 0.5, 0.0)
+	var armor_mat := _skin(skin.lerp(belly, 0.22).darkened(0.08), skin.darkened(0.3), 0.35, 0.3, 0.6, 0.0)
+	var claw_mat := _spike(Color(0.86, 0.82, 0.72), Color(0.2, 0.17, 0.15), Color.BLACK, 0.0, 0.3)
+	_spike_mat = _spike(skin.darkened(0.45), spike.lerp(Color.WHITE, 0.15), spike, 0.3, 0.3)
+	_seam_mat = _spike(spike.darkened(0.5), spike, spike, 0.2, 0.4)
+	var mouth_mat := _flat(Color(0.32, 0.07, 0.08), 0.35)
+	var socket_mat := _flat(skin.darkened(0.8), 0.9)
 	_eye_mat = StandardMaterial3D.new()
 	_eye_mat.albedo_color = eye
 	_eye_mat.emission_enabled = true
 	_eye_mat.emission = eye
 	_eye_mat.emission_energy_multiplier = 3.0
-	_spike_mat = StandardMaterial3D.new()
-	_spike_mat.albedo_color = spike.darkened(0.45)
-	_spike_mat.roughness = 0.25
-	_spike_mat.emission_enabled = true
-	_spike_mat.emission = spike
-	_spike_mat.emission_energy_multiplier = 0.3
+	var ss: float = _v["spike_size"]
 
+	# --- hips and torso: wide pelvis, hunched barrel body ---------------
 	var hips := _pivot("hips", self, Vector3(0, 2.4, 0))
+	_part(hips, _sphere(1.0), skin_mat, Vector3(-0.2, 0.2, 0), Vector3.ZERO, Vector3(1.25, 1.0, 1.35))
 	var torso := _pivot("torso", hips, Vector3.ZERO)
-	_part(torso, _capsule(1.1, 3.9), skin_mat, Vector3(0.3, 1.3, 0), Vector3(0, 0, -0.35))
-	_part(torso, _capsule(0.8, 3.0), belly_mat, Vector3(0.68, 1.05, 0), Vector3(0, 0, -0.35), Vector3(1, 1, 0.95))
-
-	# Dorsal plates along the back, glowing with rage.
-	var up := Vector2(0.34, 0.94)
-	var back := Vector2(-0.94, 0.34)
-	for i in 7:
-		var s := -1.4 + i * 0.5
-		var h := 0.6 + sin(float(i) / 6.0 * PI) * 0.7
-		var p2 := Vector2(0.3, 1.3) + up * s + back * 0.95
-		var cone := CylinderMesh.new()
-		cone.top_radius = 0.0
-		cone.bottom_radius = 0.28
-		cone.height = h
-		cone.radial_segments = 6
-		var pos := Vector3(p2.x, p2.y, 0) + Vector3(back.x, back.y, 0) * h * 0.4
-		_part(torso, cone, _spike_mat, pos, Vector3(0, 0, atan2(-back.x, back.y)), Vector3(1, 1, 0.45))
-
-	# Head, snout and jaw.
-	var head := _pivot("head", torso, Vector3(1.05, 3.05, 0))
-	_part(head, _sphere(0.72), skin_mat, Vector3.ZERO, Vector3.ZERO, Vector3(1.25, 0.95, 0.95))
-	_part(head, _box(Vector3(1.15, 0.55, 0.85)), skin_mat, Vector3(0.8, -0.08, 0))
-	var jaw_pivot := _pivot("jaw", head, Vector3(0.2, -0.36, 0))
-	_part(jaw_pivot, _box(Vector3(1.2, 0.26, 0.75)), belly_mat, Vector3(0.55, -0.05, 0))
+	var up := Vector2(0.42, 0.91)    # torso axis
+	var fwd := Vector2(0.91, -0.42)  # front of the torso
+	var base := Vector2(0.25, 1.3)
+	_part(torso, _capsule(1.18, 4.0), skin_mat, Vector3(base.x, base.y, 0), Vector3(0, 0, -0.43), Vector3(1, 1, 1.05))
+	_part(torso, _sphere(1.1), skin_mat, Vector3(0.62, 2.15, 0), Vector3(0, 0, -0.4), Vector3(1.0, 0.95, 1.15))
+	# Shoulder hump behind the neck.
+	_part(torso, _sphere(1.0), skin_mat, Vector3(-0.05, 2.45, 0), Vector3(0, 0, -0.5), Vector3(1.05, 0.85, 1.05))
+	# Overlapping belly plates down the front, with glowing seams on some.
+	for i in 8:
+		var s := -1.55 + i * 0.42
+		var r := 1.0 - absf(s) * 0.12
+		var p := base + up * s + fwd * (r * 1.02 + (0.12 if s > 0.6 else 0.0))
+		var w := 0.95 - absf(s - 0.2) * 0.14
+		_part(torso, _sphere(0.5), belly_mat, Vector3(p.x, p.y, 0), Vector3(0, 0, -0.43 - 0.22),
+			Vector3(0.5, 0.6, w * 1.75))
+		if _v["seams"] and i < 7:
+			var q := p + up * 0.22 + fwd * 0.12
+			_part(torso, _box(Vector3(0.05, 0.05, w * 1.3)), _seam_mat, Vector3(q.x, q.y, 0), Vector3(0, 0, -0.43))
+	if _v["gem"]:
+		var g := base + up * 1.25 + fwd * 1.0
+		_part(torso, _sphere(0.24), _seam_mat, Vector3(g.x, g.y, 0), Vector3(0, 0, -0.4), Vector3(0.6, 1.0, 1.0))
+	# Shoulder armour.
 	for side in [-1.0, 1.0]:
-		_part(head, _sphere(0.13), _eye_mat, Vector3(0.62, 0.22, 0.4 * side))
-		for i in 4:
-			var tooth := CylinderMesh.new()
-			tooth.top_radius = 0.0
-			tooth.bottom_radius = 0.07
-			tooth.height = 0.22
-			tooth.radial_segments = 4
-			_part(head, tooth, claw_mat, Vector3(0.45 + i * 0.25, -0.42, 0.33 * side), Vector3(PI, 0, 0))
-		if horns:
-			var horn := CylinderMesh.new()
-			horn.top_radius = 0.0
-			horn.bottom_radius = 0.16
-			horn.height = 1.1
-			_part(head, horn, claw_mat, Vector3(-0.35, 0.65, 0.35 * side), Vector3(0.25 * side, 0, 0.9))
+		_part(torso, _sphere(0.55), armor_mat, Vector3(0.9, 2.42, 0.98 * side), Vector3(0.45 * side, 0, -0.3), Vector3(1.0, 0.5, 0.8))
 
-	# Arms with claws.
+	# --- neck ------------------------------------------------------------
+	var neck := _pivot("neck", torso, Vector3(0.85, 2.75, 0))
+	_part(neck, _capsule(0.66, 1.5), skin_mat, Vector3(0.15, 0.15, 0), Vector3(0, 0, -1.0))
+	for i in 3:
+		_part(neck, _sphere(0.4), belly_mat, Vector3(0.45 + i * 0.12, -0.25 + i * 0.22, 0), Vector3(0, 0, -0.9), Vector3(0.45, 0.6, 1.25))
+
+	# --- dorsal spikes from the neck down the back ------------------------
+	var shape: int = _v["spike_shape"]
+	var rows: int = _v["rows"]
+	var back := Vector2(-0.91, 0.42)
+	for i in 10:
+		var s := -1.75 + i * 0.4
+		var h := (0.55 + sin(float(i) / 9.0 * PI) * 1.0) * ss
+		var p2 := base + up * s + back * 0.98
+		var rot := atan2(-back.x, back.y) + 0.15
+		_spike_piece(torso, shape, Vector3(p2.x, p2.y, 0), rot, h, 0.0)
+		if rows >= 2 and i > 0:
+			for side in [-1.0, 1.0]:
+				var q := p2 + up * 0.2 - back * 0.12
+				_spike_piece(torso, shape, Vector3(q.x, q.y, 0.34 * side), rot, h * 0.6, 0.3 * side)
+		if rows >= 3 and i > 1 and i < 9:
+			for side in [-1.0, 1.0]:
+				var q := p2 - up * 0.05 - back * 0.4
+				_spike_piece(torso, shape, Vector3(q.x, q.y, 0.68 * side), rot - 0.2, h * 0.35, 0.6 * side)
+	for i in 3:
+		_spike_piece(neck, shape, Vector3(-0.42 + i * 0.22, 0.6 - i * 0.04, 0), 0.6, (0.6 - i * 0.12) * ss, 0.0)
+
+	# --- head: small, pushed forward, heavy jaw ---------------------------
+	var head := _pivot("head", torso, Vector3(1.05, 3.05, 0))
+	_part(head, _sphere(0.7), skin_mat, Vector3(-0.05, 0.02, 0), Vector3.ZERO, Vector3(1.15, 0.9, 1.0))
+	_part(head, _capsule(0.42, 1.5), skin_mat, Vector3(0.68, -0.06, 0), Vector3(0, 0, -PI / 2 + 0.1), Vector3(1.0, 1.0, 1.28))
+	_part(head, _sphere(0.4), skin_mat, Vector3(1.15, 0.0, 0), Vector3.ZERO, Vector3(0.75, 0.55, 1.05))
+	# Heavy brow ridges over dark sockets with glowing eyes.
+	for side in [-1.0, 1.0]:
+		_part(head, _capsule(0.13, 0.7), armor_mat, Vector3(0.45, 0.33, 0.38 * side), Vector3(0.3 * side, 0, -PI / 2 + 0.35))
+		_part(head, _sphere(0.17), socket_mat, Vector3(0.58, 0.18, 0.39 * side), Vector3.ZERO, Vector3(1.2, 0.75, 0.6))
+		_part(head, _sphere(0.1), _eye_mat, Vector3(0.64, 0.18, 0.43 * side), Vector3.ZERO, Vector3(1.4, 0.7, 0.6))
+		# Cheeks and jaw muscles.
+		_part(head, _sphere(0.42), skin_mat, Vector3(0.05, -0.22, 0.42 * side), Vector3.ZERO, Vector3(1.15, 0.85, 0.55))
+		_part(head, _sphere(0.06), socket_mat, Vector3(1.38, 0.12, 0.15 * side))
+		# Upper teeth: a row of fangs, bigger at the front.
+		for i in 7:
+			var tl := 0.16 + (0.1 if i == 5 else 0.0) + i * 0.008
+			_part(head, _claw(), claw_mat, Vector3(0.35 + i * 0.16, -0.33, (0.33 - i * 0.015) * side),
+				Vector3(PI, 0, 0.2), Vector3(tl * 0.55, tl, tl * 0.55))
+		if horns:
+			var hs: float = _v["horn_size"]
+			_part(head, _claw(), claw_mat, Vector3(-0.3, 0.45, 0.42 * side), Vector3(0.45 * side, 0, 1.25),
+				Vector3(0.9, 1.3, 0.9) * hs)
+			_part(head, _claw(), claw_mat, Vector3(-0.55, 0.15, 0.48 * side), Vector3(0.6 * side, 0, 1.6),
+				Vector3(0.5, 0.7, 0.5) * hs)
+	if _v["crest"]:
+		for i in 3:
+			_spike_piece(head, 0, Vector3(0.2 - i * 0.35, 0.58 - i * 0.08, 0), 0.45 + i * 0.2, (0.55 - i * 0.08) * ss, 0.0)
+	else:
+		for i in 3:
+			_part(head, _claw(), _spike_mat, Vector3(-0.55 - i * 0.12, 0.42 - i * 0.2, 0), Vector3(0, 0, 1.0 + i * 0.3),
+				Vector3(0.6, 0.6 - i * 0.1, 0.4) * ss)
+	var jaw_pivot := _pivot("jaw", head, Vector3(0.2, -0.36, 0))
+	_part(jaw_pivot, _capsule(0.2, 1.35), skin_mat, Vector3(0.58, -0.04, 0), Vector3(0, 0, -PI / 2 + 0.05), Vector3(1.0, 0.85, 1.75))
+	_part(jaw_pivot, _capsule(0.16, 1.1), belly_mat, Vector3(0.5, -0.12, 0), Vector3(0, 0, -PI / 2 + 0.05), Vector3(1.0, 0.8, 1.6))
+	_part(jaw_pivot, _sphere(0.3), skin_mat, Vector3(0.0, -0.05, 0), Vector3.ZERO, Vector3(1.0, 0.7, 1.35))
+	_part(jaw_pivot, _box(Vector3(1.0, 0.05, 0.52)), mouth_mat, Vector3(0.58, 0.12, 0))
+	for side in [-1.0, 1.0]:
+		for i in 6:
+			var tl := 0.13 + i * 0.006
+			_part(jaw_pivot, _claw(), claw_mat, Vector3(0.25 + i * 0.16, 0.12, 0.27 * side), Vector3(0, 0, -0.2),
+				Vector3(tl * 0.55, tl, tl * 0.55))
+	_part(head, _box(Vector3(1.0, 0.05, 0.6)), mouth_mat, Vector3(0.72, -0.31, 0))
+
+	# --- arms: plated forearms, big curved claws ---------------------------
 	for side in [1.0, -1.0]:
 		var arm_name := "arm_r" if side > 0 else "arm_l"
 		var arm := _pivot(arm_name, torso, Vector3(1.05, 2.3, 0.95 * side))
-		_part(arm, _capsule(0.33, 1.5), skin_mat, Vector3(0, -0.6, 0))
+		_part(arm, _sphere(0.48), skin_mat, Vector3(0.0, -0.05, 0))
+		_part(arm, _capsule(0.42, 1.6), skin_mat, Vector3(0.02, -0.62, 0))
 		var fore := _pivot(arm_name + "_fore", arm, Vector3(0, -1.2, 0))
 		fore.rotation.z = 0.7
-		_part(fore, _capsule(0.27, 1.3), skin_mat, Vector3(0, -0.55, 0))
+		_part(fore, _capsule(0.34, 1.35), skin_mat, Vector3(0.0, -0.55, 0))
+		for i in 3:
+			_part(fore, _sphere(0.3), armor_mat, Vector3(0.2, -0.2 - i * 0.3, 0), Vector3(0, 0, 0.15), Vector3(0.6, 0.75, 1.15))
+		if _v["arm_spikes"]:
+			for i in 2:
+				_spike_piece(fore, 1, Vector3(-0.22, -0.3 - i * 0.35, 0), PI / 2 + 0.5, 0.35 * ss, 0.0)
+		_part(fore, _sphere(0.32), skin_mat, Vector3(0.06, -1.2, 0), Vector3.ZERO, Vector3(1.15, 0.9, 1.2))
 		for c in 3:
-			var claw := CylinderMesh.new()
-			claw.top_radius = 0.0
-			claw.bottom_radius = 0.08
-			claw.height = 0.45
-			claw.radial_segments = 4
-			_part(fore, claw, claw_mat, Vector3(0.1, -1.25, (c - 1) * 0.15), Vector3(0, 0, PI - 0.3))
+			var z := (c - 1) * 0.17
+			_part(fore, _sphere(0.11), skin_mat, Vector3(0.2, -1.38, z))
+			_part(fore, _claw(), claw_mat, Vector3(0.24, -1.44, z), Vector3(0, 0, PI - 0.35), Vector3(0.75, 0.62, 0.75))
+		_part(fore, _claw(), claw_mat, Vector3(-0.08, -1.3, 0.2 * side), Vector3(0.3 * side, 0, PI + 0.5), Vector3(0.6, 0.5, 0.6))
 
-	# Legs.
+	# --- legs: massive thighs, clawed feet ----------------------------------
 	for side in [1.0, -1.0]:
-		var leg := _pivot("leg_r" if side > 0 else "leg_l", hips, Vector3(0, 0.1, 0.78 * side))
-		_part(leg, _capsule(0.62, 2.1), skin_mat, Vector3(0.1, -0.9, 0))
-		_part(leg, _box(Vector3(1.35, 0.45, 0.95)), skin_mat, Vector3(0.35, -2.27, 0))
+		var leg := _pivot("leg_r" if side > 0 else "leg_l", hips, Vector3(0, 0.1, 0.85 * side))
+		_part(leg, _sphere(0.95), skin_mat, Vector3(0.05, -0.45, 0.05 * side), Vector3(0, 0, 0.1), Vector3(1.05, 1.35, 1.0))
+		_part(leg, _capsule(0.55, 1.6), skin_mat, Vector3(0.18, -1.45, 0))
+		_part(leg, _sphere(0.42), armor_mat, Vector3(0.55, -1.05, 0), Vector3.ZERO, Vector3(0.6, 0.7, 0.9))
+		_part(leg, _sphere(0.62), skin_mat, Vector3(0.35, -2.1, 0), Vector3.ZERO, Vector3(1.45, 0.55, 1.1))
 		for c in 3:
-			var toe := CylinderMesh.new()
-			toe.top_radius = 0.0
-			toe.bottom_radius = 0.1
-			toe.height = 0.35
-			toe.radial_segments = 4
-			_part(leg, toe, claw_mat, Vector3(1.1, -2.35, (c - 1) * 0.3), Vector3(0, 0, -PI / 2))
+			var z := (c - 1) * 0.34
+			_part(leg, _sphere(0.2), skin_mat, Vector3(0.95, -2.2, z), Vector3.ZERO, Vector3(1.3, 0.8, 1.0))
+			_part(leg, _claw(), claw_mat, Vector3(1.15, -2.22, z), Vector3(0, 0, -PI / 2 + 0.1), Vector3(0.9, 0.75, 0.9))
+		_part(leg, _claw(), claw_mat, Vector3(-0.3, -2.25, 0), Vector3(0, 0, PI / 2 - 0.2), Vector3(0.7, 0.55, 0.7))
 
-	# Tail: a chain of shrinking segments.
+	# --- tail: thick, tapering, overlapping segments with ridge plates -------
 	var parent: Node3D = hips
-	var offset := Vector3(-0.8, 0.4, 0)
+	var offset := Vector3(-0.9, 0.3, 0)
 	for i in 7:
 		var seg := _pivot("tail%d" % i, parent, offset)
-		var r := 0.78 * (1.0 - i * 0.12)
-		_part(seg, _capsule(r, maxf(r * 2.0, 1.3)), skin_mat, Vector3(-0.5, 0, 0), Vector3(0, 0, PI / 2))
-		if i % 2 == 0:
-			var plate := CylinderMesh.new()
-			plate.top_radius = 0.0
-			plate.bottom_radius = 0.22
-			plate.height = 0.4 + r * 0.4
-			plate.radial_segments = 6
-			_part(seg, plate, _spike_mat, Vector3(-0.5, r + 0.1, 0), Vector3.ZERO, Vector3(1, 1, 0.45))
+		var r := 0.9 * (1.0 - i * 0.125)
+		_part(seg, _capsule(r, r * 2.0 + 1.25), skin_mat, Vector3(-0.5, 0, 0), Vector3(0, 0, PI / 2), Vector3(1, 1, 1.05))
+		_part(seg, _sphere(r * 0.8), belly_mat, Vector3(-0.45, -r * 0.42, 0), Vector3(0, 0, 0.1), Vector3(1.3, 0.55, 1.0))
+		var ph := (0.3 + r * 0.6) * ss
+		_spike_piece(seg, shape, Vector3(-0.25, r * 0.88, 0), 0.4, ph, 0.0)
+		_spike_piece(seg, shape, Vector3(-0.72, r * 0.85, 0), 0.4, ph * 0.8, 0.0)
+		if rows >= 2 and i < 5:
+			for side in [-1.0, 1.0]:
+				_spike_piece(seg, shape, Vector3(-0.5, r * 0.7, r * 0.45 * side), 0.45, ph * 0.5, 0.45 * side)
+		if i == 6:
+			_part(seg, _claw(), skin_mat, Vector3(-1.2, 0, 0), Vector3(0, 0, PI / 2 + 0.15), Vector3(r * 4.5, 1.6, r * 4.5))
 		_tail.append(seg)
 		parent = seg
 		offset = Vector3(-0.95, -0.1, 0)
+	_commit()
 
 
 func spike_color() -> Color:
@@ -163,6 +247,7 @@ func _process(delta: float) -> void:
 	parts["hips"].position.y = 2.4 + absf(cos(_phase)) * 0.2 * _walk + breathe * 0.04
 	parts["hips"].rotation.x = s * 0.05 * _walk
 	parts["torso"].rotation.z = -_cur["lean"] + breathe * 0.02
+	parts["torso"].rotation.y = s * 0.06 * _walk
 	parts["arm_r"].rotation.z = _cur["arm_r"] - s * 0.35 * _walk
 	parts["arm_l"].rotation.z = _cur["arm_l"] + s * 0.35 * _walk
 	parts["head"].rotation.z = sin(_t * 1.7) * 0.05 + _cur["lean"] * 0.4
@@ -174,49 +259,111 @@ func _process(delta: float) -> void:
 
 	if _flash > 0.0:
 		_flash = maxf(_flash - delta * 7.0, 0.0)
-		var c := Color(1, 0.95, 0.9) * _flash * 1.5
+		var c := Vector3(1, 0.95, 0.9) * _flash * 1.5
 		for m in _body_mats:
-			m.emission = c
+			m.set_shader_parameter("flash_color", c)
 	var pulse := 0.5 + 0.5 * sin(_t * 9.0)
-	_spike_mat.emission_energy_multiplier = 0.3 + glow * (3.0 + pulse * (3.0 if glow >= 1.0 else 0.0))
+	var e := 0.3 + glow * (3.0 + pulse * (3.0 if glow >= 1.0 else 0.0))
+	_spike_mat.set_shader_parameter("glow_energy", e)
+	_seam_mat.set_shader_parameter("glow_energy", 0.6 + e * 0.8)
 	_eye_mat.emission_energy_multiplier = 3.0 + eye_glow * 8.0
+
+
+# --- look variants ---------------------------------------------------------
+
+## Stable per-colour-set look: same colours, same kaiju.
+func _variant(skin: Color, belly: Color, spike: Color) -> Dictionary:
+	var h := hash(skin.to_html() + belly.to_html() + spike.to_html())
+	var r := RandomNumberGenerator.new()
+	r.seed = h
+	return {
+		"spike_shape": r.randi() % 3,
+		"rows": 2 + r.randi() % 2,
+		"spike_size": r.randf_range(0.85, 1.25),
+		"horn_size": r.randf_range(0.8, 1.3),
+		"gem": r.randf() < 0.35,
+		"seams": r.randf() < 0.4,
+		"crest": r.randf() < 0.3,
+		"arm_spikes": r.randf() < 0.4,
+	}
+
+
+## One dorsal spike: 0 leaf plate, 1 cone spike, 2 swept blade. `rot` tilts
+## it in the side plane (0 = straight up), `roll` leans it outward.
+func _spike_piece(parent: Node3D, shape: int, pos: Vector3, rot: float, h: float, roll: float) -> void:
+	match shape:
+		0:
+			_part(parent, _plate(), _spike_mat, pos, Vector3(roll, 0, rot), Vector3(h * 0.78, h, h * 0.22))
+		1:
+			_part(parent, _claw(), _spike_mat, pos, Vector3(roll, 0, rot + 0.25), Vector3(h * 0.9, h * 1.05, h * 0.9))
+		_:
+			_part(parent, _plate(), _spike_mat, pos, Vector3(roll, 0, rot + 0.55), Vector3(h * 0.55, h * 1.25, h * 0.14))
 
 
 # --- construction helpers --------------------------------------------------
 
-static func _scales() -> NoiseTexture2D:
-	if _scale_normal == null:
-		var n := FastNoiseLite.new()
+static func _noise_tex(key: String, normal: bool, cellular: bool, freq: float, size: int, invert: bool, bump: float) -> NoiseTexture2D:
+	if _tex.has(key):
+		return _tex[key]
+	var n := FastNoiseLite.new()
+	n.seed = 7
+	if cellular:
 		n.noise_type = FastNoiseLite.TYPE_CELLULAR
-		n.frequency = 0.06
 		n.cellular_return_type = FastNoiseLite.RETURN_DISTANCE
-		var t := NoiseTexture2D.new()
-		t.width = 256
-		t.height = 256
-		t.seamless = true
+		n.fractal_type = FastNoiseLite.FRACTAL_NONE
+	else:
+		n.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		n.fractal_octaves = 3
+	n.frequency = freq
+	var t := NoiseTexture2D.new()
+	t.width = size
+	t.height = size
+	t.seamless = true
+	t.generate_mipmaps = true
+	t.invert = invert
+	if normal:
 		t.as_normal_map = true
-		t.bump_strength = 5.0
-		t.noise = n
-		_scale_normal = t
-	return _scale_normal
+		t.bump_strength = bump
+	t.noise = n
+	_tex[key] = t
+	return t
 
 
-func _skin(color: Color, roughness: float, scaly: bool) -> StandardMaterial3D:
+func _skin(color: Color, dark: Color, roughness: float, scaly: float, bumps: float, ribs: float) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = SKIN_SHADER
+	m.set_shader_parameter("albedo", color)
+	m.set_shader_parameter("albedo_dark", dark)
+	m.set_shader_parameter("cavity_color", color.darkened(0.85))
+	m.set_shader_parameter("roughness", roughness)
+	m.set_shader_parameter("scale_normal", _noise_tex("scales", true, true, 0.07, 256, true, 6.0))
+	m.set_shader_parameter("scale_mask", _noise_tex("scale_mask", false, true, 0.07, 256, false, 0.0))
+	m.set_shader_parameter("bump_normal", _noise_tex("bumps", true, true, 0.035, 256, true, 10.0))
+	m.set_shader_parameter("mottle", _noise_tex("mottle", false, false, 0.012, 128, false, 0.0))
+	m.set_shader_parameter("scale_strength", scaly)
+	m.set_shader_parameter("bump_strength", bumps)
+	m.set_shader_parameter("ribs", ribs)
+	m.set_shader_parameter("backlight_color", color.lerp(Color(0.6, 0.12, 0.08), 0.5) * 0.4)
+	_body_mats.append(m)
+	return m
+
+
+func _spike(base_c: Color, tip: Color, glow_c: Color, energy: float, rough: float) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = SPIKE_SHADER
+	m.set_shader_parameter("base_color", base_c)
+	m.set_shader_parameter("tip_color", tip)
+	m.set_shader_parameter("glow_color", glow_c)
+	m.set_shader_parameter("glow_energy", energy)
+	m.set_shader_parameter("roughness", rough)
+	_body_mats.append(m)
+	return m
+
+
+func _flat(color: Color, rough: float) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color
-	m.roughness = roughness
-	m.rim_enabled = true
-	m.rim = 0.35
-	m.rim_tint = 0.5
-	m.emission_enabled = true
-	m.emission = Color.BLACK
-	if scaly:
-		m.normal_enabled = true
-		m.normal_texture = _scales()
-		m.normal_scale = 0.9
-		m.uv1_triplanar = true
-		m.uv1_scale = Vector3(0.8, 0.8, 0.8)
-	_body_mats.append(m)
+	m.roughness = rough
 	return m
 
 
@@ -229,37 +376,169 @@ func _pivot(pivot_name: String, parent: Node3D, pos: Vector3) -> Node3D:
 	return n
 
 
+## Queues a static piece on a pivot; _commit() merges them per material.
 func _part(parent: Node3D, mesh: Mesh, mat: Material, pos: Vector3,
-		rot: Vector3 = Vector3.ZERO, scl: Vector3 = Vector3.ONE) -> MeshInstance3D:
-	var mi := MeshInstance3D.new()
-	mi.mesh = mesh
-	mi.material_override = mat
-	mi.position = pos
-	mi.rotation = rot
-	mi.scale = scl
-	parent.add_child(mi)
-	return mi
+		rot: Vector3 = Vector3.ZERO, scl: Vector3 = Vector3.ONE) -> void:
+	if not _pending.has(parent):
+		_pending[parent] = {}
+	var by_mat: Dictionary = _pending[parent]
+	if not by_mat.has(mat):
+		by_mat[mat] = []
+	var xf := Transform3D(Basis.from_euler(rot) * Basis.from_scale(scl), pos)
+	by_mat[mat].append([mesh, xf])
 
 
-func _capsule(r: float, h: float) -> CapsuleMesh:
-	var c := CapsuleMesh.new()
-	c.radius = r
-	c.height = maxf(h, r * 2.0)
-	c.radial_segments = 20
-	c.rings = 10
-	return c
+func _commit() -> void:
+	for pivot in _pending:
+		var by_mat: Dictionary = _pending[pivot]
+		for mat in by_mat:
+			var st := SurfaceTool.new()
+			for item in by_mat[mat]:
+				st.append_from(item[0], 0, item[1])
+			var mi := MeshInstance3D.new()
+			mi.mesh = st.commit()
+			mi.material_override = mat
+			pivot.add_child(mi)
+	_pending.clear()
 
 
-func _sphere(r: float) -> SphereMesh:
-	var s := SphereMesh.new()
-	s.radius = r
-	s.height = r * 2.0
-	s.radial_segments = 20
-	s.rings = 10
-	return s
+static func _cached(key: String, make: Callable) -> Mesh:
+	if not _meshes.has(key):
+		_meshes[key] = make.call()
+	return _meshes[key]
 
 
-func _box(size: Vector3) -> BoxMesh:
-	var b := BoxMesh.new()
-	b.size = size
-	return b
+func _capsule(r: float, h: float) -> Mesh:
+	return _cached("cap_%.3f_%.3f" % [r, h], func() -> Mesh:
+		var c := CapsuleMesh.new()
+		c.radius = r
+		c.height = maxf(h, r * 2.0)
+		c.radial_segments = 20
+		c.rings = 8
+		return c)
+
+
+func _sphere(r: float) -> Mesh:
+	return _cached("sph_%.3f" % r, func() -> Mesh:
+		var s := SphereMesh.new()
+		s.radius = r
+		s.height = r * 2.0
+		s.radial_segments = 18
+		s.rings = 9
+		return s)
+
+
+func _box(size: Vector3) -> Mesh:
+	return _cached("box_%s" % size, func() -> Mesh:
+		var b := BoxMesh.new()
+		b.size = size
+		return b)
+
+
+## Curved, tapering claw / horn / tooth: base radius 0.15 at the origin,
+## about 1 long, curving from +Y toward +X. UV.y = 0 at the tip.
+static func _claw() -> Mesh:
+	if _meshes.has("claw"):
+		return _meshes["claw"]
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var steps := 7
+	var sides := 7
+	var rings: Array = []
+	var centres: Array = []
+	for j in steps + 1:
+		var t := float(j) / steps
+		var th := t * 1.1
+		var cpos := Vector3(0.9 * (1.0 - cos(th)), 0.9 * sin(th), 0)
+		var tang := Vector3(sin(th), cos(th), 0)
+		var nrm := Vector3(cos(th), -sin(th), 0)
+		var rad := 0.15 * (1.0 - t) + 0.004
+		var ring: Array = []
+		for k in sides:
+			var a := TAU * k / sides
+			ring.append(cpos + (nrm * cos(a) + Vector3(0, 0, 1) * sin(a)) * rad)
+		rings.append(ring)
+		centres.append(cpos)
+	for j in steps:
+		for k in sides:
+			var k2 := (k + 1) % sides
+			var a: Vector3 = rings[j][k]
+			var b: Vector3 = rings[j][k2]
+			var c: Vector3 = rings[j + 1][k2]
+			var d: Vector3 = rings[j + 1][k]
+			var cen: Vector3 = (centres[j] + centres[j + 1]) * 0.5
+			var v0 := 1.0 - float(j) / steps
+			var v1 := 1.0 - float(j + 1) / steps
+			_tri_smooth(st, [a, b, c], [centres[j], centres[j], centres[j + 1]], [v0, v0, v1], cen)
+			_tri_smooth(st, [a, c, d], [centres[j], centres[j + 1], centres[j + 1]], [v0, v1, v1], cen)
+	# Base cap.
+	for k in sides:
+		var k2 := (k + 1) % sides
+		_tri_flat(st, centres[0], rings[0][k], rings[0][k2], centres[0] + Vector3(0, 0.1, 0), 1.0)
+	st.generate_tangents()
+	var mesh := st.commit()
+	_meshes["claw"] = mesh
+	return mesh
+
+
+static func _tri_smooth(st: SurfaceTool, v: Array, c: Array, uv: Array, centre: Vector3) -> void:
+	var a: Vector3 = v[0]
+	var n: Vector3 = (v[1] - a).cross(v[2] - a)
+	var order := [0, 2, 1]
+	if n.dot((a + v[1] + v[2]) / 3.0 - centre) < 0.0:
+		order = [0, 1, 2]
+	for i in order:
+		var p: Vector3 = v[i]
+		st.set_normal((p - c[i]).normalized())
+		st.set_uv(Vector2(0.5, uv[i]))
+		st.add_vertex(p)
+
+
+static func _tri_flat(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, centre: Vector3, v: float) -> void:
+	var n := (b - a).cross(c - a).normalized()
+	if n.dot((a + b + c) / 3.0 - centre) < 0.0:
+		n = -n
+		var tmp := b
+		b = c
+		c = tmp
+	for p in [a, c, b]:
+		st.set_normal(n)
+		st.set_uv(Vector2(0.5, v))
+		st.add_vertex(p)
+
+
+## Faceted, jagged dorsal plate in the XY plane: base on y=0 (width 1),
+## tip at y=1, thickest along the middle (z +-0.5 before scaling).
+static func _plate() -> Mesh:
+	if _meshes.has("plate"):
+		return _meshes["plate"]
+	var outline := [Vector2(-0.5, 0.0), Vector2(-0.46, 0.28), Vector2(-0.33, 0.25), Vector2(-0.3, 0.52),
+		Vector2(-0.17, 0.5), Vector2(-0.1, 0.78), Vector2(0.0, 1.0), Vector2(0.09, 0.74), Vector2(0.2, 0.48),
+		Vector2(0.3, 0.5), Vector2(0.3, 0.24), Vector2(0.42, 0.22), Vector2(0.5, 0.0)]
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for zs in [1.0, -1.0]:
+		var ridge := Vector3(0.0, 0.32, 0.5 * zs)
+		for i in outline.size() - 1:
+			var a := Vector3(outline[i].x, outline[i].y, 0)
+			var b := Vector3(outline[i + 1].x, outline[i + 1].y, 0)
+			_plate_tri(st, ridge, a, b, Vector3(0, 0.32, 0))
+		_plate_tri(st, ridge, Vector3(0.5, 0, 0), Vector3(-0.5, 0, 0), Vector3(0, 0.32, 0))
+	st.generate_tangents()
+	var mesh := st.commit()
+	_meshes["plate"] = mesh
+	return mesh
+
+
+static func _plate_tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, centre: Vector3) -> void:
+	var n := (b - a).cross(c - a).normalized()
+	if n.dot((a + b + c) / 3.0 - centre) < 0.0:
+		n = -n
+		var tmp := b
+		b = c
+		c = tmp
+	# Clockwise front faces in Godot.
+	for v in [a, c, b]:
+		st.set_normal(n)
+		st.set_uv(Vector2(v.x + 0.5, 1.0 - v.y))
+		st.add_vertex(v)
