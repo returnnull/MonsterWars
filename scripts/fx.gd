@@ -107,6 +107,72 @@ static func light_flash(pos: Vector3, color: Color, energy_amount: float, light_
 	tw.tween_callback(l.queue_free)
 
 
+## A jagged lightning bolt from `a` to `b` that flickers out.
+static func bolt(a: Vector3, b: Vector3, color: Color) -> void:
+	var w := _world()
+	if w == null:
+		return
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.albedo_color = color * 2.5
+	var root := Node3D.new()
+	w.add_child(root)
+	var segs := 7
+	var prev := a
+	for i in segs:
+		var t := float(i + 1) / segs
+		var p := a.lerp(b, t)
+		if i < segs - 1:
+			p += Vector3(randf_range(-1.2, 1.2), randf_range(-0.6, 0.6), randf_range(-0.5, 0.5))
+		var seg_len := prev.distance_to(p)
+		var mi := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = Vector3(0.22, 0.22, seg_len)
+		mi.mesh = box
+		mi.material_override = mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(mi)
+		mi.global_position = (prev + p) * 0.5
+		if not (p - prev).normalized().is_equal_approx(Vector3.UP) and not (p - prev).normalized().is_equal_approx(Vector3.DOWN):
+			mi.look_at(p, Vector3.UP)
+		else:
+			mi.look_at(p, Vector3.RIGHT)
+		prev = p
+	light_flash(b + Vector3.UP, color, 8.0, 14.0, 0.25)
+	var tw := root.create_tween()
+	tw.tween_property(mat, "albedo_color:a", 0.0, 0.25)
+	tw.tween_callback(root.queue_free)
+
+
+## A glowing rock that falls from the sky onto `target`, then calls `on_land`.
+static func meteor(target: Vector3, color: Color, fall_time: float, on_land: Callable) -> void:
+	var w := _world()
+	if w == null:
+		return
+	var mi := MeshInstance3D.new()
+	var sph := SphereMesh.new()
+	sph.radius = 1.1
+	sph.height = 2.2
+	mi.mesh = sph
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color.darkened(0.5)
+	mat.emission_enabled = true
+	mat.emission = color
+	mat.emission_energy_multiplier = 3.0
+	mi.material_override = mat
+	w.add_child(mi)
+	var start := target + Vector3(-10.0, 34.0, -4.0)
+	mi.global_position = start
+	var tw := mi.create_tween()
+	tw.tween_property(mi, "global_position", target, fall_time).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
+	tw.tween_callback(func() -> void:
+		explosion(target, 0.9)
+		on_land.call()
+		mi.queue_free())
+
+
 # --- internals -------------------------------------------------------------
 
 static func _emit(pos: Vector3, amount: int, lifetime: float, mesh: Mesh, pm: ParticleProcessMaterial) -> void:

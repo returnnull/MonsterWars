@@ -103,6 +103,10 @@ func _physics_process(delta: float) -> void:
 	cooldown -= delta
 	var mv := Vector3.ZERO
 	var p := Game.nearest_player(global_position) as Kaiju
+	if frozen_t > 0.0 and not dead:
+		move_body(delta, Vector3.ZERO)
+		model.walk_amount = 0.0
+		return
 	match state:
 		S.DEAD:
 			pass

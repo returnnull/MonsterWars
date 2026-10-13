@@ -14,6 +14,7 @@ var queue: Array = []
 var results: Array = []
 var current := ""
 var log_t := 0.0
+var _super_test := false
 
 
 func _env(key: String, fallback: String) -> String:
@@ -39,6 +40,14 @@ func _ready() -> void:
 	for slot in int(_env("AUTOPLAY_PLAYERS", "1")):
 		Game.party[slot] = int(heroes.split(",")[slot]) if heroes != "" else slot
 	Engine.time_scale = float(_env("AUTOPLAY_SPEED", "1"))
+	# AUTOPLAY_SKILLS=1 maxes every hero's level and learns two full branches
+	# plus some of the third, so every ability gets exercised.
+	if _env("AUTOPLAY_SKILLS", "") != "":
+		for h in Content.HEROES.size():
+			Game.hero_xp[h] = 999999
+			Game.hero_skills[h] = [1, 5, 5, 1, 5, 5, 1, 4, 1, 0]
+	if _env("AUTOPLAY_SUPER", "") != "":
+		_super_test = true
 	_next()
 
 
@@ -80,6 +89,8 @@ func _physics_process(delta: float) -> void:
 			p.hp = 99999.0
 			if _env("AUTOPLAY_RAGE", "") != "":
 				p.add_rage(100.0)
+		if _super_test and p.state != Player.S.SUPER:
+			p.add_super(2.0)
 		_drive(p, delta)
 	for st in _env("AUTOPLAY_SHOTS", "").split(",", false):
 		if t - delta < float(st) and t >= float(st):
@@ -125,4 +136,5 @@ func _drive(p: Player, delta: float) -> void:
 	if fmod(t + off, 2.1) < delta: _press(s, "heavy")
 	if fmod(t + off, 3.3) < delta: _press(s, "jump")
 	if fmod(t + off, 3.6) < delta: _press(s, "light")
-	if p.rage >= 100.0 and not Input.is_action_pressed("p%d_special" % s): _press(s, "special")
+	if (p.rage >= 100.0 or (p.raging and p.rage < 70.0)) and fmod(t + off, 0.5) < delta: _press(s, "special")
+	if p.super_meter >= 100.0 and fmod(t + off, 0.5) < delta: _press(s, "super")

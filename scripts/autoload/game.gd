@@ -33,6 +33,11 @@ var level: Dictionary = {}
 ## Highest unlocked global level (0-99) and best scores per level.
 var unlocked := 0
 var best_scores := {}
+## Per hero: total XP and the ranks bought in each of the 10 skill tree nodes.
+var hero_xp: Array = []
+var hero_skills: Array = []
+## XP each hero earned in the level being played (for the end screen).
+var xp_gained := {}
 
 var _combo_timer := 0.0
 var _hitstop_active := false
@@ -41,7 +46,48 @@ var _hitstop_active := false
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_setup_input()
+	_reset_heroes()
 	load_progress()
+
+
+func _reset_heroes() -> void:
+	hero_xp = []
+	hero_skills = []
+	for i in Content.HEROES.size():
+		hero_xp.append(0)
+		var ranks := []
+		ranks.resize(Skills.NODE_COUNT)
+		ranks.fill(0)
+		hero_skills.append(ranks)
+
+
+func hero_level(hero: int) -> int:
+	return Skills.level_for_xp(hero_xp[hero])
+
+
+func free_points(hero: int) -> int:
+	return Skills.points_total(hero_xp[hero]) - Skills.points_spent(hero_skills[hero])
+
+
+## Gives a hero XP and returns how many levels it gained.
+func add_xp(hero: int, amount: int) -> int:
+	var before := hero_level(hero)
+	hero_xp[hero] += amount
+	xp_gained[hero] = int(xp_gained.get(hero, 0)) + amount
+	return hero_level(hero) - before
+
+
+func buy_skill(hero: int, idx: int) -> bool:
+	if Skills.buy_block(hero_xp[hero], hero_skills[hero], idx) != "":
+		return false
+	hero_skills[hero][idx] += 1
+	save_progress()
+	return true
+
+
+func reset_skills(hero: int) -> void:
+	hero_skills[hero].fill(0)
+	save_progress()
 
 
 func _process(delta: float) -> void:
@@ -59,6 +105,7 @@ func reset() -> void:
 	combo = 0
 	best_combo = 0
 	players.clear()
+	xp_gained = {}
 	Engine.time_scale = 1.0
 	_hitstop_active = false
 
@@ -131,7 +178,8 @@ func complete_level(lvl: Dictionary, final_score: int) -> void:
 func save_progress() -> void:
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({"unlocked": unlocked, "best": best_scores, "party": party}))
+		f.store_string(JSON.stringify({"unlocked": unlocked, "best": best_scores, "party": party,
+			"hero_xp": hero_xp, "hero_skills": hero_skills}))
 
 
 func load_progress() -> void:
@@ -147,6 +195,13 @@ func load_progress() -> void:
 			party = {}
 			for k in saved_party:
 				party[int(k)] = int(saved_party[k])
+		var xp = data.get("hero_xp", [])
+		var sk = data.get("hero_skills", [])
+		for i in mini(xp.size(), hero_xp.size()):
+			hero_xp[i] = int(xp[i])
+		for i in mini(sk.size(), hero_skills.size()):
+			for j in mini(sk[i].size(), Skills.NODE_COUNT):
+				hero_skills[i][j] = clampi(int(sk[i][j]), 0, Skills.max_rank(j))
 
 
 func shake(amount: float) -> void:
@@ -178,6 +233,7 @@ func _setup_input() -> void:
 		_action(pre + "heavy", [KEY_K] if kb else [], [JOY_BUTTON_Y], [], slot)
 		_action(pre + "dodge", [KEY_SHIFT] if kb else [], [JOY_BUTTON_B, JOY_BUTTON_LEFT_SHOULDER], [], slot)
 		_action(pre + "special", [KEY_L] if kb else [], [JOY_BUTTON_RIGHT_SHOULDER], [[JOY_AXIS_TRIGGER_RIGHT, 1.0]], slot)
+		_action(pre + "super", [KEY_U] if kb else [], [], [[JOY_AXIS_TRIGGER_LEFT, 1.0]], slot)
 	_action("jump", [KEY_SPACE], [JOY_BUTTON_A], [], -1)
 	_action("pause", [KEY_ESCAPE, KEY_ENTER], [JOY_BUTTON_START], [], -1)
 	_action("back", [KEY_SHIFT, KEY_BACKSPACE], [JOY_BUTTON_B], [], -1)

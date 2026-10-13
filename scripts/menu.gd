@@ -3,7 +3,7 @@ extends Control
 ## -> level select (10 levels each). Any controller can navigate; in hero
 ## select every controller drives its own slot.
 
-enum Screen { TITLE, HEROES, MAP, LEVELS }
+enum Screen { TITLE, HEROES, MAP, LEVELS, SKILLS }
 
 const SLOT_W := 460.0
 
@@ -17,6 +17,12 @@ var _level := 0
 var _slots: Array[Dictionary] = []
 var _map_cards: Array[Panel] = []
 var _level_cards: Array[Panel] = []
+# Skill tree screen: who opened it, for which hero, and the selected node.
+var _sk_slot := 0
+var _sk_hero := 0
+var _sk_sel := 0
+var _sk_cards: Array[Panel] = []
+var _sk_return: Array = []
 
 
 func _ready() -> void:
@@ -61,6 +67,8 @@ func _process(delta: float) -> void:
 			_map_input()
 		Screen.LEVELS:
 			_levels_input()
+		Screen.SKILLS:
+			_skills_input()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -80,6 +88,7 @@ func _clear() -> void:
 	_slots.clear()
 	_map_cards.clear()
 	_level_cards.clear()
+	_sk_cards.clear()
 
 
 func _any_just(action: String) -> bool:
@@ -107,11 +116,11 @@ func _show_title() -> void:
 
 # --- hero select -----------------------------------------------------------
 
-func _show_heroes() -> void:
+func _show_heroes(restore: Array = []) -> void:
 	_clear()
 	screen = Screen.HEROES
 	_center(_label(_root, "CHOOSE YOUR KAIJU", Vector2(0, 30), 64, Color(1.0, 0.9, 0.75)))
-	_center(_label(_root, "Left/Right: choose    B / Space: join, then ready    A / Shift: back    All ready: world map",
+	_center(_label(_root, "Left/Right: choose    B / Space: join, then ready    X / K: skill tree    A / Shift: back    All ready: world map",
 		Vector2(0, 1010), 24, Color(1, 1, 1, 0.75)))
 	for slot in Game.MAX_PLAYERS:
 		var x := (1920.0 - SLOT_W * 4) * 0.5 + slot * SLOT_W
@@ -175,8 +184,9 @@ func _show_heroes() -> void:
 			bar.add_theme_stylebox_override("fill", _card_style(Color(1.0, 0.6, 0.2), Color(0, 0, 0, 0)))
 			box.add_child(bar)
 			d["bars"].append(bar)
-		d["special"] = _label(box, "", Vector2(30, 710), 26, Color(1.0, 0.8, 0.4))
-		d["status"] = _label(box, "", Vector2(0, 780), 32, Color.WHITE)
+		d["special"] = _label(box, "", Vector2(30, 704), 24, Color(1.0, 0.8, 0.4))
+		d["lvl"] = _label(box, "", Vector2(30, 740), 24, Color(1.0, 0.95, 0.6))
+		d["status"] = _label(box, "", Vector2(0, 790), 32, Color.WHITE)
 		d["status"].size.x = SLOT_W - 20
 		d["status"].horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_slots.append(d)
@@ -184,7 +194,12 @@ func _show_heroes() -> void:
 		_refresh_slot(slot)
 	# Whoever pressed start on the title screen is already in.
 	_slots[0]["joined"] = true
-	_refresh_slot(0)
+	for slot in mini(restore.size(), _slots.size()):
+		_slots[slot]["joined"] = restore[slot]["joined"]
+		_slots[slot]["ready"] = restore[slot]["ready"]
+		_set_hero(slot, restore[slot]["hero"])
+	for slot in _slots.size():
+		_refresh_slot(slot)
 
 
 func _heroes_input() -> void:
@@ -205,6 +220,9 @@ func _heroes_input() -> void:
 				step = 1
 			if step != 0:
 				_set_hero(slot, posmod(d["hero"] + step, Content.HEROES.size()))
+			if Input.is_action_just_pressed(pre + "heavy"):
+				_show_skills(slot, d["hero"])
+				return
 			if Input.is_action_just_pressed(pre + "jump"):
 				d["ready"] = true
 				_refresh_slot(slot)
@@ -245,13 +263,16 @@ func _set_hero(slot: int, hero: int) -> void:
 	d["bars"][0].value = 100.0 * float(h["hp"]) / 360.0
 	d["bars"][1].value = 100.0 * float(h["speed"]) / 1.3
 	d["bars"][2].value = 100.0 * float(h["power"]) / 1.3
-	d["special"].text = "Rage: " + Content.SPECIAL_NAMES[h["special"]]
+	d["special"].text = "Rage: %s   Super: %s" % [Content.SPECIAL_NAMES[h["special"]],
+		String(Skills.super_def(hero)["name"]).capitalize()]
+	var pts := Game.free_points(hero)
+	d["lvl"].text = "LV %d%s" % [Game.hero_level(hero), ("   -   %d skill points  [X]" % pts) if pts > 0 else ""]
 
 
 func _refresh_slot(slot: int) -> void:
 	var d := _slots[slot]
 	var on: bool = d["joined"]
-	for key in ["name", "title", "special"]:
+	for key in ["name", "title", "special", "lvl"]:
 		d[key].visible = on
 	for b in d["bars"] + d["stat_labels"]:
 		b.visible = on
@@ -384,6 +405,114 @@ func _levels_input() -> void:
 		Game.start_level(_country, _level)
 	elif _any_just("dodge"):
 		_show_map()
+
+
+# --- skill tree ------------------------------------------------------------
+
+const SK_COL_X := [150.0, 720.0, 1290.0]
+const SK_ROW_Y := [330.0, 520.0, 710.0]
+
+
+func _show_skills(slot: int, hero: int) -> void:
+	_sk_return = _slots.map(func(d: Dictionary) -> Dictionary:
+		return {"joined": d["joined"], "ready": d["ready"], "hero": d["hero"]})
+	_sk_slot = slot
+	_sk_hero = hero
+	_sk_sel = 0
+	_build_skills()
+
+
+func _build_skills() -> void:
+	_clear()
+	screen = Screen.SKILLS
+	var h := Content.hero(_sk_hero)
+	var accent: Color = Color(h["accent"]).lerp(Color.WHITE, 0.3)
+	var xp: int = Game.hero_xp[_sk_hero]
+	var ranks: Array = Game.hero_skills[_sk_hero]
+	var lvl := Game.hero_level(_sk_hero)
+	_label(_root, "%s  SKILL TREE" % h["name"], Vector2(60, 30), 56, accent)
+	_label(_root, "P%d" % (_sk_slot + 1), Vector2(60, 100), 26, Color(1, 1, 1, 0.6))
+	var prog := Skills.xp_progress(xp)
+	var info := "LV %d / %d" % [lvl, Skills.MAX_LEVEL]
+	if lvl < Skills.MAX_LEVEL:
+		info += "    XP %d / %d" % [prog.x, prog.y]
+	var lv_label := _label(_root, info, Vector2(1060, 36), 32, Color(1.0, 0.95, 0.6))
+	lv_label.size.x = 800
+	lv_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	var pts := _label(_root, "SKILL POINTS: %d   (used %d of %d)" % [Game.free_points(_sk_hero), Skills.points_spent(ranks),
+		Skills.points_total(xp)], Vector2(1060, 80), 30, Color(0.6, 1.0, 0.7))
+	pts.size.x = 800
+	pts.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	for i in Skills.NODE_COUNT:
+		var n := Skills.node(_sk_hero, i)
+		var card := Panel.new()
+		if i == 0:
+			card.position = Vector2(720, 122)
+		else:
+			card.position = Vector2(SK_COL_X[n[2]], SK_ROW_Y[n[3] - 1])
+		card.size = Vector2(450, 160)
+		_root.add_child(card)
+		var r := int(ranks[i])
+		var mx := Skills.max_rank(i)
+		var block := Skills.buy_block(xp, ranks, i)
+		var title_col := accent if r > 0 else Color(1, 1, 1, 0.9)
+		_label(card, n[0], Vector2(18, 10), 30, title_col)
+		var tier_name := "ROOT" if i == 0 else ("BRANCH END" if n[3] == 3 else "TIER %d" % n[3])
+		_label(card, tier_name, Vector2(18, 50), 18, Color(1, 1, 1, 0.5))
+		var rank_label := _label(card, "%d / %d" % [r, mx], Vector2(300, 14), 26, Color(0.6, 1.0, 0.7) if r == mx else Color.WHITE)
+		rank_label.size.x = 130
+		rank_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		var desc := _label(card, Skills.describe(_sk_hero, i, r), Vector2(18, 76), 21, Color(1, 1, 1, 0.85))
+		desc.size = Vector2(414, 50)
+		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var cost_text := "MAXED" if r == mx else "Cost %d" % Skills.cost(i)
+		_label(card, cost_text, Vector2(18, 126), 18, Color(1.0, 0.8, 0.4) if block == "" else Color(1, 1, 1, 0.4))
+		if r == 0 and block != "" and block != "NOT ENOUGH POINTS":
+			card.modulate = Color(0.6, 0.6, 0.65)
+		_sk_cards.append(card)
+	for b in 3:
+		var bl := _label(_root, Skills.branch_name(_sk_hero, b), Vector2(SK_COL_X[b], 292), 28, accent)
+		bl.size.x = 450
+		bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var super_def := Skills.super_def(_sk_hero)
+	_label(_root, "Rage attack: %s     Super special: %s" % [Content.SPECIAL_NAMES[h["special"]], super_def["name"]],
+		Vector2(150, 890), 26, Color(1.0, 0.8, 0.4))
+	var sel_block := Skills.buy_block(xp, ranks, _sk_sel)
+	var hint := _label(_root, "" if sel_block == "" else sel_block, Vector2(150, 935), 26, Color(1.0, 0.5, 0.4))
+	hint.size.x = 1620
+	_center(_label(_root, "Move: choose    B / Space: learn    Y / J: reset all points    A / Shift: back",
+		Vector2(0, 1010), 24, Color(1, 1, 1, 0.75)))
+	_highlight(_sk_cards, _sk_sel)
+
+
+func _skills_input() -> void:
+	var pre := "p%d_" % _sk_slot
+	var n := Skills.node(_sk_hero, _sk_sel)
+	var b: int = n[2]
+	var tier: int = n[3]
+	var nxt := _sk_sel
+	if Input.is_action_just_pressed(pre + "move_down"):
+		nxt = 4 if _sk_sel == 0 else (_sk_sel + 1 if tier < 3 else _sk_sel)
+	elif Input.is_action_just_pressed(pre + "move_up"):
+		nxt = 0 if tier == 1 else (_sk_sel - 1 if tier > 1 else _sk_sel)
+	elif Input.is_action_just_pressed(pre + "move_left") and b > 0:
+		nxt = 1 + (b - 1) * 3 + tier - 1
+	elif Input.is_action_just_pressed(pre + "move_right") and b >= 0 and b < 2:
+		nxt = 1 + (b + 1) * 3 + tier - 1
+	if nxt != _sk_sel:
+		_sk_sel = nxt
+		_build_skills()
+	if Input.is_action_just_pressed(pre + "jump"):
+		if Game.buy_skill(_sk_hero, _sk_sel):
+			_build_skills()
+			var card := _sk_cards[_sk_sel]
+			card.scale = Vector2.ONE * 1.15
+			card.create_tween().tween_property(card, "scale", Vector2.ONE * 1.06, 0.2)
+	elif Input.is_action_just_pressed(pre + "light"):
+		Game.reset_skills(_sk_hero)
+		_build_skills()
+	elif Input.is_action_just_pressed(pre + "dodge"):
+		_show_heroes(_sk_return)
 
 
 # --- widgets ---------------------------------------------------------------

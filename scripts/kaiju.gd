@@ -25,6 +25,12 @@ var x_min := -INF
 var x_max := INF
 var z_min := -5.0
 var z_max := 3.0
+## Status effects put on by player abilities.
+var slow_t := 0.0
+var slow_amt := 0.0
+var burn_t := 0.0
+var burn_dps := 0.0
+var frozen_t := 0.0
 
 var _was_on_floor := true
 var _yaw := 0.0
@@ -50,6 +56,9 @@ func hit_center() -> Vector3:
 func take_hit(dmg: float, kb: Vector3, from: Node3D = null) -> bool:
 	if dead or invuln > 0.0:
 		return false
+	dmg = _incoming(dmg, from)
+	if dmg <= 0.0:
+		return false
 	hp = maxf(hp - dmg, 0.0)
 	health_changed.emit(hp, max_hp)
 	knock = kb
@@ -61,6 +70,52 @@ func take_hit(dmg: float, kb: Vector3, from: Node3D = null) -> bool:
 		dead = true
 		_on_death()
 	return true
+
+
+## Lets a kaiju reduce or block damage before it lands. 0 blocks the hit.
+func _incoming(dmg: float, _from: Node3D) -> float:
+	return dmg
+
+
+## Lets an attacker change its damage against a target (crits and the like).
+func _modify_damage(_target: Node, dmg: float) -> float:
+	return dmg
+
+
+## Called on the attacker after each of its hits lands.
+func _on_strike_hit(_target: Node, _dmg: float) -> void:
+	pass
+
+
+## Hits one target through the attacker's damage hooks.
+func deal(t: Node, dmg: float, kb: Vector3) -> bool:
+	var d := _modify_damage(t, dmg)
+	if t.take_hit(d, kb, self):
+		_on_strike_hit(t, d)
+		return true
+	return false
+
+
+func apply_slow(amount: float, duration: float) -> void:
+	slow_amt = maxf(slow_amt if slow_t > 0.0 else 0.0, amount)
+	slow_t = maxf(slow_t, duration)
+
+
+func apply_burn(dps: float, duration: float) -> void:
+	burn_dps = maxf(burn_dps if burn_t > 0.0 else 0.0, dps)
+	burn_t = maxf(burn_t, duration)
+
+
+func _tick_status(delta: float) -> void:
+	slow_t = maxf(slow_t - delta, 0.0)
+	frozen_t = maxf(frozen_t - delta, 0.0)
+	if burn_t > 0.0 and not dead:
+		burn_t -= delta
+		hp = maxf(hp - burn_dps * delta, 0.0)
+		health_changed.emit(hp, max_hp)
+		if hp <= 0.0:
+			dead = true
+			_on_death()
 
 
 func _on_hurt(_dmg: float, _from: Node3D) -> void:
@@ -77,6 +132,11 @@ func _on_land() -> void:
 
 
 func move_body(delta: float, move: Vector3) -> void:
+	_tick_status(delta)
+	if frozen_t > 0.0:
+		move = Vector3.ZERO
+	elif slow_t > 0.0:
+		move *= 1.0 - slow_amt
 	velocity.x = move.x + knock.x
 	velocity.z = move.z + knock.z
 	if knock.y > 0.0:
@@ -120,7 +180,7 @@ func strike(center: Vector3, radius: float, dmg: float, kb: Vector3, group: Stri
 			var dir := signf(tc.x - global_position.x)
 			if dir == 0.0:
 				dir = facing
-			if t.take_hit(dmg, Vector3(kb.x * dir, kb.y, kb.z), self):
+			if deal(t, dmg, Vector3(kb.x * dir, kb.y, kb.z)):
 				hits += 1
 				FX.hit_spark(tc.lerp(center, 0.5), dmg)
 	if building_dmg > 0.0:

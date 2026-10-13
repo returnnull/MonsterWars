@@ -173,14 +173,23 @@ func add_enemy(e: Node) -> void:
 	e.died.connect(_on_enemy_died)
 
 
-func _on_enemy_died(_who: Node) -> void:
+func _on_enemy_died(who: Node) -> void:
 	_alive -= 1
+	var kind: String = who.kind if "kind" in who else "flyer"
+	var xp := int(Skills.XP_KILL.get(kind, 12) * (1.0 + lvl["global"] * 0.04))
+	for p in Game.living_players():
+		p.on_enemy_killed()
+		_give_xp(p, xp)
 	if _alive > 0 or not _wave_active:
 		return
 	_wave_active = false
 	_wave += 1
 	if _wave >= waves.size():
 		_finished = true
+		var bonus := 60 + int(lvl["global"]) * 6
+		for p in Game.players:
+			if is_instance_valid(p):
+				_give_xp(p, bonus)
 		Game.complete_level(lvl, Game.score)
 		await get_tree().create_timer(2.5, false).timeout
 		hud.show_end("STAGE CLEAR", true)
@@ -192,10 +201,20 @@ func _on_enemy_died(_who: Node) -> void:
 				p.revive()
 
 
+func _give_xp(p: Player, xp: int) -> void:
+	var gained := Game.add_xp(p.hero, xp)
+	if gained > 0:
+		var lv := Game.hero_level(p.hero)
+		hud.show_message("%s  LV %d!" % [p.display_name(), lv], 1.4)
+		FX.energy(p.global_position + Vector3(0, 4, 0), Color(1.0, 0.95, 0.5))
+		FX.shockwave(p.global_position, 6.0, Color(1.0, 0.95, 0.5))
+
+
 func _on_player_died(_who: Node) -> void:
 	if _finished or not Game.living_players().is_empty():
 		return
 	_finished = true
+	Game.save_progress()
 	hud.show_end("GAME OVER", false)
 
 

@@ -62,13 +62,16 @@ func _ready() -> void:
 
 	_controls = _label(root, "Players 2-4: press B on another controller to join\n" +
 		"Move: WASD / stick    Jump: Space / B    Light: J / Y    Heavy: K / X\n" +
-		"Dodge: Shift / A    Rage attack: L key / R or ZR    Pause: Esc / +    Attack in the air = stomp",
+		"Dodge: Shift / A    Rage mode, then rage attack: L key / R    Super: U key / ZL    Pause: Esc / +",
 		Vector2(48, 950), 22, Color(1, 1, 1, 0.85))
 
 	_pause_panel = _overlay(root, "PAUSED", "Resume: Esc / +      World map: Shift / A")
 	_end_panel = _overlay(root, "", "")
 	_end_title = _end_panel.get_child(1)
 	_end_stats = _end_panel.get_child(2)
+	_end_stats.position.y = 480
+	_end_stats.size.y = 520
+	_end_stats.label_settings.font_size = 30
 
 	Game.score_changed.connect(func(s: int) -> void: _score_label.text = str(s))
 	Game.destruction_changed.connect(func(_d: int, _t2: int) -> void:
@@ -80,12 +83,17 @@ func bind(player: Player) -> void:
 	var p: Dictionary = _panels[player.slot]
 	p["root"].visible = true
 	p["join"].visible = false
+	p["player"] = player
 	p["name"].text = player.display_name()
+	p["level"].text = "LV %d" % player.level
 	p["name"].label_settings.font_color = player.color().lerp(Color.WHITE, 0.4)
 	var hp_bar: ProgressBar = p["hp"]
 	var rage_bar: ProgressBar = p["rage"]
 	player.health_changed.connect(func(hp: float, mx: float) -> void: hp_bar.value = 100.0 * hp / mx)
 	player.rage_changed.connect(func(r: float, mx: float) -> void: rage_bar.value = 100.0 * r / mx)
+	var super_bar: ProgressBar = p["super"]
+	super_bar.value = 0.0
+	player.super_changed.connect(func(v: float, mx: float) -> void: super_bar.value = 100.0 * v / mx)
 	hp_bar.value = 100.0 * player.hp / player.max_hp
 	p["trail"].value = hp_bar.value
 
@@ -117,8 +125,15 @@ func show_end(title: String, did_win: bool) -> void:
 	_boss_box.visible = false
 	_end_title.text = title
 	_end_title.label_settings.font_color = Color(0.5, 1.0, 0.7) if won else Color(1.0, 0.35, 0.3)
-	_end_stats.text = "Score %d\nDestruction %d%%   Best combo %d\n\n%s: Space / B      World map: Shift / A" % [
-		Game.score, Game.destruction_percent(), Game.best_combo, "Next level" if won else "Retry"]
+	var xp_lines := ""
+	for pl in Game.players:
+		if is_instance_valid(pl):
+			var lv := Game.hero_level(pl.hero)
+			var pts := Game.free_points(pl.hero)
+			xp_lines += "%s  +%d XP   LV %d%s\n" % [pl.display_name(), int(Game.xp_gained.get(pl.hero, 0)), lv,
+				("   (%d skill points to spend)" % pts) if pts > 0 else ""]
+	_end_stats.text = "Score %d\nDestruction %d%%   Best combo %d\n\n%s\n%s: Space / B      World map: Shift / A" % [
+		Game.score, Game.destruction_percent(), Game.best_combo, xp_lines, "Next level" if won else "Retry"]
 	_end_panel.visible = true
 	_end_panel.modulate.a = 0.0
 	create_tween().tween_property(_end_panel, "modulate:a", 1.0, 0.6)
@@ -132,8 +147,16 @@ func _process(delta: float) -> void:
 		var trail: ProgressBar = p["trail"]
 		trail.value = move_toward(trail.value, hp.value, 25.0 * delta) if trail.value > hp.value else hp.value
 		var full: bool = p["rage"].value >= 99.9
-		p["fill"].bg_color = Color(1.0, 0.55 + pulse * 0.4, 0.12 + pulse * 0.6) if full else Color(1.0, 0.55, 0.12)
-		p["rage_label"].text = "READY! [R]" if full else "RAGE"
+		var raging: bool = p.has("player") and is_instance_valid(p["player"]) and p["player"].raging
+		if raging:
+			p["fill"].bg_color = Color(1.0, 0.2 + pulse * 0.3, 0.1)
+			p["rage_label"].text = "RAGE MODE! [R]"
+		else:
+			p["fill"].bg_color = Color(1.0, 0.55 + pulse * 0.4, 0.12 + pulse * 0.6) if full else Color(1.0, 0.55, 0.12)
+			p["rage_label"].text = "RAGE! [R]" if full else "RAGE"
+		var sfull: bool = p["super"].value >= 99.9
+		p["super_fill"].bg_color = Color(0.75 + pulse * 0.25, 0.4 + pulse * 0.5, 1.0) if sfull else Color(0.6, 0.35, 1.0)
+		p["super_label"].text = "SUPER! [ZL]" if sfull else "SUPER"
 		p["join"].modulate.a = 0.35 + 0.4 * pulse
 	if _t > 9.0 and _controls.modulate.a > 0.0:
 		_controls.modulate.a = maxf(_controls.modulate.a - delta, 0.0)
@@ -180,10 +203,15 @@ func _make_panel(root: Control, slot: int) -> Dictionary:
 	var rage := _bar(panel, Vector2(0, 78), Vector2(PANEL_W - 160, 14), Color(1.0, 0.55, 0.12))
 	rage.value = 0.0
 	var rage_label := _label(panel, "RAGE", Vector2(PANEL_W - 150, 70), 20, Color(1.0, 0.7, 0.3))
+	var level_label := _label(panel, "", Vector2(PANEL_W - 195, 4), 24, Color(1.0, 0.95, 0.6))
+	var sup := _bar(panel, Vector2(0, 100), Vector2(PANEL_W - 160, 10), Color(0.6, 0.35, 1.0))
+	sup.value = 0.0
+	var super_label := _label(panel, "SUPER", Vector2(PANEL_W - 150, 94), 18, Color(0.8, 0.65, 1.0))
 	var join := _label(root, "P%d  PRESS B TO JOIN" % (slot + 1), Vector2(x, 40), 26, Color(1, 1, 1))
 	join.visible = slot > 0
 	return {"root": panel, "name": name_label, "hp": hp, "trail": trail, "rage": rage,
-		"fill": rage.get_theme_stylebox("fill"), "rage_label": rage_label, "join": join}
+		"fill": rage.get_theme_stylebox("fill"), "rage_label": rage_label, "join": join,
+		"level": level_label, "super": sup, "super_fill": sup.get_theme_stylebox("fill"), "super_label": super_label}
 
 
 func _label(parent: Control, text: String, pos: Vector2, font_size: int, color: Color) -> Label:
