@@ -1,0 +1,84 @@
+# Kaiju Dawn
+
+En kaiju beat 'em up i stil med *Dawn of the Monsters*, bygget i **Godot 4.4** (GDScript).
+Dette er en spilbar vertical slice: én kaiju, én by-bane der kan smadres, tre bølger fjender og en boss.
+
+Al grafik er original og genereres i kode (primitive meshes, procedurale shaders og partikler), så der er ingen ophavsretligt beskyttede assets i projektet.
+
+## Kør spillet
+
+1. Hent Godot 4.4 eller nyere (standard-udgaven, ikke .NET): https://godotengine.org/download
+2. Åbn Godot, vælg **Import**, og peg på `project.godot` i denne mappe.
+3. Tryk **F5**.
+
+## Styring
+
+| Handling | Tastatur | Switch-controller | Xbox-controller |
+|---|---|---|---|
+| Bevæg (også ind/ud i dybden) | WASD / piletaster | Venstre stick / D-pad | Venstre stick / D-pad |
+| Hop | Mellemrum | B | A |
+| Let angreb (3-hits combo) | J | Y | X |
+| Tungt angreb (slam) | K | X | Y |
+| Angreb i luften = stomp | J/K i luften | Y/X i luften | X/Y i luften |
+| Undvig (usårlig kort tid) | Shift | A eller L | B eller LB |
+| Rage-beam (når RAGE er fuld) | L | R eller ZR | RB eller RT |
+| Pause | Esc / Enter | + | Start |
+
+Knapperne er mappet efter position, så de sidder rigtigt på en Switch Pro Controller og Joy-Cons.
+
+## Hvad er med
+
+- **Gorrax**, den spilbare kaiju: let combo der ender i en hale-spin, tungt slam med chokbølge, stomp fra luften, undvigelse med i-frames og et atom-beam der lades op af rage.
+- **Rage**: optjenes ved at ramme fjender, tage skade og vælte bygninger. Når baren er fuld, gløder rygpladerne.
+- **Destruerbar by**: bygninger tager skade (vinduer slukker, sod breder sig), kollapser ned i gaden med murbrokker, støv og eksplosioner, og giver point, rage og sommetider en grøn helbredelses-orb.
+- **Fjender**: Brute-kaijuer (nærkamp med tydelig opladning), militærdroner (skyder plasma og dykker ned så du kan ramme dem), og bossen Tyrannox, der er større, tåler lette slag og laver stormløb.
+- **Juice**: hitstop, skærmrystelse, gnister, lys-blink, combo-tæller, destruktions-procent.
+- **Grafik**: Forward+ med skygger, SSAO, skærmrefleksioner på våd asfalt, glow, tåge og solnedgangshimmel, skæl-normal-map på kaijuerne og procedural vindues-shader på bygningerne.
+
+## Projektstruktur
+
+```
+project.godot              Indstillinger, renderer, autoload
+scenes/main.tscn           Startscene (bygger banen i kode)
+scripts/main.gd            Bane, lys, by, bølger og win/lose
+scripts/autoload/game.gd   Global tilstand, point, hitstop, input-mapping
+scripts/kaiju.gd           Fælles krop for kaijuer: liv, knockback, strike()
+scripts/player.gd          Spillerens kaiju og angreb
+scripts/brute.gd           Nærkamps-fjende og boss
+scripts/flyer.gd           Drone-fjende
+scripts/projectile.gd      Plasma-skud
+scripts/building.gd        Destruerbare bygninger
+scripts/kaiju_model.gd     Procedural kaiju-model og animation
+scripts/camera_rig.gd      Kamera med look-ahead og shake
+scripts/hud.gd             HUD, pause og slutskærm
+scripts/fx.gd              Partikler, lysglimt og chokbølger
+shaders/building.gdshader  Vinduer, lys og skade på bygninger
+tests/autoplay.tscn        Udvikler-test der spiller banen automatisk
+```
+
+Kør den automatiske test (spiller hele banen og afslutter):
+
+```
+godot --headless --path . res://tests/autoplay.tscn
+```
+
+## Nintendo Switch
+
+Godot kan ikke eksportere direkte til Switch fra den almindelige udgave. For at udgive på Switch skal man:
+
+1. Være godkendt udvikler hos Nintendo (Nintendo Developer Portal) og have et devkit.
+2. Bruge en licenseret Switch-port af Godot, f.eks. W4 Games (W4 Consoles) eller et porting-firma som Lone Wolf Technology eller Pineapple Works.
+
+Projektet er forberedt til det:
+
+- Input er mappet positionsbaseret til gamepad, og alt kan styres uden mus.
+- `rendering_method.mobile` er sat til Mobile-rendereren, som er den man typisk bruger på Switch. Forward+-effekterne (SSR, SSAO) skal slås fra eller ned på Switch, og skyggeopløsningen bør sænkes til 2048.
+- UI er lavet til 1920x1080 og skalerer ned til 1280x720 i håndholdt tilstand.
+- Al geometri er simple meshes med få draw calls; byens baggrund deler materialer.
+
+## Næste skridt
+
+- Rigtige modeller og animationer (f.eks. lavet i Blender) i stedet for de procedurale kaijuer.
+- Lyd og musik.
+- Flere spilbare kaijuer, greb/kast, flere baner og en historie-mode.
+- Co-op for to spillere (Joy-Con-deling).
