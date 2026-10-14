@@ -1,8 +1,8 @@
 class_name Player
 extends Kaiju
 ## A playable kaiju: 3-hit light combo, heavy slam, jump stomp, dodge,
-## rage mode, a rage attack (beam, nova or quake, depending on the hero) and
-## a super special unique to each hero. Learned skill tree abilities
+## rage skills paid for with rage (see RAGE_SKILLS) and a super special
+## unique to each hero. Learned skill tree abilities
 ## (Skills.mods) change stats and add effects to the attacks.
 ## `slot` (0-3) picks the controller; `hero` picks a Content.HEROES entry.
 
@@ -18,9 +18,19 @@ const RAGE_MAX := 100.0
 const BEAM_LEN := 42.0
 const BEAM_TIME := 2.6
 const BEAM_CHARGE := 0.4
-const RAGE_MODE_TIME := 10.0
 const SUPER_MAX := 100.0
 const SUPER_TIME := 3.2
+## Rage works like mana: dealing and taking damage fills the bar, and rage
+## skills spend it. Hold special and press another button to use one; tap
+## special on its own to switch rage mode on or off.
+##   strike  special + light: lunge forward with a heavy blow
+##   roar    special + jump:  knock enemies back and share rage with allies
+##   attack  special + heavy: the hero's rage attack (beam, nova or quake)
+##   mode    special tapped:  rage mode, drains RAGE_MODE_DRAIN per second
+const RAGE_SKILLS := {"strike": 25.0, "roar": 35.0, "attack": 50.0, "mode": 30.0}
+const RAGE_MODE_DRAIN := 10.0
+## A special press held longer than this without a combo does nothing.
+const SPECIAL_TAP := 0.45
 
 const ATTACKS := {
 	"light1": {"dur": 0.30, "active": 0.11, "dmg": 7.0, "kb": Vector3(4, 0, 0), "reach": 2.6, "radius": 2.3,
@@ -38,8 +48,15 @@ const ATTACKS := {
 		"pose": "swing", "shake": 0.35, "bdmg": 30.0, "next": ""},
 	"throw": {"dur": 0.45, "active": 0.2, "dmg": 0.0, "kb": Vector3.ZERO, "reach": 0.0, "radius": 0.0,
 		"pose": "throw", "shake": 0.0, "bdmg": 0.0, "next": ""},
+	# Rage skills ("rage": true): boosted by Focus, don't refill rage themselves.
+	"rage_strike": {"dur": 0.6, "active": 0.22, "dmg": 30.0, "kb": Vector3(24, 11, 0), "reach": 3.2, "radius": 3.6,
+		"pose": "jab_r", "shake": 0.5, "bdmg": 60.0, "next": "", "lunge": 30.0, "rage": true},
+	"roar": {"dur": 0.75, "active": 0.25, "dmg": 12.0, "kb": Vector3(18, 9, 0), "reach": 0.0, "radius": 9.0,
+		"pose": "roar", "shake": 0.45, "bdmg": 10.0, "next": "", "lunge": 0.0, "rage": true},
 }
 const GRAB_RANGE := 4.5
+## Button pressed with special held -> buffered rage skill.
+const RAGE_BUTTONS := {"light": "rage_strike", "jump": "rage_roar", "heavy": "rage_attack"}
 
 var slot := 0
 var hero := 0
@@ -48,6 +65,10 @@ var power := 1.0
 var state := S.FREE
 var state_t := 0.0
 var rage := 0.0
+## Size of the rage bar (RAGE_MAX plus Deep Rage from the skill tree).
+var rage_max := RAGE_MAX
+## How often each rage skill was used this stage (for tests and stats).
+var rage_uses := {}
 var atk: Dictionary = {}
 var _atk_done := false
 var _buffered := ""
@@ -58,6 +79,10 @@ var _beam_tick := 0.0
 var _beam: Node3D
 var _beam_light: OmniLight3D
 var _rage_announced := false
+## Special is held as a modifier for rage skills; _special_combo is set once
+## another button was pressed with it, so letting go doesn't toggle rage mode.
+var _special_held := -1.0
+var _special_combo := false
 var _death_tween: Tween
 var _h: Dictionary
 var _special := "beam"
@@ -94,6 +119,7 @@ func _ready() -> void:
 	power = _h["power"] * (1.0 + 0.02 * (level - 1)) * (1.0 + _m("power") / 100.0)
 	_special = _h["special"]
 	_special_time = BEAM_TIME * (1.5 if _has("long_special") else 1.0)
+	rage_max = RAGE_MAX + _m("deep_rage")
 	_barrier_up = _has("barrier")
 	add_to_group("player")
 	init_body(1.2, 6.0, Game.LAYER_PLAYER)
@@ -184,6 +210,8 @@ func add_super(amount: float) -> void:
 ## Called by the level for every defeated enemy.
 func on_enemy_killed() -> void:
 	add_super(4.0)
+	if _m("rampage") > 0.0:
+		add_rage(_m("rampage"))
 	if _has("vampire"):
 		heal(max_hp * 0.06)
 		FX.energy(global_position + Vector3(0, 3, 0), Color(1.0, 0.2, 0.3))
@@ -198,22 +226,98 @@ func _act(action: String) -> String:
 	return "p%d_%s" % [slot, action]
 
 
+## Fills the rage bar. Fury raises every gain; rage mode halves gains so it
+## can't keep itself going for ever.
 func add_rage(amount: float) -> void:
-	if state == S.BEAM or raging or dead:
+	if dead or amount <= 0.0:
 		return
-	rage = minf(rage + amount * (1.0 + _m("fury") / 100.0), RAGE_MAX)
-	rage_changed.emit(rage, RAGE_MAX)
-	if rage >= RAGE_MAX and not _rage_announced:
+	amount *= 1.0 + _m("fury") / 100.0
+	if raging:
+		amount *= 0.5
+	rage = minf(rage + amount, rage_max)
+	rage_changed.emit(rage, rage_max)
+	if rage >= rage_max and not _rage_announced:
 		_rage_announced = true
-		# In co-op the player's own HUD panel says READY instead of a banner.
-		var hud := get_tree().get_first_node_in_group("hud")
-		if hud and Game.players.size() == 1:
-			hud.show_message("RAGE READY!", 1.4)
+		FX.energy(global_position + Vector3(0, 4, 0), color())
+	elif rage < rage_max * 0.9:
+		_rage_announced = false
 
 
-## Full rage: the kaiju glows, hits 30% harder, moves 20% faster, takes
-## less damage and can't be staggered. The rage bar drains while it lasts,
-## and pressing special again spends what's left on the rage attack.
+## What a rage skill costs this hero (the "frugal" skill makes it cheaper).
+func rage_cost(skill: String) -> float:
+	return RAGE_SKILLS[skill] * (1.0 - minf(_m("frugal"), 50.0) / 100.0)
+
+
+## True if the hero can pay for a rage skill now (Blood Pact pays the
+## missing rage with health, but never the last of it, and not for rage mode).
+func can_afford(skill: String) -> bool:
+	if rage >= rage_cost(skill):
+		return true
+	return skill != "mode" and _has("blood_pact") and hp > _blood_price(rage_cost(skill) - rage) + 1.0
+
+
+func _blood_price(missing: float) -> float:
+	return missing * max_hp * 0.006
+
+
+## Pays for a rage skill. Wrath turns the spent rage into super meter.
+func _spend_rage(amount: float) -> void:
+	var paid := minf(amount, rage)
+	if amount > rage and _has("blood_pact"):
+		hp = maxf(hp - _blood_price(amount - rage), 1.0)
+		health_changed.emit(hp, max_hp)
+		FX.energy(global_position + Vector3(0, 3, 0), Color(0.8, 0.05, 0.1))
+	rage = maxf(rage - amount, 0.0)
+	rage_changed.emit(rage, rage_max)
+	if _has("wrath"):
+		add_super(paid * 0.5)
+
+
+## Uses a rage skill if the hero can pay for it. Returns true if it started.
+func _use_rage_skill(skill: String) -> bool:
+	if not can_afford(skill):
+		_no_rage()
+		return false
+	if skill != "mode" and not is_on_floor():
+		return false
+	rage_uses[skill] = int(rage_uses.get(skill, 0)) + 1
+	match skill:
+		"strike", "roar":
+			_spend_rage(rage_cost(skill))
+			if skill == "roar":
+				_roar()
+			_start_attack("rage_strike" if skill == "strike" else "roar")
+			FX.energy(global_position + Vector3(facing * 1.5, 4.0, 0), color())
+			rumble(0.4, 0.6, 0.2)
+		"attack":
+			_spend_rage(rage_cost(skill))
+			_start_beam()
+		"mode":
+			_enter_rage_mode()
+	return true
+
+
+## Not enough rage: a short red flash on the bar instead of the skill.
+func _no_rage() -> void:
+	var hud := get_tree().get_first_node_in_group("hud")
+	if hud and hud.has_method("flash_rage"):
+		hud.flash_rage(slot)
+
+
+## War Roar: other players nearby get rage too.
+func _roar() -> void:
+	FX.shockwave(global_position, 9.0, color())
+	FX.shockwave(global_position, 5.0, Color(1.0, 0.9, 0.6))
+	Game.shake(0.4)
+	for p in Game.living_players():
+		if p != self and p.global_position.distance_to(global_position) < 16.0:
+			p.add_rage(15.0)
+			FX.energy(p.global_position + Vector3(0, 4, 0), color())
+
+
+## Rage mode: the kaiju glows, hits 30% harder, moves 20% faster, takes
+## less damage and can't be staggered. It drains rage every second and ends
+## when the bar is empty or special is tapped again.
 func _enter_rage_mode() -> void:
 	raging = true
 	rumble(0.6, 0.8, 0.4)
@@ -229,9 +333,7 @@ func _enter_rage_mode() -> void:
 
 func _exit_rage_mode() -> void:
 	raging = false
-	rage = 0.0
-	_rage_announced = false
-	rage_changed.emit(rage, RAGE_MAX)
+	rage_changed.emit(rage, rage_max)
 
 
 func _physics_process(delta: float) -> void:
@@ -276,8 +378,8 @@ func _passives(delta: float) -> void:
 	if dead:
 		return
 	if raging and state != S.BEAM:
-		rage = maxf(rage - RAGE_MAX / RAGE_MODE_TIME * delta, 0.0)
-		rage_changed.emit(rage, RAGE_MAX)
+		rage = maxf(rage - RAGE_MODE_DRAIN * (1.0 - minf(_m("frugal"), 50.0) / 100.0) * delta, 0.0)
+		rage_changed.emit(rage, rage_max)
 		if rage <= 0.0:
 			_exit_rage_mode()
 	if _m("regen") > 0.0 and hp < max_hp:
@@ -310,10 +412,28 @@ func _read_buffer(delta: float) -> void:
 	_buffer_t -= delta
 	if _buffer_t <= 0.0:
 		_buffered = ""
-	for a in ["light", "heavy", "jump", "dodge", "special", "super"]:
+	# Special is a modifier: with it held, light/jump/heavy become rage skills.
+	var special := _act("special")
+	if Input.is_action_just_pressed(special):
+		_special_held = 0.0
+		_special_combo = false
+	elif _special_held >= 0.0:
+		if Input.is_action_pressed(special):
+			_special_held += delta
+		else:
+			if not _special_combo and _special_held < SPECIAL_TAP:
+				_buffered = "rage_mode"
+				_buffer_t = 0.3
+			_special_held = -1.0
+	for a in ["light", "heavy", "jump", "dodge", "super"]:
 		if Input.is_action_just_pressed(_act(a)):
-			_buffered = a
-			_buffer_t = 0.25
+			if _special_held >= 0.0 and a in RAGE_BUTTONS:
+				_special_combo = true
+				_buffered = RAGE_BUTTONS[a]
+				_buffer_t = 0.4
+			else:
+				_buffered = a
+				_buffer_t = 0.25
 
 
 func _consume() -> String:
@@ -355,14 +475,16 @@ func _state_free(input: Vector2) -> Vector3:
 					FX.shockwave(global_position, 4.5, color())
 					add_rage(3.0 * hits)
 				_set_state(S.DODGE)
-		"special":
-			if raging and is_on_floor():
-				_consume()
-				_start_beam()
+		"rage_strike", "rage_roar", "rage_attack":
+			var skill: String = _consume().trim_prefix("rage_")
+			if _use_rage_skill(skill) and state != S.FREE:
 				return Vector3.ZERO
-			elif rage >= RAGE_MAX and not raging:
-				_consume()
-				_enter_rage_mode()
+		"rage_mode":
+			_consume()
+			if raging:
+				_exit_rage_mode()
+			else:
+				_use_rage_skill("mode")
 		"super":
 			if super_meter >= SUPER_MAX and is_on_floor():
 				_consume()
@@ -389,13 +511,16 @@ func _state_attack() -> Vector3:
 		if _buffered == "light" and next != "" and (armed or atk["pose"] != "swing"):
 			_consume()
 			_start_attack(next)
-		elif _buffered == "heavy" and atk["pose"] != "slam" and atk["pose"] != "throw":
+		elif _buffered == "heavy" and atk["pose"] != "slam" and atk["pose"] != "throw" and not atk.get("rage", false):
 			_consume()
 			_start_attack("throw" if armed else "heavy")
+		elif _buffered.begins_with("rage_") and not atk.get("rage", false):
+			# Rage skills cut the recovery of a normal attack short.
+			_set_state(S.FREE)
 		elif state_t >= atk["dur"]:
 			_set_state(S.FREE)
 	if state_t < active:
-		return Vector3(3.5 * facing, 0, 0)
+		return Vector3(float(atk.get("lunge", 3.5)) * facing, 0, 0)
 	return Vector3.ZERO
 
 
@@ -478,9 +603,10 @@ func _do_hit() -> void:
 		return
 	var reach: float = atk["reach"]
 	var center := global_position + Vector3(facing * reach, 3.2, 0)
-	if atk["pose"] == "spin":
+	if atk["pose"] == "spin" or atk["pose"] == "roar":
 		center = global_position + Vector3(0, 2.6, 0)
-	var dmg: float = atk["dmg"] * power * _boost()
+	var rage_skill: bool = atk.get("rage", false)
+	var dmg: float = atk["dmg"] * (_special_power() if rage_skill else power * _boost())
 	var hits := strike(center, atk["radius"], dmg, atk["kb"], "enemies", atk["bdmg"] * power * _bdmg())
 	var finisher: bool = atk["pose"] == "spin" or atk["pose"] == "slam"
 	if atk["pose"] == "slam":
@@ -496,13 +622,18 @@ func _do_hit() -> void:
 		FX.energy(c, color())
 	if finisher and hits > 0 and _m("shock") > 0.0:
 		_chain_lightning(center, _m("shock") * power * _boost())
+	if atk["pose"] == "jab_r" and rage_skill:
+		FX.shockwave(center - Vector3(0, 3.2, 0), 4.0, color())
+		FX.energy(center, color())
+		FX.dust(global_position, 1.0)
 	if hits > 0:
 		rumble(0.3, 0.15 if dmg < 15.0 else 0.5, 0.1)
 		Game.shake(atk["shake"])
 		Game.hitstop(0.05 if dmg < 15.0 else 0.09)
 		for i in hits:
 			Game.register_hit()
-		add_rage(dmg * 0.45 * hits)
+		if not rage_skill:
+			add_rage(dmg * 0.45 * hits)
 
 
 func _bdmg() -> float:
@@ -576,10 +707,8 @@ func _start_beam() -> void:
 	FX.energy(global_position + Vector3(facing * 2.0, 5.0, 0), color())
 
 
-## Runs the hero's rage attack. All three drain what is left of the rage bar.
+## Runs the hero's rage attack (paid for up front, see _use_rage_skill).
 func _state_beam(delta: float) -> void:
-	rage = RAGE_MAX * (1.0 - state_t / _special_time)
-	rage_changed.emit(rage, RAGE_MAX)
 	if _special == "nova":
 		_state_nova()
 		return
@@ -605,7 +734,6 @@ func _state_beam(delta: float) -> void:
 
 
 func _end_special() -> void:
-	_exit_rage_mode()
 	_set_state(S.FREE)
 
 
@@ -715,7 +843,7 @@ func _on_strike_hit(target: Node, dmg: float) -> void:
 
 func _on_hurt(dmg: float, from: Node3D) -> void:
 	rumble(0.4, clampf(dmg / 30.0, 0.2, 1.0), 0.18)
-	add_rage(dmg * 0.35)
+	add_rage(dmg * 0.35 * (1.0 + _m("bloodrage") / 100.0))
 	Game.combo = 0
 	if _m("thorns") > 0.0 and from is Kaiju and from.is_in_group("enemies"):
 		from.take_hit(_m("thorns") * power, Vector3.ZERO, self)
@@ -748,7 +876,7 @@ func _animate(delta: float) -> void:
 	var on_floor := is_on_floor()
 	var spd := Vector2(velocity.x, velocity.z).length()
 	model.walk_amount = clampf(spd / SPEED, 0.0, 1.0) if (on_floor and state == S.FREE) else 0.0
-	model.glow = 1.0 if raging else rage / RAGE_MAX * 0.7
+	model.glow = 1.0 if raging else rage / rage_max * 0.7
 	model.eye_glow = 1.0 if (state == S.BEAM or state == S.SUPER or raging) else 0.0
 	var ar := 0.25
 	var al := 0.25
@@ -786,6 +914,11 @@ func _animate(delta: float) -> void:
 				"throw":
 					ar = lerpf(0.5, 3.2, p) if after == 0.0 else lerpf(3.2, 1.2, minf(after * 3.0, 1.0))
 					lean = -0.2 if after == 0.0 else 0.35
+				"roar":
+					jaw = 1.0 if after < 0.7 else lerpf(1.0, 0.0, (after - 0.7) / 0.3)
+					ar = 2.2
+					al = 2.2
+					lean = -0.35 if after == 0.0 else lerpf(-0.35, 0.0, after)
 				"slam":
 					if after == 0.0:
 						ar = lerpf(0.3, 3.0, p)
