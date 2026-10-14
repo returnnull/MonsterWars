@@ -97,20 +97,31 @@ Med våben i hånden er let angreb et sving (2-hits combo) og tungt angreb et ka
 | 9 | Island | Reykjavik | Nordlys, sne | Vulkan | Surtur | Alt undtagen stormløb |
 | 10 | Japan | Tokyo | Neon-nat | Radiotårn | Ryujin Prime | Alle seks angreb |
 
-Fjender: 31 almindelige fjendetyper (se `scripts/enemies.gd`) plus elite-kaijuer og bosser. Hvert land introducerer 1-3 nye typer og har sine egne lokale fjender, så blandingen bliver mere varieret undervejs:
+Fjender: 31 almindelige fjendetyper (se `scripts/enemies.gd`) plus elite-kaijuer og bosser. Hvert land introducerer 1-3 nye typer og har sine egne lokale fjender, så blandingen bliver mere varieret undervejs.
+
+Fjende-monstrene er bygget helt anderledes end heltene, så man altid kan se forskel (`scripts/creature_model.gd`). Hver type har en af seks kropstyper med sin egen kampstil:
+
+| Kropstype | Fjender | Kampstil |
+|---|---|---|
+| Firbenet bæst | Mossback, Rhinox, Venomaw, Pyrodon, Shellback, Saltjaw, Titanodon | Stejler før slag, stormløb, haleslag |
+| Insekt / edderkop | Skitter, Mite, Scythe, Boomtick, Scorpex, Broodmother | Zigzagger ind, bider og hopper tilbage |
+| Slange / orm | Nagling, Geysirwurm, Voltwyrm | Hugger frem fra afstand, graver sig ned |
+| Abe | Brawler, Gargling, Frostfang, Elite | Går på knoerne og kaster kampesten |
+| Golem | Magmite | Klippekrop med glødende revner, kaster magma |
+| Maskine | Mechadon | Firbenet kampmaskine med plasmakanon |
 
 | Land | Nye fjender | Lokal fjende |
 |---|---|---|
-| Danmark | Brawler, Drone, Skitter, Tank | Mossback (tung sump-kaiju, jordslag) |
-| Frankrig | Rhinox (stormløb), Gunship (helikopter, salver) | Gargling (vinget, springer) |
+| Danmark | Brawler (abe, kaster sten), Drone, Skitter (edderkop), Tank | Mossback (mosbegroet skjoldbæst, jordslag) |
+| Frankrig | Rhinox (næsehorn, stormløb), Gunship (helikopter, salver) | Gargling (vinget abe, springer) |
 | USA | Mite (sværm), SAM Launcher (målsøgende missiler), Bomber Jet | Mech Walker |
-| Brasilien | Scythe (mantis, kombo-hug), Boomtick (eksploderer) | Venomaw (syre-spytter) |
-| Egypten | Pyrodon (ild-ånde, brænder), Artillery (granater på markerede felter) | Scorpex (giftspyt) |
-| Indien | Wasp Drone (kamikaze), Broodmother (udklækker mites) | Nagling (kobra) |
-| Australien | Shellback (pansret) | Saltjaw (krokodille, stormløb) |
-| Rusland | Frostfang (is-ånde, gør dig langsom), Maser Cannon (ladet stråle), Titanodon (kæmpe) | |
-| Island | Geysirwurm (graver sig ned og bryder op under dig), Saucer | Magmite (lava) |
-| Japan | Voltwyrm (kalder lyn ned) | Mechadon (robot-kaiju) |
+| Brasilien | Scythe (mantis, kombo-hug), Boomtick (flåt, eksploderer) | Venomaw (tudse, syre-spytter) |
+| Egypten | Pyrodon (kraveøgle, ild-ånde), Artillery (granater på markerede felter) | Scorpex (skorpion, giftspyt) |
+| Indien | Wasp Drone (kamikaze), Broodmother (edderkop, udklækker mites) | Nagling (kobra, hug) |
+| Australien | Shellback (pansret skjoldbæst) | Saltjaw (krokodille, stormløb og hug) |
+| Rusland | Frostfang (yeti, is-ånde gør dig langsom), Maser Cannon (ladet stråle), Titanodon (kæmpe) | |
+| Island | Geysirwurm (kæmpeorm, bryder op under dig), Saucer | Magmite (lava-golem) |
+| Japan | Voltwyrm (lyn-ål, kalder lyn ned) | Mechadon (kampmaskine) |
 
 Fjenderne bliver stærkere bane for bane, og bosserne bliver større og hårdere land for land. Jordslag kan undgås ved at hoppe.
 

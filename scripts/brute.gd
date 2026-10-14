@@ -4,7 +4,10 @@ extends Kaiju
 ## whose data sets size, look, stats and move set, or "boss" (a country's
 ## boss; its moves come from `boss_def`).
 ## Moves: swipe, combo, charge, slam, breath, spit, summon, leap, explode,
-## burrow, shock. Every move is telegraphed (wind-up pose + glowing eyes).
+## burrow, shock, lunge, hurl. Every move is telegraphed (wind-up pose +
+## glowing eyes). Regular enemies use a CreatureModel body plan (the def's
+## "body"); bosses keep the upright KaijuModel. Insects fight hit-and-run,
+## zigzagging in and hopping back after a bite.
 
 signal spawned_minion(node: Node)
 
@@ -17,7 +20,7 @@ const PALETTES := [
 	[Color(0.18, 0.28, 0.35), Color(0.5, 0.55, 0.55), Color(1.0, 0.4, 0.4), Color(1.0, 0.5, 0.2)],
 ]
 const WINDUP := {"swipe": 0.55, "charge": 0.9, "slam": 0.9, "breath": 0.7, "summon": 1.0, "leap": 0.5,
-	"spit": 0.6, "combo": 0.45, "explode": 1.1, "burrow": 0.6, "shock": 0.8}
+	"spit": 0.6, "combo": 0.45, "explode": 1.1, "burrow": 0.6, "shock": 0.8, "lunge": 0.5, "hurl": 0.75}
 const ELEMENT_COLORS := {"fire": Color(1.0, 0.45, 0.08), "acid": Color(0.45, 1.0, 0.15),
 	"venom": Color(0.8, 0.3, 1.0), "ice": Color(0.55, 0.9, 1.0), "plasma": Color(0.3, 0.8, 1.0)}
 
@@ -49,6 +52,9 @@ var _summon := "drone"
 var _combo_n := 0
 var _burrowed := false
 var _score := 1500
+var _body := "kaiju"
+## Height of the body relative to a hero kaiju; places hit boxes and muzzles.
+var _tall := 1.0
 
 
 func is_boss() -> bool:
@@ -93,6 +99,7 @@ func _ready() -> void:
 		_score = def.get("score", 1500)
 		horns = def.get("horns", false)
 		extras = def.get("extras", [])
+		_body = def.get("body", "kaiju")
 		var cdef = def.get("colors", "random")
 		if cdef is Array:
 			colors = cdef
@@ -109,17 +116,22 @@ func _ready() -> void:
 				moves.append("breath")
 	max_hp *= hp_mul
 	dmg *= dmg_mul
-	init_body(1.2 * size_mul, 6.0 * size_mul * _shape.y, Game.LAYER_ENEMY)
+	_tall = _shape.y * float(CreatureModel.HEIGHT.get(_body, 1.0))
+	init_body(1.2 * size_mul, 6.0 * size_mul * _tall, Game.LAYER_ENEMY)
 	hit_radius = 1.6 * size_mul * maxf(1.0, (_shape.x + _shape.z) * 0.5)
-	hit_height = 3.0 * size_mul * _shape.y
+	hit_height = 3.0 * size_mul * maxf(_tall, 0.6)
 	z_min = -5.2
 	z_max = 3.0
-	model = KaijuModel.new()
+	if _body == "kaiju":
+		model = KaijuModel.new()
+	else:
+		var cm := CreatureModel.new()
+		cm.plan = _body
+		cm.extras = extras
+		model = cm
 	add_child(model)
 	model.scale = _shape * size_mul
 	model.build(colors[0], colors[1], colors[2], colors[3], horns)
-	if not extras.is_empty():
-		EnemyLook.add(model, extras, colors)
 	_z_bias = randf_range(-1.5, 1.5)
 	cooldown = randf_range(0.8, 1.8)
 
@@ -176,6 +188,9 @@ func _physics_process(delta: float) -> void:
 
 
 func _set_state(s: S) -> void:
+	if s == S.RECOVER and _body == "insect" and move in ["swipe", "combo"] and is_on_floor():
+		# Hit and run: hop back out of reach after biting.
+		knock = Vector3(-facing * 14.0, 7.0, 0)
 	state = s
 	state_t = 0.0
 
@@ -200,6 +215,8 @@ func _approach(p: Kaiju) -> Vector3:
 			mv.x = -signf(dx) * speed * 0.6
 	if absf(dz) > 0.5:
 		mv.z = signf(dz) * speed * 0.7
+	if _body == "insect" and absf(dx) > want:
+		mv.z += sin(state_t * 5.0 + _z_bias * 3.0) * speed * 0.6
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if e == self or not (e is Brute) or e.dead:
 			continue
@@ -215,6 +232,10 @@ func _approach(p: Kaiju) -> Vector3:
 			_set_state(S.WINDUP)
 			if move != "swipe" and move != "combo":
 				Game.shake(0.25 * clampf(size_mul, 0.4, 1.5))
+			if move == "hurl":
+				# Rips a chunk out of the street to throw.
+				FX.dust(global_position + Vector3(facing * 1.5 * size_mul, 0, 0), 1.2 * size_mul)
+				FX.debris_burst(global_position + Vector3(facing * 1.5 * size_mul, 0.5, 0), 0.8)
 			return Vector3.ZERO
 	return mv
 
@@ -231,6 +252,10 @@ func _pick_move(adx: float, adz: float, melee: float) -> String:
 		options.append("swipe")
 	if "charge" in moves and adx > 10.0:
 		options.append("charge")
+	if "lunge" in moves and adx > melee + 0.5 and adx < melee + 9.0 and adz < 1.6:
+		options.append("lunge")
+	if "hurl" in moves and adx > 8.0 and adx < 24.0 and randf() < 0.6:
+		options.append("hurl")
 	if "breath" in moves and adx > 6.0 and adx < 22.0:
 		options.append("breath")
 	if "spit" in moves and adx > 5.0 and adx < 20.0:
@@ -251,7 +276,7 @@ func _pick_move(adx: float, adz: float, melee: float) -> String:
 
 
 func _swipe(mul: float) -> void:
-	var center := global_position + Vector3(facing * 2.8 * size_mul * maxf(_shape.x, 1.0), 3.0 * size_mul * _shape.y, 0)
+	var center := global_position + Vector3(facing * 2.8 * size_mul * maxf(_shape.x, 1.0), 3.0 * size_mul * maxf(_tall, 0.6), 0)
 	if strike(center, 2.3 * size_mul, dmg * mul, Vector3(10, 4, 0), "player") > 0:
 		Game.shake(0.35)
 		Game.hitstop(0.06)
@@ -265,8 +290,11 @@ func _begin_act(p: Kaiju) -> void:
 		"combo":
 			_combo_n = 1
 			_swipe(0.8)
-		"charge":
+		"charge", "lunge":
 			_charge_hit = false
+		"hurl":
+			if p:
+				_hurl(p)
 		"slam":
 			# Ground shockwave around the kaiju. Jumping players dodge it.
 			var r := 7.0 * size_mul / 1.5
@@ -325,7 +353,7 @@ func _spit(p: Kaiju) -> void:
 	b.splash = 2.4
 	b.size = 1.3
 	get_parent().add_child(b)
-	var start := global_position + Vector3(facing * 2.0 * size_mul, 4.4 * size_mul * _shape.y, 0)
+	var start := global_position + Vector3(facing * 2.0 * size_mul, 4.4 * size_mul * _tall, 0)
 	b.global_position = start
 	var to := Vector3(p.global_position.x, 0.2, p.global_position.z)
 	var t := clampf(absf(to.x - start.x) / 15.0, 0.6, 1.3)
@@ -333,6 +361,28 @@ func _spit(p: Kaiju) -> void:
 	v.y += 0.5 * b.gravity * t
 	b.velocity = v
 	FX.light_flash(start, b.color, 4.0, 6.0, 0.15)
+
+
+## Throws a boulder (magma rock for a fire golem) in an arc at the target.
+func _hurl(p: Kaiju) -> void:
+	var b := Projectile.new()
+	b.style = "boulder"
+	b.element = _element if _body == "golem" else ""
+	b.color = _elem_color() if b.element != "" else Color(1.0, 0.65, 0.35)
+	b.damage = dmg * 1.1
+	b.gravity = 26.0
+	b.splash = 2.8
+	b.size = 1.5 * size_mul
+	get_parent().add_child(b)
+	var start := global_position + Vector3(facing * 1.0 * size_mul, 6.0 * size_mul * _tall, 0)
+	b.global_position = start
+	var to := Vector3(p.global_position.x, 0.2, p.global_position.z)
+	var t := clampf(absf(to.x - start.x) / 16.0, 0.7, 1.4)
+	var v := (to - start) / t
+	v.y += 0.5 * b.gravity * t
+	b.velocity = v
+	FX.debris_burst(start, 0.6)
+	Game.shake(0.3)
 
 
 func _do_summon() -> void:
@@ -410,9 +460,20 @@ func _surface(attack: bool) -> void:
 
 func _act(delta: float, p: Kaiju) -> Vector3:
 	match move:
-		"swipe", "slam", "summon", "spit", "shock":
+		"swipe", "slam", "summon", "spit", "shock", "hurl":
 			if state_t >= 0.3:
 				_set_state(S.RECOVER)
+		"lunge":
+			# Fast strike from range: the head snaps forward and back.
+			var head := global_position + Vector3(facing * (2.5 + 1.5 * size_mul), 2.6 * size_mul * _tall + 0.5, 0)
+			if not _charge_hit and strike(head, 2.4 * size_mul, dmg * 1.15, Vector3(14, 6, 0), "player") > 0:
+				_charge_hit = true
+				Game.shake(0.4)
+				Game.hitstop(0.08)
+			if state_t >= 0.3:
+				_set_state(S.RECOVER)
+				return Vector3.ZERO
+			return Vector3(facing * 26.0, 0, 0)
 		"combo":
 			if _combo_n < 3 and state_t >= 0.22 * _combo_n:
 				_combo_n += 1
@@ -444,7 +505,7 @@ func _act(delta: float, p: Kaiju) -> Vector3:
 				b.element = "" if is_boss() else _element
 				b.damage = dmg * 0.5
 				get_parent().add_child(b)
-				b.global_position = global_position + Vector3(facing * 2.4 * size_mul * _shape.x, 4.6 * size_mul * _shape.y, 0)
+				b.global_position = global_position + Vector3(facing * 2.4 * size_mul * _shape.x, 4.6 * size_mul * _tall, 0)
 				var aim := (p.hit_center() - b.global_position).normalized()
 				b.velocity = aim.rotated(Vector3.UP, randf_range(-0.12, 0.12)) * 22.0
 			if state_t >= 1.0:
@@ -554,6 +615,16 @@ func _animate(delta: float, mv: Vector3) -> void:
 				"breath", "spit":
 					jaw = 0.6
 					lean = -0.45
+				"lunge":
+					jaw = 0.7
+					lean = -0.4
+					ar = 1.6
+					al = 1.6
+				"hurl":
+					ar = 3.0
+					al = 3.0
+					lean = -0.3
+					jaw = 0.6
 				"leap", "burrow":
 					lean = 0.5
 					ar = -0.5
@@ -594,6 +665,13 @@ func _animate(delta: float, mv: Vector3) -> void:
 					jaw = 1.0
 					lean = 0.1
 					model.eye_glow = 1.0
+				"lunge":
+					jaw = 1.0
+					lean = 0.9
+				"hurl":
+					ar = 0.4
+					al = 0.4
+					lean = 0.5
 				"summon", "shock":
 					jaw = 1.0
 					ar = 2.2

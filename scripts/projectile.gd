@@ -3,7 +3,7 @@ extends Node3D
 ## Enemy shot: plasma bolts, breath, bullets, tank shells, bombs, lobbed
 ## spit and homing missiles. Dodging (i-frames) lets it pass through.
 ##
-## style: "orb", "bullet", "shell", "bomb", "glob", "missile".
+## style: "orb", "bullet", "shell", "bomb", "glob", "missile", "boulder".
 ## element: "", "fire" (burns), "acid"/"venom" (corrodes), "ice" (slows).
 ## splash > 0 makes it burst on impact (or on the ground) and hurt everyone
 ## inside that radius.
@@ -57,6 +57,14 @@ func _ready() -> void:
 				cone.bottom_radius = 0.18 * size
 				cone.height = 1.2 * size
 				_mesh(cone, mat, Vector3(-1.0 * size, 0, 0), Vector3(0, 0, PI / 2))
+		"boulder":
+			var rock := StandardMaterial3D.new()
+			rock.albedo_color = Color(0.36, 0.33, 0.3)
+			rock.roughness = 0.95
+			for i in 3:
+				var b := BoxMesh.new()
+				b.size = Vector3.ONE * (0.95 - i * 0.15) * size
+				_mesh(b, rock if i < 2 else mat, Vector3(i * 0.1, -i * 0.08, i * 0.12) * size, Vector3(i * 0.7, i * 1.1, i * 0.4))
 		"bullet":
 			var b := CapsuleMesh.new()
 			b.radius = 0.12 * size
@@ -94,7 +102,9 @@ func _physics_process(delta: float) -> void:
 			var want: Vector3 = (target.hit_center() - global_position).normalized() * _speed
 			velocity = velocity.lerp(want, clampf(homing * delta, 0.0, 1.0)).normalized() * _speed
 	global_position += velocity * delta
-	if velocity.length() > 0.1:
+	if style == "boulder":
+		rotation += Vector3(4.0, 0.0, -6.0) * delta
+	elif velocity.length() > 0.1:
 		rotation.y = atan2(-velocity.z, velocity.x)
 		rotation.z = atan2(velocity.y, Vector2(velocity.x, velocity.z).length())
 	if style == "missile" and fmod(_t, 0.09) < delta:
