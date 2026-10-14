@@ -213,7 +213,10 @@ func _process(delta: float) -> void:
 	if _go_label.visible:
 		_go_label.modulate.a = 0.4 + 0.6 * pulse
 		_go_label.position.x = 1560.0 + pulse * 24.0
-	if _t > 9.0 and _controls.modulate.a > 0.0:
+	if TouchControls.shown:
+		# The keyboard/controller hints would sit under the touch stick.
+		_controls.modulate.a = 0.0
+	elif _t > 9.0 and _controls.modulate.a > 0.0:
 		_controls.modulate.a = maxf(_controls.modulate.a - delta, 0.0)
 
 
