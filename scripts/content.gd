@@ -201,21 +201,60 @@ static func boss(country_idx: int) -> Dictionary:
 	return b
 
 
+## Districts a level can take place in. Each has its own street, buildings
+## and the kind of barricade that closes the arenas.
+const DISTRICTS := {
+	"downtown": {"name": "DOWNTOWN", "gate": "barricade"},
+	"old_town": {"name": "OLD TOWN", "gate": "wreck"},
+	"harbor": {"name": "HARBOR", "gate": "containers"},
+	"industrial": {"name": "INDUSTRIAL ZONE", "gate": "energy"},
+	"park": {"name": "CITY PARK", "gate": "tank_traps"},
+}
+## Enemy mixes: a level leans on one class of military unit.
+const THEMES := {
+	"mixed": {"name": "", "class": ""},
+	"armor": {"name": "ARMORED COLUMN", "class": "ground"},
+	"air": {"name": "AIR RAID", "class": "air"},
+	"infantry": {"name": "STREET FIGHT", "class": "infantry"},
+}
+
+
 ## Builds level `level_idx` (0-9) of country `country_idx` (0-9). Same input,
-## same level. Level 10 of each country ends with that country's boss;
-## levels 5 and 8 end with an elite.
+## same level. Every level is a walk to the right through a row of arenas:
+## a barricade closes each arena until its wave is beaten. Levels differ in
+## district, time of day / weather, number and size of arenas, and enemy mix.
+## Level 10 of each country ends with that country's boss; levels 5 and 8
+## end with an elite.
 static func level(country_idx: int, level_idx: int) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7919 + country_idx * 101 + level_idx * 13
 	var d := country_idx * LEVELS_PER_COUNTRY + level_idx
 	var is_boss := level_idx == LEVELS_PER_COUNTRY - 1
+	var district := _district(country_idx, level_idx)
+	var mood := _mood(country_idx, level_idx)
+	var theme := "mixed"
+	if not is_boss and level_idx > 0:
+		theme = ["mixed", "armor", "air", "infantry"][(level_idx + country_idx * 3) % 4]
+	# Some levels are a long gauntlet of small fights, others a few big ones.
 	var wave_count := 3 if is_boss else 2 + level_idx / 4
+	var budget_mul := 1.0
+	match (level_idx * 7 + country_idx * 3) % 5:
+		0:
+			if not is_boss and level_idx > 0:
+				wave_count += 2
+				budget_mul = 0.65
+		1:
+			if not is_boss and wave_count > 2:
+				wave_count -= 1
+				budget_mul = 1.35
 	var waves: Array = []
-	var x := 35.0
+	var x := rng.randf_range(32.0, 45.0)
 	var pool := Enemies.pool(country_idx, level_idx)
+	var themed := _themed_pool(pool, THEMES[theme]["class"])
 	for w in wave_count:
 		var spawn: Array = []
-		if is_boss and w == wave_count - 1:
+		var last := w == wave_count - 1
+		if is_boss and last:
 			spawn = ["boss"]
 			var support := 1 if country_idx < 5 else 2
 			for i in support:
@@ -223,14 +262,14 @@ static func level(country_idx: int, level_idx: int) -> Dictionary:
 		else:
 			# Spend a threat budget on enemies from this level's pool. The
 			# types this level introduces are guaranteed in wave 1.
-			var budget := minf(1.5 * (2.0 + d / 18.0 + rng.randf() + w * 0.5), 11.0)
+			var budget := minf(1.5 * (2.0 + d / 18.0 + rng.randf() + w * 0.5), 11.0) * budget_mul
 			if w == 0:
 				for id in Enemies.introduced(country_idx, level_idx):
 					budget -= _add(spawn, id)
 			var guard := 0
 			while budget > 0.3 and spawn.size() < 14 and guard < 24:
 				guard += 1
-				var id := Enemies.pick(rng, pool)
+				var id := Enemies.pick(rng, themed)
 				# Every wave leads with something on the ground.
 				if spawn.is_empty() and Enemies.get_def(id)["class"] == "air":
 					continue
@@ -238,22 +277,128 @@ static func level(country_idx: int, level_idx: int) -> Dictionary:
 				if cost > budget + 0.8 and not spawn.is_empty():
 					continue
 				budget -= _add(spawn, id)
-			if w == wave_count - 1 and (level_idx == 4 or level_idx == 7):
+			if last and (level_idx == 4 or level_idx == 7):
 				spawn.append("elite")
-		var title := "BOSS" if (is_boss and w == wave_count - 1) else "WAVE %d" % (w + 1)
-		waves.append({"x": x, "title": title, "spawn": spawn})
-		x += rng.randf_range(55.0, 70.0)
+		var half := 22.0 if is_boss and last else rng.randf_range(15.0, 21.0)
+		var gate: String = DISTRICTS[district]["gate"]
+		if is_boss and last:
+			gate = "energy"
+		var title := "BOSS" if (is_boss and last) else "WAVE %d" % (w + 1)
+		waves.append({"x": x, "half": half, "gate": gate, "title": title, "spawn": spawn})
+		x += half + rng.randf_range(25.0, 60.0)
+	var sub: Array = [DISTRICTS[district]["name"]]
+	if THEMES[theme]["name"] != "":
+		sub.append(THEMES[theme]["name"])
 	return {
 		"country": country_idx,
 		"index": level_idx,
 		"global": d,
 		"title": "%s %d-%d" % [country(country_idx)["city"].to_upper(), country_idx + 1, level_idx + 1],
+		"subtitle": "  -  ".join(sub),
+		"district": district,
+		"mood": mood,
+		"theme": theme,
 		"waves": waves,
 		"length": x - 30.0,
 		"hp_mul": 1.0 + d * 0.035,
 		"dmg_mul": 1.0 + d * 0.012,
 		"seed": rng.seed,
 	}
+
+
+## The district of a level. Each country walks through all five, two
+## levels each, never the same district twice in a row; the boss fight is
+## always downtown.
+static func _district(country_idx: int, level_idx: int) -> String:
+	if level_idx == LEVELS_PER_COUNTRY - 1:
+		return "downtown"
+	var order := ["downtown", "harbor", "old_town", "industrial", "park"]
+	return order[(level_idx + country_idx * 2) % order.size()]
+
+
+## Time of day / weather for a level: "" (the country's own look), "dusk",
+## "night", "storm" or "fog". Night countries never get "night".
+static func _mood(country_idx: int, level_idx: int) -> String:
+	var night: bool = country(country_idx).get("look", {}).get("night", false)
+	var moods := ["", "dusk", "", "storm", "fog"] if night else ["", "dusk", "night", "storm", "", "fog"]
+	if level_idx == LEVELS_PER_COUNTRY - 1:
+		return "" if night else "dusk"
+	return moods[(level_idx * 7 + country_idx) % moods.size()]
+
+
+## The level's enemy pool with one class weighted up (or as is for "").
+static func _themed_pool(pool: Array, cls: String) -> Array:
+	if cls == "":
+		return pool
+	return pool.map(func(e: Array) -> Array:
+		return [e[0], float(e[1]) * (3.0 if Enemies.get_def(e[0])["class"] == cls else 1.0)])
+
+
+## Returns a copy of `country` with a level's mood applied to its sky,
+## light, fog and weather (StageBuilder reads the result).
+static func with_mood(c: Dictionary, mood: String) -> Dictionary:
+	var out := c.duplicate(true)
+	var look: Dictionary = out.get("look", {})
+	out["look"] = look
+	match mood:
+		"dusk":
+			out["sky_top"] = Color(0.12, 0.1, 0.28)
+			out["sky_horizon"] = Color(1.0, 0.45, 0.2)
+			out["ground_horizon"] = Color(0.3, 0.15, 0.12)
+			out["sun"] = Color(1.0, 0.55, 0.25)
+			out["sun_energy"] = float(c["sun_energy"]) * 0.8
+			out["sun_rot"] = Vector3(-14, -60, 0)
+			out["fill"] = Color(0.5, 0.45, 0.9)
+			out["fog"] = Color(0.55, 0.3, 0.3)
+			look["cloud_color"] = Color(1.0, 0.6, 0.4)
+			look["cloud_shade"] = Color(0.35, 0.2, 0.3)
+			look["city_glow"] = Color(0.25, 0.1, 0.05)
+			look["grade_shadow"] = Color(0.04, 0.0, 0.05)
+			out["lit"] = maxf(float(c["lit"]), 0.25)
+		"night":
+			out["sky_top"] = Color(0.01, 0.02, 0.06)
+			out["sky_horizon"] = Color(0.08, 0.12, 0.25)
+			out["ground_horizon"] = Color(0.05, 0.06, 0.1)
+			out["sun"] = Color(0.6, 0.7, 1.0)
+			out["sun_energy"] = 0.5
+			out["sun_rot"] = Vector3(-40, 140, 0)
+			out["fill"] = Color(0.45, 0.55, 1.0)
+			out["fill_energy"] = 0.8
+			out["ambient"] = 0.6
+			out["exposure"] = 1.2
+			out["fog"] = Color(0.06, 0.08, 0.15)
+			out["lit"] = 0.4
+			out["emission"] = 1.4
+			look["night"] = true
+			look["stars"] = 0.8
+			look["cloud_cover"] = 0.3
+			look["cloud_color"] = Color(0.15, 0.17, 0.25)
+			look["cloud_shade"] = Color(0.03, 0.04, 0.08)
+			look["city_glow"] = Color(0.2, 0.15, 0.08)
+			look["grade_shadow"] = Color(0.0, 0.01, 0.06)
+			look["sun_strength"] = 0.3
+			look["shop"] = maxf(float(look.get("shop", 1.0)), 1.2)
+		"storm":
+			out["sky_top"] = Color(c["sky_top"]).lerp(Color(0.12, 0.13, 0.15), 0.7)
+			out["sky_horizon"] = Color(c["sky_horizon"]).lerp(Color(0.35, 0.37, 0.4), 0.7)
+			out["sun_energy"] = float(c["sun_energy"]) * 0.45
+			out["fog"] = Color(c["fog"]).lerp(Color(0.3, 0.32, 0.35), 0.6)
+			out["fog_density"] = float(c["fog_density"]) * 1.8
+			out["lit"] = maxf(float(c["lit"]), 0.3)
+			look["cloud_cover"] = 0.95
+			look["cloud_color"] = Color(0.4, 0.42, 0.45)
+			look["cloud_shade"] = Color(0.12, 0.13, 0.15)
+			look["wet"] = maxf(float(look.get("wet", 0.0)), 0.8)
+			look["weather"] = "snow" if float(look.get("snow", 0.0)) > 0.5 else "rain"
+			look["saturation"] = 0.85
+			look["lightning"] = true
+		"fog":
+			out["fog"] = Color(c["fog"]).lerp(Color(0.7, 0.72, 0.75), 0.5)
+			out["fog_density"] = float(c["fog_density"]) * 2.6
+			out["sky_horizon"] = Color(c["sky_horizon"]).lerp(Color(0.7, 0.72, 0.75), 0.5)
+			look["cloud_cover"] = maxf(float(look.get("cloud_cover", 0.4)), 0.8)
+			look["saturation"] = 0.9
+	return out
 
 
 ## Appends `id` (as many times as its group size) and returns its threat cost.

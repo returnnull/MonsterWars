@@ -11,6 +11,8 @@ var _score_label: Label
 var _destroy_label: Label
 var _combo_label: Label
 var _msg_label: Label
+var _sub_label: Label
+var _go_label: Label
 var _boss_box: Control
 var _boss_bar: ProgressBar
 var _controls: Label
@@ -57,6 +59,12 @@ func _ready() -> void:
 	_msg_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_msg_label.pivot_offset = Vector2(960, 80)
 	_msg_label.modulate.a = 0.0
+	_sub_label = _label(_msg_label, "", Vector2(0, 150), 40, Color(1.0, 0.8, 0.55))
+	_sub_label.size = Vector2(1920, 60)
+	_sub_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# Blinks at the right edge while the way on is open.
+	_go_label = _label(root, "GO  >>", Vector2(1560, 470), 72, Color(1.0, 0.85, 0.3))
+	_go_label.visible = false
 
 	_boss_box = Control.new()
 	_boss_box.position = Vector2(260, 950)
@@ -134,8 +142,9 @@ func show_boss(boss: Kaiju) -> void:
 	boss.health_changed.connect(func(hp: float, mx: float) -> void: _boss_bar.value = 100.0 * hp / mx)
 
 
-func show_message(text: String, duration: float = 2.0) -> void:
+func show_message(text: String, duration: float = 2.0, sub: String = "") -> void:
 	_msg_label.text = text
+	_sub_label.text = sub
 	if _msg_tween:
 		_msg_tween.kill()
 	_msg_label.scale = Vector2(1.4, 1.4)
@@ -147,8 +156,14 @@ func show_message(text: String, duration: float = 2.0) -> void:
 	_msg_tween.tween_property(_msg_label, "modulate:a", 0.0, 0.4)
 
 
+## Shows or hides the blinking "GO >>" arrow.
+func show_go(on: bool) -> void:
+	_go_label.visible = on
+
+
 func show_end(title: String, did_win: bool) -> void:
 	_ended = true
+	_go_label.visible = false
 	won = did_win
 	_boss_box.visible = false
 	_end_title.text = title
@@ -195,6 +210,9 @@ func _process(delta: float) -> void:
 		p["super_fill"].bg_color = Color(0.75 + pulse * 0.25, 0.4 + pulse * 0.5, 1.0) if sfull else Color(0.6, 0.35, 1.0)
 		p["super_label"].text = "SUPER! [ZL]" if sfull else "SUPER"
 		p["join"].modulate.a = 0.35 + 0.4 * pulse
+	if _go_label.visible:
+		_go_label.modulate.a = 0.4 + 0.6 * pulse
+		_go_label.position.x = 1560.0 + pulse * 24.0
 	if _t > 9.0 and _controls.modulate.a > 0.0:
 		_controls.modulate.a = maxf(_controls.modulate.a - delta, 0.0)
 
