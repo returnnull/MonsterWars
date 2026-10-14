@@ -65,6 +65,7 @@ func _ready() -> void:
 		"Dodge: Shift / A    Rage mode, then rage attack: L key / R    Super: U key / ZL    Pause: Esc / +\n" +
 		"Knock down buildings, then press heavy (K / X) on the wreckage to pick up a weapon",
 		Vector2(48, 925), 22, Color(1, 1, 1, 0.85))
+	_controls.visible = bool(Game.settings["hints"])
 
 	_pause_panel = _overlay(root, "PAUSED", "Resume: Esc / +      World map: Shift / A")
 	_end_panel = _overlay(root, "", "")

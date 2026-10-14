@@ -17,6 +17,9 @@ const LAYER_ENEMY := 4
 const LAYER_DEBRIS := 8
 const MAX_PLAYERS := 4
 const SAVE_PATH := "user://save.json"
+const SETTINGS_PATH := "user://settings.json"
+## Defaults for the options screen. "shake" is a percentage (0-100).
+const DEFAULT_SETTINGS := {"rumble": true, "shake": 100, "fullscreen": false, "hints": true}
 
 var score := 0
 var buildings_total := 0
@@ -38,6 +41,8 @@ var hero_xp: Array = []
 var hero_skills: Array = []
 ## XP each hero earned in the level being played (for the end screen).
 var xp_gained := {}
+## Player options, saved separately from progress so a reset keeps them.
+var settings := DEFAULT_SETTINGS.duplicate()
 
 var _combo_timer := 0.0
 var _hitstop_active := false
@@ -48,6 +53,7 @@ func _ready() -> void:
 	_setup_input()
 	_reset_heroes()
 	load_progress()
+	load_settings()
 
 
 func _reset_heroes() -> void:
@@ -207,9 +213,51 @@ func load_progress() -> void:
 				hero_skills[i][j] = clampi(int(sk[i][j]), 0, Skills.max_rank(j))
 
 
+func set_setting(key: String, value: Variant) -> void:
+	settings[key] = value
+	apply_settings()
+	save_settings()
+
+
+func apply_settings() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	var full := bool(settings["fullscreen"])
+	var mode := DisplayServer.window_get_mode()
+	var is_full := mode == DisplayServer.WINDOW_MODE_FULLSCREEN or mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
+	if full != is_full:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if full else DisplayServer.WINDOW_MODE_WINDOWED)
+
+
+func save_settings() -> void:
+	if has_meta("no_save"):
+		return
+	var f := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify(settings))
+
+
+func load_settings() -> void:
+	if FileAccess.file_exists(SETTINGS_PATH):
+		var f := FileAccess.open(SETTINGS_PATH, FileAccess.READ)
+		var data = JSON.parse_string(f.get_as_text()) if f else null
+		if data is Dictionary:
+			for k in DEFAULT_SETTINGS:
+				if data.has(k):
+					settings[k] = type_convert(data[k], typeof(DEFAULT_SETTINGS[k]))
+	settings["shake"] = clampi(int(settings["shake"]), 0, 100)
+	apply_settings()
+
+
+## Starts a rumble on a gamepad, unless rumble is switched off in the options.
+func rumble(device: int, weak: float, strong: float, duration: float) -> void:
+	if settings["rumble"] and device in Input.get_connected_joypads():
+		Input.start_joy_vibration(device, weak, strong, duration)
+
+
 func shake(amount: float) -> void:
 	if camera_rig and is_instance_valid(camera_rig):
-		camera_rig.shake(amount)
+		camera_rig.shake(amount * float(settings["shake"]) / 100.0)
 
 
 ## Freezes time for a few frames to sell the weight of a hit.

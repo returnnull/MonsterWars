@@ -190,8 +190,7 @@ func on_enemy_killed() -> void:
 
 ## Controller rumble for this player's gamepad (slot N = gamepad N).
 func rumble(weak: float, strong: float, duration: float) -> void:
-	if slot in Input.get_connected_joypads():
-		Input.start_joy_vibration(slot, weak, strong, duration)
+	Game.rumble(slot, weak, strong, duration)
 
 
 func _act(action: String) -> String:
