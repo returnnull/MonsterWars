@@ -107,6 +107,8 @@ func _clear() -> void:
 	_sk_cards.clear()
 	_items.clear()
 	_set_stage_visible(false)
+	_root.modulate.a = 0.0
+	_root.create_tween().tween_property(_root, "modulate:a", 1.0, 0.2)
 
 
 func _any_just(action: String) -> bool:
@@ -624,6 +626,7 @@ func _refresh_slot(slot: int) -> void:
 func _show_map() -> void:
 	_clear()
 	screen = Screen.MAP
+	_backdrop()
 	_center(_label(_root, "WORLD MAP", Vector2(0, 30), 64, Color(1.0, 0.9, 0.75)))
 	_center(_label(_root, "Move: choose country    B / Space: select    A / Shift: back to kaiju select",
 		Vector2(0, 1010), 24, Color(1, 1, 1, 0.75)))
@@ -647,6 +650,7 @@ func _show_map() -> void:
 		sky.size = Vector2(304, 150)
 		sky.stretch_mode = TextureRect.STRETCH_SCALE
 		card.add_child(sky)
+		_skyline(sky, i, Color(c["sky_top"]).darkened(0.75))
 		_label(card, "%d" % (i + 1), Vector2(20, 14), 40, Color(1, 1, 1, 0.9))
 		_label(card, c["name"], Vector2(20, 170), 38, Color.WHITE)
 		_label(card, c["city"], Vector2(20, 218), 26, Color(1, 1, 1, 0.75))
@@ -654,10 +658,13 @@ func _show_map() -> void:
 		_label(card, "BOSS: " + boss["name"], Vector2(20, 270), 22, Color(boss["accent"]).lerp(Color.WHITE, 0.3))
 		var done := clampi(Game.unlocked - i * Content.LEVELS_PER_COUNTRY, 0, Content.LEVELS_PER_COUNTRY)
 		var locked := i * Content.LEVELS_PER_COUNTRY > Game.unlocked
-		_label(card, "LOCKED" if locked else "%d / 10 cleared" % done, Vector2(20, 320), 26,
+		_label(card, "LOCKED" if locked else "%d / 10 cleared" % done, Vector2(20, 312), 26,
 			Color(1, 0.4, 0.4) if locked else Color(0.6, 1.0, 0.7))
+		if not locked:
+			_progress(card, Vector2(20, 352), 280.0, float(done) / Content.LEVELS_PER_COUNTRY)
 		if locked:
 			card.modulate = Color(0.55, 0.55, 0.6)
+			_lock_badge(card)
 		_map_cards.append(card)
 	_highlight(_map_cards, _country)
 
@@ -687,6 +694,7 @@ func _map_input() -> void:
 func _show_levels() -> void:
 	_clear()
 	screen = Screen.LEVELS
+	_backdrop()
 	var c := Content.country(_country)
 	_center(_label(_root, "%s  -  %s" % [c["name"], c["city"]], Vector2(0, 40), 64, Color(1.0, 0.9, 0.75)))
 	_center(_label(_root, "Move: choose level    B / Space: play    A / Shift: back to map",
@@ -714,8 +722,13 @@ func _show_levels() -> void:
 		var locked := g > Game.unlocked
 		_label(card, "LOCKED" if locked else ("Best %d" % best if best > 0 else "New"), Vector2(24, 250), 26,
 			Color(1, 0.4, 0.4) if locked else Color(0.6, 1.0, 0.7))
+		if boss:
+			card.set_meta("tint", Color(0.3, 0.06, 0.06, 0.92))
+		if g < Game.unlocked:
+			_label(card, "CLEARED", Vector2(24, 212), 22, Color(0.6, 1.0, 0.7))
 		if locked:
 			card.modulate = Color(0.55, 0.55, 0.6)
+			_lock_badge(card)
 		_level_cards.append(card)
 	_highlight(_level_cards, _level)
 
@@ -856,11 +869,88 @@ func _skills_input() -> void:
 func _highlight(cards: Array[Panel], idx: int) -> void:
 	for i in cards.size():
 		var sel := i == idx
-		cards[i].add_theme_stylebox_override("panel", _card_style(
-			Color(0.14, 0.14, 0.22, 0.95) if sel else Color(0.09, 0.09, 0.14, 0.9),
-			Color(1.0, 0.75, 0.3) if sel else Color(1, 1, 1, 0.12)))
+		var bg: Color = cards[i].get_meta("tint", Color(0.09, 0.09, 0.14, 0.9))
+		var st := _card_style(bg.lightened(0.08) if sel else bg,
+			Color(1.0, 0.75, 0.3) if sel else Color(1, 1, 1, 0.12))
+		if sel:
+			st.shadow_color = Color(1.0, 0.55, 0.15, 0.55)
+			st.shadow_size = 22
+		cards[i].add_theme_stylebox_override("panel", st)
 		cards[i].pivot_offset = cards[i].size * 0.5
-		cards[i].scale = Vector2.ONE * (1.06 if sel else 1.0)
+		cards[i].z_index = 1 if sel else 0
+		var tw := cards[i].create_tween()
+		tw.tween_property(cards[i], "scale", Vector2.ONE * (1.06 if sel else 1.0), 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+## The title scene, dimmed, behind the map and level select.
+func _backdrop() -> void:
+	_set_stage_visible(true)
+	var dim := ColorRect.new()
+	dim.color = Color(0.02, 0.02, 0.06, 0.62)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(dim)
+
+
+## A row of city towers with a few lit windows along the bottom of a sky strip.
+func _skyline(sky: Control, seed_value: int, color: Color) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value * 31 + 5
+	var x := 0.0
+	while x < sky.size.x:
+		var w := rng.randf_range(14.0, 34.0)
+		var h := rng.randf_range(24.0, 80.0)
+		var tower := ColorRect.new()
+		tower.color = color
+		tower.position = Vector2(x, sky.size.y - h)
+		tower.size = Vector2(minf(w, sky.size.x - x), h)
+		tower.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		sky.add_child(tower)
+		for j in int(h / 12.0):
+			if rng.randf() < 0.3 and w > 16.0:
+				var win := ColorRect.new()
+				win.color = Color(1.0, 0.85, 0.5, 0.8)
+				win.position = Vector2(rng.randf_range(3.0, w - 9.0), 6.0 + j * 12.0)
+				win.size = Vector2(5, 4)
+				tower.add_child(win)
+		x += w + rng.randf_range(0.0, 6.0)
+
+
+func _progress(parent: Control, pos: Vector2, width: float, frac: float) -> void:
+	var bar := ProgressBar.new()
+	bar.position = pos
+	bar.size = Vector2(width, 10)
+	bar.show_percentage = false
+	bar.max_value = 1.0
+	bar.value = frac
+	bar.add_theme_stylebox_override("background", _card_style(Color(0, 0, 0, 0.5), Color(0, 0, 0, 0)))
+	bar.add_theme_stylebox_override("fill", _card_style(Color(0.45, 0.95, 0.6), Color(0, 0, 0, 0)))
+	parent.add_child(bar)
+
+
+## A padlock drawn from two boxes in the card's top-right corner.
+func _lock_badge(card: Control) -> void:
+	var lock := Control.new()
+	lock.position = Vector2(card.size.x - 70, 18)
+	card.add_child(lock)
+	var shackle := Panel.new()
+	shackle.position = Vector2(10, 0)
+	shackle.size = Vector2(30, 34)
+	var ss := StyleBoxFlat.new()
+	ss.draw_center = false
+	ss.border_color = Color(0.9, 0.9, 0.95)
+	ss.set_border_width_all(6)
+	ss.set_corner_radius_all(14)
+	shackle.add_theme_stylebox_override("panel", ss)
+	lock.add_child(shackle)
+	var body := Panel.new()
+	body.position = Vector2(0, 20)
+	body.size = Vector2(50, 36)
+	var bs := StyleBoxFlat.new()
+	bs.bg_color = Color(0.9, 0.9, 0.95)
+	bs.set_corner_radius_all(6)
+	body.add_theme_stylebox_override("panel", bs)
+	lock.add_child(body)
 
 
 func _card_style(bg: Color, border: Color) -> StyleBoxFlat:
