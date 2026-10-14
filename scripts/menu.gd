@@ -334,7 +334,7 @@ func _show_title() -> void:
 	_label(_root, "10 kaiju  -  10 countries  -  100 levels  -  up to 4 players", Vector2(120, 340), 30, Color(0.8, 0.85, 1.0))
 	_items.clear()
 	_item_actions = ["play", "settings"]
-	if _can_quit():
+	if Game.can_quit():
 		_item_actions.append("quit")
 	var names := {"play": "PLAY", "settings": "SETTINGS", "quit": "QUIT"}
 	for i in _item_actions.size():
@@ -357,20 +357,7 @@ func _title_input() -> void:
 				get_tree().quit()
 
 
-func _can_quit() -> bool:
-	# Consoles have no quit button; the system menu closes the game.
-	return not (OS.has_feature("switch") or OS.has_feature("web"))
-
-
 # --- settings --------------------------------------------------------------
-
-func _settings_rows() -> Array:
-	var rows := ["rumble", "shake", "hints"]
-	if _can_quit():
-		rows.insert(2, "fullscreen")
-	rows.append("back")
-	return rows
-
 
 func _show_settings() -> void:
 	_clear()
@@ -378,7 +365,7 @@ func _show_settings() -> void:
 	_set_stage_visible(true)
 	_label(_root, "SETTINGS", Vector2(110, 150), 110, Color(1.0, 0.88, 0.7))
 	_items.clear()
-	_item_actions = _settings_rows()
+	_item_actions = Game.setting_keys() + ["back"]
 	for i in _item_actions.size():
 		_items.append(_menu_item("", Vector2(110, 360 + i * 110), 760))
 	_sel = 0
@@ -387,24 +374,10 @@ func _show_settings() -> void:
 
 
 func _refresh_settings() -> void:
-	var on_off := func(v: bool) -> String: return "ON" if v else "OFF"
 	for i in _item_actions.size():
 		var key: String = _item_actions[i]
-		var text := "BACK"
-		match key:
-			"rumble":
-				text = "RUMBLE"
-				_items[i]["value"].text = "<  %s  >" % on_off.call(Game.settings["rumble"])
-			"shake":
-				text = "SCREEN SHAKE"
-				_items[i]["value"].text = "<  %d%%  >" % int(Game.settings["shake"])
-			"fullscreen":
-				text = "FULLSCREEN"
-				_items[i]["value"].text = "<  %s  >" % on_off.call(Game.settings["fullscreen"])
-			"hints":
-				text = "CONTROLS HELP"
-				_items[i]["value"].text = "<  %s  >" % on_off.call(Game.settings["hints"])
-		_items[i]["label"].text = text
+		_items[i]["label"].text = Game.SETTING_NAMES.get(key, "BACK")
+		_items[i]["value"].text = Game.setting_text(key) if key != "back" else ""
 	_highlight_items()
 
 
@@ -427,13 +400,7 @@ func _settings_input() -> void:
 		return
 	if step == 0 or key == "back":
 		return
-	if key == "shake":
-		Game.set_setting("shake", clampi(int(Game.settings["shake"]) + step * 25, 0, 100))
-	else:
-		Game.set_setting(key, not bool(Game.settings[key]))
-		if key == "rumble" and Game.settings["rumble"]:
-			for d in Input.get_connected_joypads():
-				Game.rumble(d, 0.5, 0.7, 0.3)
+	Game.step_setting(key, step)
 	_refresh_settings()
 
 

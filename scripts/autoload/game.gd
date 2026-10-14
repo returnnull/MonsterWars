@@ -20,6 +20,22 @@ const SAVE_PATH := "user://save.json"
 const SETTINGS_PATH := "user://settings.json"
 ## Defaults for the options screen. "shake" is a percentage (0-100).
 const DEFAULT_SETTINGS := {"rumble": true, "shake": 100, "fullscreen": false, "hints": true}
+const SETTING_NAMES := {"rumble": "RUMBLE", "shake": "SCREEN SHAKE", "fullscreen": "FULLSCREEN", "hints": "CONTROLS HELP"}
+## Controls overview shown in the pause menu: [action, keyboard, controller].
+## Controller names follow the Nintendo Switch layout (see _setup_input).
+const CONTROLS := [
+	["Move", "WASD / Arrows", "Left stick / D-pad"],
+	["Jump", "Space", "B"],
+	["Light attack", "J", "Y"],
+	["Heavy attack", "K", "X"],
+	["Pick up wreckage", "K (on wreckage)", "X (on wreckage)"],
+	["Swing / throw weapon", "J / K", "Y / X"],
+	["Dodge", "Shift", "A / L"],
+	["Rage mode, rage attack", "L", "R / ZR"],
+	["Super special", "U", "ZL"],
+	["Pause", "Esc / Enter", "+"],
+	["Join (players 2-4)", "-", "B on a new controller"],
+]
 
 var score := 0
 var buildings_total := 0
@@ -211,6 +227,36 @@ func load_progress() -> void:
 		for i in mini(sk.size(), hero_skills.size()):
 			for j in mini(sk[i].size(), Skills.NODE_COUNT):
 				hero_skills[i][j] = clampi(int(sk[i][j]), 0, Skills.max_rank(j))
+
+
+## Settings shown in the options lists, in order.
+func setting_keys() -> Array:
+	var keys := ["rumble", "shake", "hints"]
+	if can_quit():
+		keys.insert(2, "fullscreen")
+	return keys
+
+
+## Consoles and the web have no window to quit or resize.
+func can_quit() -> bool:
+	return not (OS.has_feature("switch") or OS.has_feature("web"))
+
+
+func setting_text(key: String) -> String:
+	if key == "shake":
+		return "<  %d%%  >" % int(settings["shake"])
+	return "<  %s  >" % ("ON" if settings[key] else "OFF")
+
+
+## Left/right on an options row: steps screen shake by 25%, flips the rest.
+func step_setting(key: String, step: int) -> void:
+	if key == "shake":
+		set_setting("shake", clampi(int(settings["shake"]) + step * 25, 0, 100))
+		return
+	set_setting(key, not bool(settings[key]))
+	if key == "rumble" and settings["rumble"]:
+		for d in Input.get_connected_joypads():
+			rumble(d, 0.5, 0.7, 0.3)
 
 
 func set_setting(key: String, value: Variant) -> void:
