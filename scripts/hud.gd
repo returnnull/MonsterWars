@@ -15,6 +15,11 @@ var _boss_box: Control
 var _boss_bar: ProgressBar
 var _controls: Label
 var _pause_panel: Control
+var _pause_list: Control
+var _pause_items: Array[Dictionary] = []
+var _pause_actions: Array = []
+var _pause_sel := 0
+var _pause_settings := false
 var _end_panel: Control
 var _end_title: Label
 var _end_stats: Label
@@ -65,8 +70,9 @@ func _ready() -> void:
 		"Dodge: Shift / A    Rage mode, then rage attack: L key / R    Super: U key / ZL    Pause: Esc / +\n" +
 		"Knock down buildings, then press heavy (K / X) on the wreckage to pick up a weapon",
 		Vector2(48, 925), 22, Color(1, 1, 1, 0.85))
+	_controls.visible = bool(Game.settings["hints"])
 
-	_pause_panel = _overlay(root, "PAUSED", "Resume: Esc / +      World map: Shift / A")
+	_pause_panel = _make_pause(root)
 	_end_panel = _overlay(root, "", "")
 	_end_title = _end_panel.get_child(1)
 	_end_stats = _end_panel.get_child(2)
@@ -81,8 +87,7 @@ func _ready() -> void:
 	Input.joy_connection_changed.connect(func(device: int, connected: bool) -> void:
 		show_message("CONTROLLER %d %s" % [device + 1, "CONNECTED" if connected else "DISCONNECTED"], 1.4)
 		if not connected and not get_tree().paused and not _ended:
-			get_tree().paused = true
-			_pause_panel.visible = true)
+			_set_paused(true))
 
 
 func bind(player: Player) -> void:
@@ -147,6 +152,8 @@ func show_end(title: String, did_win: bool) -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
+	if _pause_panel.visible and get_tree().paused and not _ended:
+		_pause_input()
 	var pulse := 0.5 + 0.5 * sin(_t * 10.0)
 	for p in _panels:
 		var hp: ProgressBar = p["hp"]
@@ -179,10 +186,170 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_parent().on_end_choice(false)
 		return
 	if event.is_action_pressed("pause"):
-		get_tree().paused = not get_tree().paused
-		_pause_panel.visible = get_tree().paused
-	elif get_tree().paused and event.is_action_pressed("back"):
-		Game.go_to_menu("map")
+		_set_paused(not get_tree().paused)
+		get_viewport().set_input_as_handled()
+
+
+# --- pause menu ------------------------------------------------------------
+
+func _set_paused(on: bool) -> void:
+	_pause_panel.visible = on
+	_controls.visible = not on and bool(Game.settings["hints"])
+	if on:
+		get_tree().paused = true
+		_pause_settings = false
+		_build_pause_list()
+	else:
+		# Unpause next frame, so the button that closed the menu does not also
+		# make a kaiju jump.
+		await get_tree().process_frame
+		get_tree().paused = false
+
+
+func _pause_input() -> void:
+	var step := 0
+	if _any_just("move_up"):
+		step = -1
+	elif _any_just("move_down"):
+		step = 1
+	if step != 0:
+		_pause_sel = posmod(_pause_sel + step, _pause_items.size())
+		_highlight_pause()
+		return
+	var key: String = _pause_actions[_pause_sel]
+	var confirm := Input.is_action_just_pressed("jump") or _any_just("jump")
+	var back := Input.is_action_just_pressed("back") or _any_just("dodge")
+	if _pause_settings:
+		var change := 0
+		if _any_just("move_left"):
+			change = -1
+		elif _any_just("move_right"):
+			change = 1
+		elif confirm:
+			change = 1
+		if back or (confirm and key == "back"):
+			_pause_settings = false
+			_build_pause_list(2)
+			return
+		if change != 0 and key != "back":
+			Game.step_setting(key, change)
+			_refresh_pause_values()
+		return
+	if back:
+		_set_paused(false)
+	elif confirm:
+		match key:
+			"resume":
+				_set_paused(false)
+			"restart":
+				Game.start_level(int(Game.level["country"]), int(Game.level["index"]))
+			"settings":
+				_pause_settings = true
+				_build_pause_list()
+			"map":
+				Game.go_to_menu("map")
+			"title":
+				Game.go_to_menu("title")
+
+
+func _any_just(action: String) -> bool:
+	for s in Game.MAX_PLAYERS:
+		if Input.is_action_just_pressed("p%d_%s" % [s, action]):
+			return true
+	return false
+
+
+func _make_pause(root: Control) -> Control:
+	var panel := Control.new()
+	panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+	panel.visible = false
+	root.add_child(panel)
+	var dim := ColorRect.new()
+	dim.color = Color(0.02, 0.02, 0.06, 0.8)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	panel.add_child(dim)
+	_label(panel, "PAUSED", Vector2(110, 90), 110, Color(1.0, 0.88, 0.7))
+	_pause_list = Control.new()
+	panel.add_child(_pause_list)
+	_label(panel, "Up/Down: choose    B / Space: select    Left/Right: change    A / Shift: back    + / Esc: resume",
+		Vector2(110, 1010), 22, Color(1, 1, 1, 0.7))
+
+	# Controls overview, always visible while paused.
+	var card := Panel.new()
+	card.position = Vector2(820, 110)
+	card.size = Vector2(1000, 860)
+	card.add_theme_stylebox_override("panel", _card_style(Color(0.06, 0.06, 0.11, 0.9), Color(1, 1, 1, 0.15)))
+	panel.add_child(card)
+	_label(card, "CONTROLS", Vector2(40, 24), 48, Color(1.0, 0.88, 0.7))
+	_label(card, "KEYBOARD", Vector2(430, 44), 24, Color(1.0, 0.75, 0.4))
+	_label(card, "CONTROLLER", Vector2(690, 44), 24, Color(1.0, 0.75, 0.4))
+	var y := 110.0
+	for i in Game.CONTROLS.size():
+		var row: Array = Game.CONTROLS[i]
+		if i % 2 == 0:
+			var stripe := ColorRect.new()
+			stripe.color = Color(1, 1, 1, 0.04)
+			stripe.position = Vector2(20, y - 6)
+			stripe.size = Vector2(960, 62)
+			card.add_child(stripe)
+		_label(card, row[0], Vector2(40, y), 28, Color.WHITE)
+		_label(card, row[1], Vector2(430, y + 2), 26, Color(0.8, 0.88, 1.0))
+		_label(card, row[2], Vector2(690, y + 2), 26, Color(1.0, 0.92, 0.7))
+		y += 66.0
+	return panel
+
+
+func _build_pause_list(select: int = 0) -> void:
+	for c in _pause_list.get_children():
+		c.queue_free()
+	_pause_items.clear()
+	var names := {"resume": "RESUME", "restart": "RESTART LEVEL", "settings": "SETTINGS",
+		"map": "WORLD MAP", "title": "QUIT TO TITLE", "back": "BACK"}
+	if _pause_settings:
+		_pause_actions = Game.setting_keys() + ["back"]
+	else:
+		_pause_actions = ["resume", "restart", "settings", "map", "title"]
+	for i in _pause_actions.size():
+		var key: String = _pause_actions[i]
+		var item := Panel.new()
+		item.position = Vector2(110, 300 + i * 100)
+		item.size = Vector2(640, 80)
+		item.pivot_offset = Vector2(0, 40)
+		_pause_list.add_child(item)
+		var l := _label(item, Game.SETTING_NAMES.get(key, names.get(key, "")), Vector2(32, 12), 40, Color.WHITE)
+		var v := _label(item, "", Vector2(370, 16), 34, Color(1.0, 0.8, 0.4))
+		v.size.x = 240
+		v.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		_pause_items.append({"panel": item, "label": l, "value": v, "key": key})
+	_pause_sel = clampi(select, 0, _pause_items.size() - 1)
+	_refresh_pause_values()
+
+
+func _refresh_pause_values() -> void:
+	for it in _pause_items:
+		var key: String = it["key"]
+		it["value"].text = Game.setting_text(key) if Game.SETTING_NAMES.has(key) else ""
+	_highlight_pause()
+
+
+func _highlight_pause() -> void:
+	for i in _pause_items.size():
+		var sel := i == _pause_sel
+		var it: Dictionary = _pause_items[i]
+		it["panel"].add_theme_stylebox_override("panel", _card_style(
+			Color(0.9, 0.42, 0.15, 0.9) if sel else Color(0.05, 0.05, 0.1, 0.7),
+			Color(1.0, 0.85, 0.5) if sel else Color(1, 1, 1, 0.1)))
+		it["label"].label_settings.font_color = Color.WHITE if sel else Color(1, 1, 1, 0.7)
+		it["panel"].scale = Vector2.ONE * (1.04 if sel else 1.0)
+
+
+func _card_style(bg: Color, border: Color) -> StyleBoxFlat:
+	var st := StyleBoxFlat.new()
+	st.bg_color = bg
+	st.border_color = border
+	st.set_border_width_all(3)
+	st.set_corner_radius_all(10)
+	return st
 
 
 func _on_combo(hits: int) -> void:

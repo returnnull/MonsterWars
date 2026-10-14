@@ -1,9 +1,9 @@
 extends Control
-## Front end: title -> hero select (1-4 players) -> world map (10 countries)
+## Front end: title menu (play / settings / quit) -> hero select (1-4 players) -> world map (10 countries)
 ## -> level select (10 levels each). Any controller can navigate; in hero
 ## select every controller drives its own slot.
 
-enum Screen { TITLE, HEROES, MAP, LEVELS, SKILLS }
+enum Screen { TITLE, SETTINGS, HEROES, MAP, LEVELS, SKILLS }
 
 const SLOT_W := 460.0
 
@@ -23,6 +23,19 @@ var _sk_hero := 0
 var _sk_sel := 0
 var _sk_cards: Array[Panel] = []
 var _sk_return: Array = []
+# Title and settings: vertical menu items and the 3D backdrop.
+var _items: Array[Dictionary] = []
+var _item_actions: Array = []
+var _sel := 0
+var _stage: SubViewportContainer
+var _stage_vp: SubViewport
+var _stage_pivot: Node3D
+var _stage_cam: Camera3D
+var _stage_fire: OmniLight3D
+var _stage_model: KaijuModel
+var _stage_hero_idx := 0
+var _roar_t := 0.0
+var _was_roaring := false
 
 
 func _ready() -> void:
@@ -46,6 +59,7 @@ func _ready() -> void:
 	_root = Control.new()
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(_root)
+	_build_stage()
 	var start: String = Game.get_meta("menu_screen", "title")
 	_country = mini(Game.unlocked / Content.LEVELS_PER_COUNTRY, Content.COUNTRIES.size() - 1)
 	match start:
@@ -57,10 +71,12 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
+	_animate_stage(delta)
 	match screen:
 		Screen.TITLE:
-			if _any_just("jump") or Input.is_action_just_pressed("pause"):
-				_show_heroes()
+			_title_input()
+		Screen.SETTINGS:
+			_settings_input()
 		Screen.HEROES:
 			_heroes_input()
 		Screen.MAP:
@@ -89,6 +105,10 @@ func _clear() -> void:
 	_map_cards.clear()
 	_level_cards.clear()
 	_sk_cards.clear()
+	_items.clear()
+	_set_stage_visible(false)
+	_root.modulate.a = 0.0
+	_root.create_tween().tween_property(_root, "modulate:a", 1.0, 0.2)
 
 
 func _any_just(action: String) -> bool:
@@ -100,18 +120,332 @@ func _any_just(action: String) -> bool:
 
 # --- title -----------------------------------------------------------------
 
+## Builds the 3D backdrop behind the title and options screens: a kaiju
+## towering over a burning skyline at dusk. It lives outside _root so it
+## survives screen changes and is only rendered while visible.
+func _build_stage() -> void:
+	_stage = SubViewportContainer.new()
+	_stage.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_stage.stretch = true
+	_stage.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_stage)
+	move_child(_stage, _root.get_index())
+	var vp := SubViewport.new()
+	vp.own_world_3d = true
+	vp.msaa_3d = Viewport.MSAA_2X
+	_stage.add_child(vp)
+	_stage_vp = vp
+
+	var env := Environment.new()
+	var sky_mat := ProceduralSkyMaterial.new()
+	sky_mat.sky_top_color = Color(0.06, 0.05, 0.16)
+	sky_mat.sky_horizon_color = Color(0.85, 0.35, 0.18)
+	sky_mat.ground_horizon_color = Color(0.35, 0.12, 0.08)
+	sky_mat.ground_bottom_color = Color(0.03, 0.02, 0.04)
+	sky_mat.sky_curve = 0.18
+	sky_mat.sun_angle_max = 0.0
+	var sky := Sky.new()
+	sky.sky_material = sky_mat
+	env.background_mode = Environment.BG_SKY
+	env.sky = sky
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.45, 0.4, 0.55)
+	env.ambient_light_energy = 0.6
+	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env.glow_enabled = true
+	env.glow_intensity = 0.9
+	env.glow_bloom = 0.15
+	env.fog_enabled = true
+	env.fog_light_color = Color(0.5, 0.2, 0.14)
+	env.fog_density = 0.005
+	env.fog_sky_affect = 0.0
+	var we := WorldEnvironment.new()
+	we.environment = env
+	vp.add_child(we)
+
+	var moon := DirectionalLight3D.new()
+	moon.rotation_degrees = Vector3(-30, -40, 0)
+	moon.light_color = Color(0.6, 0.65, 1.0)
+	moon.light_energy = 0.7
+	moon.shadow_enabled = true
+	vp.add_child(moon)
+	var rim := DirectionalLight3D.new()
+	rim.rotation_degrees = Vector3(-8, 160, 0)
+	rim.light_color = Color(1.0, 0.5, 0.25)
+	rim.light_energy = 2.2
+	vp.add_child(rim)
+	_stage_fire = OmniLight3D.new()
+	_stage_fire.position = Vector3(3, 2.5, 6)
+	_stage_fire.light_color = Color(1.0, 0.45, 0.15)
+	_stage_fire.omni_range = 22.0
+	_stage_fire.light_energy = 3.0
+	vp.add_child(_stage_fire)
+
+	var ground := MeshInstance3D.new()
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(300, 300)
+	ground.mesh = plane
+	var gmat := StandardMaterial3D.new()
+	gmat.albedo_color = Color(0.06, 0.05, 0.07)
+	gmat.roughness = 0.9
+	ground.material_override = gmat
+	vp.add_child(ground)
+
+	# Skyline: rows of towers with lit windows, getting darker with depth.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var tower_mat := StandardMaterial3D.new()
+	tower_mat.albedo_color = Color(0.05, 0.05, 0.07)
+	tower_mat.roughness = 0.8
+	var win_mat := StandardMaterial3D.new()
+	win_mat.albedo_color = Color(1.0, 0.8, 0.45)
+	win_mat.emission_enabled = true
+	win_mat.emission = Color(1.0, 0.75, 0.4)
+	win_mat.emission_energy_multiplier = 2.5
+	for row in 3:
+		var z := -24.0 - row * 14.0
+		var x := -60.0
+		while x < 60.0:
+			var w := rng.randf_range(3.0, 6.5)
+			var h := rng.randf_range(8.0, 26.0) * (1.0 + row * 0.4)
+			var tower := MeshInstance3D.new()
+			var box := BoxMesh.new()
+			box.size = Vector3(w, h, rng.randf_range(3.0, 6.0))
+			tower.mesh = box
+			tower.material_override = tower_mat
+			tower.position = Vector3(x + w * 0.5, h * 0.5, z + rng.randf_range(-2.0, 2.0))
+			vp.add_child(tower)
+			for i in int(h / 2.2):
+				if rng.randf() < 0.45:
+					var win := MeshInstance3D.new()
+					var wb := BoxMesh.new()
+					wb.size = Vector3(w * rng.randf_range(0.2, 0.7), 0.5, 0.05)
+					win.mesh = wb
+					win.material_override = win_mat
+					win.position = Vector3(rng.randf_range(-0.15, 0.15) * w, -h * 0.5 + 1.4 + i * 2.2, box.size.z * 0.5 + 0.03)
+					tower.add_child(win)
+			x += w + rng.randf_range(0.5, 2.5)
+
+	# Embers drifting up from the burning city.
+	var embers := GPUParticles3D.new()
+	embers.amount = 160
+	embers.lifetime = 6.0
+	embers.preprocess = 6.0
+	embers.position = Vector3(0, 0, -4)
+	embers.visibility_aabb = AABB(Vector3(-40, -2, -20), Vector3(80, 40, 40))
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	pm.emission_box_extents = Vector3(30, 0.5, 12)
+	pm.direction = Vector3(0.2, 1, 0)
+	pm.spread = 25.0
+	pm.initial_velocity_min = 1.0
+	pm.initial_velocity_max = 3.0
+	pm.gravity = Vector3(0.3, 0.4, 0)
+	pm.scale_min = 0.5
+	pm.scale_max = 1.2
+	embers.process_material = pm
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.15, 0.15)
+	var emat := StandardMaterial3D.new()
+	emat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	emat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	emat.albedo_color = Color(1.0, 0.6, 0.25)
+	emat.emission_enabled = true
+	emat.emission = Color(1.0, 0.5, 0.2)
+	emat.emission_energy_multiplier = 4.0
+	quad.material = emat
+	embers.draw_pass_1 = quad
+	vp.add_child(embers)
+
+	_stage_pivot = Node3D.new()
+	_stage_pivot.position = Vector3(5.0, 0, 0)
+	vp.add_child(_stage_pivot)
+	_stage_cam = Camera3D.new()
+	_stage_cam.fov = 50.0
+	_stage_cam.position = Vector3(0, 2.2, 17.0)
+	_stage_cam.rotation_degrees = Vector3(7, 0, 0)
+	vp.add_child(_stage_cam)
+
+	# Darken the left side so the menu reads over the scene.
+	var shade := TextureRect.new()
+	var gt := GradientTexture2D.new()
+	var g := Gradient.new()
+	g.colors = PackedColorArray([Color(0.02, 0.02, 0.05, 0.85), Color(0.02, 0.02, 0.05, 0.0)])
+	gt.gradient = g
+	gt.fill_from = Vector2(0.0, 0.5)
+	gt.fill_to = Vector2(0.6, 0.5)
+	shade.texture = gt
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.stretch_mode = TextureRect.STRETCH_SCALE
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_stage.add_child(shade)
+	_stage_hero(int(Game.party.get(0, 0)))
+
+
+func _stage_hero(hero: int) -> void:
+	_stage_hero_idx = hero
+	for c in _stage_pivot.get_children():
+		c.queue_free()
+	var h := Content.hero(hero)
+	_stage_model = KaijuModel.new()
+	_stage_pivot.add_child(_stage_model)
+	_stage_model.build(h["skin"], h["belly"], h["accent"], h["eye"], h["horns"])
+	_stage_model.scale = Vector3.ONE * float(h["size"]) * 1.25
+	_stage_model.glow = 0.4
+
+
+func _set_stage_visible(on: bool) -> void:
+	_stage.visible = on
+	_stage_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS if on else SubViewport.UPDATE_DISABLED
+
+
+## Idle sway, a roar every few seconds, and a new kaiju after each roar.
+func _animate_stage(delta: float) -> void:
+	if not _stage.visible or _stage_model == null:
+		return
+	_roar_t += delta
+	var cycle := fmod(_roar_t, 7.0)
+	var roaring := cycle > 4.5 and cycle < 6.2
+	_stage_model.jaw = 1.0 if roaring else 0.1
+	_stage_model.arm_r = 1.4 if roaring else 0.25
+	_stage_model.arm_l = 1.4 if roaring else 0.25
+	_stage_model.lean = -0.2 if roaring else 0.0
+	_stage_model.eye_glow = 1.0 if roaring else 0.2
+	_stage_model.glow = lerpf(_stage_model.glow, 1.0 if roaring else 0.4, 1.0 - exp(-4.0 * delta))
+	_stage_pivot.rotation.y = -0.9 + sin(_t * 0.3) * 0.12
+	_stage_fire.light_energy = 3.0 + sin(_t * 13.0) * 0.5 + sin(_t * 7.3) * 0.4
+	var quake := 0.08 if roaring else 0.0
+	_stage_cam.h_offset = randf_range(-quake, quake)
+	_stage_cam.v_offset = randf_range(-quake, quake) + sin(_t * 0.4) * 0.15
+	if roaring and not _was_roaring:
+		for d in Input.get_connected_joypads():
+			Game.rumble(d, 0.3, 0.5, 0.6)
+	if _was_roaring and not roaring:
+		_stage_hero(posmod(_stage_hero_idx + 1, Content.HEROES.size()))
+	_was_roaring = roaring
+
+
 func _show_title() -> void:
 	_clear()
 	screen = Screen.TITLE
-	var t := _label(_root, "KAIJU DAWN", Vector2(0, 300), 170, Color(1.0, 0.9, 0.75))
-	_center(t)
-	var s := _label(_root, "10 kaiju  -  10 countries  -  100 levels  -  up to 4 players", Vector2(0, 520), 36, Color(0.8, 0.85, 1.0))
-	_center(s)
-	var p := _label(_root, "Press B / Space", Vector2(0, 760), 44, Color.WHITE)
-	_center(p)
-	var tw := p.create_tween().set_loops()
-	tw.tween_property(p, "modulate:a", 0.25, 0.6)
-	tw.tween_property(p, "modulate:a", 1.0, 0.6)
+	_set_stage_visible(true)
+	var t := _label(_root, "KAIJU DAWN", Vector2(110, 150), 150, Color(1.0, 0.88, 0.7))
+	t.label_settings.outline_size = 24
+	t.label_settings.shadow_size = 18
+	t.label_settings.shadow_color = Color(1.0, 0.35, 0.1, 0.45)
+	_label(_root, "10 kaiju  -  10 countries  -  100 levels  -  up to 4 players", Vector2(120, 340), 30, Color(0.8, 0.85, 1.0))
+	_items.clear()
+	_item_actions = ["play", "settings"]
+	if Game.can_quit():
+		_item_actions.append("quit")
+	var names := {"play": "PLAY", "settings": "SETTINGS", "quit": "QUIT"}
+	for i in _item_actions.size():
+		_items.append(_menu_item(names[_item_actions[i]], Vector2(110, 520 + i * 110)))
+	_sel = 0
+	_highlight_items()
+	_label(_root, "Up/Down: choose    B / Space: select", Vector2(120, 1010), 24, Color(1, 1, 1, 0.7))
+
+
+func _title_input() -> void:
+	if _move_items():
+		return
+	if _any_just("jump") or Input.is_action_just_pressed("pause"):
+		match _item_actions[_sel]:
+			"play":
+				_show_heroes()
+			"settings":
+				_show_settings()
+			"quit":
+				get_tree().quit()
+
+
+# --- settings --------------------------------------------------------------
+
+func _show_settings() -> void:
+	_clear()
+	screen = Screen.SETTINGS
+	_set_stage_visible(true)
+	_label(_root, "SETTINGS", Vector2(110, 150), 110, Color(1.0, 0.88, 0.7))
+	_items.clear()
+	_item_actions = Game.setting_keys() + ["back"]
+	for i in _item_actions.size():
+		_items.append(_menu_item("", Vector2(110, 360 + i * 110), 760))
+	_sel = 0
+	_refresh_settings()
+	_label(_root, "Up/Down: choose    Left/Right: change    A / Shift: back", Vector2(120, 1010), 24, Color(1, 1, 1, 0.7))
+
+
+func _refresh_settings() -> void:
+	for i in _item_actions.size():
+		var key: String = _item_actions[i]
+		_items[i]["label"].text = Game.SETTING_NAMES.get(key, "BACK")
+		_items[i]["value"].text = Game.setting_text(key) if key != "back" else ""
+	_highlight_items()
+
+
+func _settings_input() -> void:
+	if _move_items():
+		return
+	var key: String = _item_actions[_sel]
+	var step := 0
+	if _any_just("move_left"):
+		step = -1
+	elif _any_just("move_right"):
+		step = 1
+	elif _any_just("jump") or Input.is_action_just_pressed("pause"):
+		if key == "back":
+			_show_title()
+			return
+		step = 1
+	elif _any_just("dodge"):
+		_show_title()
+		return
+	if step == 0 or key == "back":
+		return
+	Game.step_setting(key, step)
+	_refresh_settings()
+
+
+# --- vertical menu widgets -------------------------------------------------
+
+func _menu_item(text: String, pos: Vector2, width: float = 520.0) -> Dictionary:
+	var panel := Panel.new()
+	panel.position = pos
+	panel.size = Vector2(width, 88)
+	panel.pivot_offset = Vector2(0, 44)
+	_root.add_child(panel)
+	var l := _label(panel, text, Vector2(40, 12), 52, Color.WHITE)
+	var v := _label(panel, "", Vector2(width - 300, 18), 40, Color(1.0, 0.8, 0.4))
+	v.size.x = 270
+	v.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	return {"panel": panel, "label": l, "value": v}
+
+
+func _highlight_items() -> void:
+	for i in _items.size():
+		var sel := i == _sel
+		var it: Dictionary = _items[i]
+		it["panel"].add_theme_stylebox_override("panel", _card_style(
+			Color(0.9, 0.42, 0.15, 0.85) if sel else Color(0.05, 0.05, 0.1, 0.55),
+			Color(1.0, 0.85, 0.5) if sel else Color(1, 1, 1, 0.1)))
+		it["label"].label_settings.font_color = Color.WHITE if sel else Color(1, 1, 1, 0.7)
+		it["value"].label_settings.font_color = Color(1.0, 0.95, 0.75) if sel else Color(1.0, 0.8, 0.4, 0.7)
+		var tw: Tween = it["panel"].create_tween()
+		tw.tween_property(it["panel"], "scale", Vector2.ONE * (1.05 if sel else 1.0), 0.12)
+
+
+## Up/down moves the selection; returns true if it moved.
+func _move_items() -> bool:
+	var step := 0
+	if _any_just("move_up"):
+		step = -1
+	elif _any_just("move_down"):
+		step = 1
+	if step == 0:
+		return false
+	_sel = posmod(_sel + step, _items.size())
+	_highlight_items()
+	return true
 
 
 # --- hero select -----------------------------------------------------------
@@ -292,6 +626,7 @@ func _refresh_slot(slot: int) -> void:
 func _show_map() -> void:
 	_clear()
 	screen = Screen.MAP
+	_backdrop()
 	_center(_label(_root, "WORLD MAP", Vector2(0, 30), 64, Color(1.0, 0.9, 0.75)))
 	_center(_label(_root, "Move: choose country    B / Space: select    A / Shift: back to kaiju select",
 		Vector2(0, 1010), 24, Color(1, 1, 1, 0.75)))
@@ -315,6 +650,7 @@ func _show_map() -> void:
 		sky.size = Vector2(304, 150)
 		sky.stretch_mode = TextureRect.STRETCH_SCALE
 		card.add_child(sky)
+		_skyline(sky, i, Color(c["sky_top"]).darkened(0.75))
 		_label(card, "%d" % (i + 1), Vector2(20, 14), 40, Color(1, 1, 1, 0.9))
 		_label(card, c["name"], Vector2(20, 170), 38, Color.WHITE)
 		_label(card, c["city"], Vector2(20, 218), 26, Color(1, 1, 1, 0.75))
@@ -322,10 +658,13 @@ func _show_map() -> void:
 		_label(card, "BOSS: " + boss["name"], Vector2(20, 270), 22, Color(boss["accent"]).lerp(Color.WHITE, 0.3))
 		var done := clampi(Game.unlocked - i * Content.LEVELS_PER_COUNTRY, 0, Content.LEVELS_PER_COUNTRY)
 		var locked := i * Content.LEVELS_PER_COUNTRY > Game.unlocked
-		_label(card, "LOCKED" if locked else "%d / 10 cleared" % done, Vector2(20, 320), 26,
+		_label(card, "LOCKED" if locked else "%d / 10 cleared" % done, Vector2(20, 312), 26,
 			Color(1, 0.4, 0.4) if locked else Color(0.6, 1.0, 0.7))
+		if not locked:
+			_progress(card, Vector2(20, 352), 280.0, float(done) / Content.LEVELS_PER_COUNTRY)
 		if locked:
 			card.modulate = Color(0.55, 0.55, 0.6)
+			_lock_badge(card)
 		_map_cards.append(card)
 	_highlight(_map_cards, _country)
 
@@ -355,6 +694,7 @@ func _map_input() -> void:
 func _show_levels() -> void:
 	_clear()
 	screen = Screen.LEVELS
+	_backdrop()
 	var c := Content.country(_country)
 	_center(_label(_root, "%s  -  %s" % [c["name"], c["city"]], Vector2(0, 40), 64, Color(1.0, 0.9, 0.75)))
 	_center(_label(_root, "Move: choose level    B / Space: play    A / Shift: back to map",
@@ -382,8 +722,13 @@ func _show_levels() -> void:
 		var locked := g > Game.unlocked
 		_label(card, "LOCKED" if locked else ("Best %d" % best if best > 0 else "New"), Vector2(24, 250), 26,
 			Color(1, 0.4, 0.4) if locked else Color(0.6, 1.0, 0.7))
+		if boss:
+			card.set_meta("tint", Color(0.3, 0.06, 0.06, 0.92))
+		if g < Game.unlocked:
+			_label(card, "CLEARED", Vector2(24, 212), 22, Color(0.6, 1.0, 0.7))
 		if locked:
 			card.modulate = Color(0.55, 0.55, 0.6)
+			_lock_badge(card)
 		_level_cards.append(card)
 	_highlight(_level_cards, _level)
 
@@ -524,11 +869,88 @@ func _skills_input() -> void:
 func _highlight(cards: Array[Panel], idx: int) -> void:
 	for i in cards.size():
 		var sel := i == idx
-		cards[i].add_theme_stylebox_override("panel", _card_style(
-			Color(0.14, 0.14, 0.22, 0.95) if sel else Color(0.09, 0.09, 0.14, 0.9),
-			Color(1.0, 0.75, 0.3) if sel else Color(1, 1, 1, 0.12)))
+		var bg: Color = cards[i].get_meta("tint", Color(0.09, 0.09, 0.14, 0.9))
+		var st := _card_style(bg.lightened(0.08) if sel else bg,
+			Color(1.0, 0.75, 0.3) if sel else Color(1, 1, 1, 0.12))
+		if sel:
+			st.shadow_color = Color(1.0, 0.55, 0.15, 0.55)
+			st.shadow_size = 22
+		cards[i].add_theme_stylebox_override("panel", st)
 		cards[i].pivot_offset = cards[i].size * 0.5
-		cards[i].scale = Vector2.ONE * (1.06 if sel else 1.0)
+		cards[i].z_index = 1 if sel else 0
+		var tw := cards[i].create_tween()
+		tw.tween_property(cards[i], "scale", Vector2.ONE * (1.06 if sel else 1.0), 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+## The title scene, dimmed, behind the map and level select.
+func _backdrop() -> void:
+	_set_stage_visible(true)
+	var dim := ColorRect.new()
+	dim.color = Color(0.02, 0.02, 0.06, 0.62)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(dim)
+
+
+## A row of city towers with a few lit windows along the bottom of a sky strip.
+func _skyline(sky: Control, seed_value: int, color: Color) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value * 31 + 5
+	var x := 0.0
+	while x < sky.size.x:
+		var w := rng.randf_range(14.0, 34.0)
+		var h := rng.randf_range(24.0, 80.0)
+		var tower := ColorRect.new()
+		tower.color = color
+		tower.position = Vector2(x, sky.size.y - h)
+		tower.size = Vector2(minf(w, sky.size.x - x), h)
+		tower.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		sky.add_child(tower)
+		for j in int(h / 12.0):
+			if rng.randf() < 0.3 and w > 16.0:
+				var win := ColorRect.new()
+				win.color = Color(1.0, 0.85, 0.5, 0.8)
+				win.position = Vector2(rng.randf_range(3.0, w - 9.0), 6.0 + j * 12.0)
+				win.size = Vector2(5, 4)
+				tower.add_child(win)
+		x += w + rng.randf_range(0.0, 6.0)
+
+
+func _progress(parent: Control, pos: Vector2, width: float, frac: float) -> void:
+	var bar := ProgressBar.new()
+	bar.position = pos
+	bar.size = Vector2(width, 10)
+	bar.show_percentage = false
+	bar.max_value = 1.0
+	bar.value = frac
+	bar.add_theme_stylebox_override("background", _card_style(Color(0, 0, 0, 0.5), Color(0, 0, 0, 0)))
+	bar.add_theme_stylebox_override("fill", _card_style(Color(0.45, 0.95, 0.6), Color(0, 0, 0, 0)))
+	parent.add_child(bar)
+
+
+## A padlock drawn from two boxes in the card's top-right corner.
+func _lock_badge(card: Control) -> void:
+	var lock := Control.new()
+	lock.position = Vector2(card.size.x - 70, 18)
+	card.add_child(lock)
+	var shackle := Panel.new()
+	shackle.position = Vector2(10, 0)
+	shackle.size = Vector2(30, 34)
+	var ss := StyleBoxFlat.new()
+	ss.draw_center = false
+	ss.border_color = Color(0.9, 0.9, 0.95)
+	ss.set_border_width_all(6)
+	ss.set_corner_radius_all(14)
+	shackle.add_theme_stylebox_override("panel", ss)
+	lock.add_child(shackle)
+	var body := Panel.new()
+	body.position = Vector2(0, 20)
+	body.size = Vector2(50, 36)
+	var bs := StyleBoxFlat.new()
+	bs.bg_color = Color(0.9, 0.9, 0.95)
+	bs.set_corner_radius_all(6)
+	body.add_theme_stylebox_override("panel", bs)
+	lock.add_child(body)
 
 
 func _card_style(bg: Color, border: Color) -> StyleBoxFlat:
