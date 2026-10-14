@@ -59,11 +59,11 @@ func _ready() -> void:
 	_msg_label.modulate.a = 0.0
 
 	_boss_box = Control.new()
-	_boss_box.position = Vector2(460, 960)
+	_boss_box.position = Vector2(260, 950)
 	_boss_box.visible = false
 	root.add_child(_boss_box)
 	_boss_name = _label(_boss_box, "", Vector2(0, -44), 30, Color(1.0, 0.5, 0.35))
-	_boss_bar = _bar(_boss_box, Vector2(0, 0), Vector2(1000, 22), Color(0.95, 0.25, 0.2))
+	_boss_bar = _bar(_boss_box, Vector2(0, 0), Vector2(1400, 36), Color(0.95, 0.25, 0.2))
 
 	_controls = _label(root, "Players 2-4: press B on another controller to join\n" +
 		"Move: WASD / stick    Jump: Space / B    Light: J / Y    Heavy: K / X\n" +

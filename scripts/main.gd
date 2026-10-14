@@ -165,6 +165,16 @@ func make_enemy(kind: String, cx: float, side: float) -> Node3D:
 			f.dmg_mul = dmg_mul
 			f.position = Vector3(cx + side * 26.0, 14.0 if kind != "bomber" else 9.0, -2.0)
 			return f
+		"infantry":
+			var s := Infantry.new()
+			s.kind = kind
+			s.def = def
+			s.hp_mul = hp_mul
+			s.dmg_mul = dmg_mul
+			s.arena = Vector2(cx - 20.0, cx + 20.0)
+			s.position = Vector3(cx + side * randf_range(20.0, 25.0), 0.2, randf_range(-4.0, 2.5))
+			s.facing = -side
+			return s
 		"ground":
 			var v := Vehicle.new()
 			v.kind = kind

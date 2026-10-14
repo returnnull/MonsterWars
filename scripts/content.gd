@@ -41,7 +41,8 @@ const HEROES := [
 
 const SPECIAL_NAMES := {"beam": "Atomic Beam", "nova": "Nova Burst", "quake": "Earthquake"}
 
-# Boss moves: swipe, charge, slam, breath, summon, leap
+# Boss keys: moves (any Brute move plus its signature move, see Brute.SIGNATURES),
+# body (CreatureModel plan, or "kaiju"), extras, horns, element, summon.
 const COUNTRIES := [
 	{"name": "DENMARK", "city": "Copenhagen", "landmark": "windmills",
 		"sky_top": Color(0.32, 0.4, 0.52), "sky_horizon": Color(0.75, 0.75, 0.75), "ground_horizon": Color(0.5, 0.5, 0.5),
@@ -56,7 +57,7 @@ const COUNTRIES := [
 			"sun_strength": 0.3, "wet": 1.0, "tree": Color(0.2, 0.34, 0.18), "skyline": 1.0,
 			"grade_shadow": Color(0.0, 0.02, 0.05), "saturation": 1.05},
 		"boss": {"name": "HAVTROLD", "title": "The Sea Troll", "skin": Color(0.15, 0.3, 0.32), "belly": Color(0.5, 0.6, 0.5),
-			"accent": Color(0.3, 0.9, 0.8), "eye": Color(0.9, 1.0, 0.6), "moves": ["swipe", "charge"]}},
+			"accent": Color(0.3, 0.9, 0.8), "eye": Color(0.9, 1.0, 0.6), "body": "kaiju", "moves": ["swipe", "charge", "quake"]}},
 	{"name": "FRANCE", "city": "Paris", "landmark": "iron_tower",
 		"sky_top": Color(0.2, 0.22, 0.45), "sky_horizon": Color(1.0, 0.65, 0.4), "ground_horizon": Color(0.6, 0.4, 0.3),
 		"sun": Color(1.0, 0.75, 0.5), "sun_energy": 1.6, "sun_rot": Vector3(-14, 160, 0),
@@ -69,7 +70,7 @@ const COUNTRIES := [
 			"cloud_cover": 0.4, "cloud_color": Color(1.0, 0.72, 0.52), "cloud_shade": Color(0.42, 0.3, 0.42),
 			"tree": Color(0.24, 0.32, 0.16), "skyline": 1.1, "grade_shadow": Color(0.03, 0.0, 0.06)},
 		"boss": {"name": "GARGOUILLE", "title": "Stone Watcher", "skin": Color(0.4, 0.4, 0.42), "belly": Color(0.6, 0.58, 0.55),
-			"accent": Color(0.6, 0.8, 1.0), "eye": Color(1.0, 0.3, 0.2), "moves": ["swipe", "leap"]}},
+			"accent": Color(0.6, 0.8, 1.0), "eye": Color(1.0, 0.3, 0.2), "body": "ape", "extras": ["wings"], "moves": ["swipe", "leap", "dive"]}},
 	{"name": "USA", "city": "New York", "landmark": "spires",
 		"sky_top": Color(0.03, 0.04, 0.12), "sky_horizon": Color(0.25, 0.2, 0.4), "ground_horizon": Color(0.1, 0.1, 0.15),
 		"sun": Color(0.6, 0.7, 1.0), "sun_energy": 0.5, "sun_rot": Vector3(-40, 140, 0),
@@ -83,7 +84,7 @@ const COUNTRIES := [
 			"city_glow": Color(0.28, 0.16, 0.12), "stars": 0.5, "shop": 1.6, "skyline": 1.7,
 			"tree": Color(0.12, 0.2, 0.12), "grade_shadow": Color(0.0, 0.01, 0.05)},
 		"boss": {"name": "IRONCLAW", "title": "Steel Colossus", "skin": Color(0.3, 0.32, 0.35), "belly": Color(0.5, 0.45, 0.4),
-			"accent": Color(1.0, 0.3, 0.2), "eye": Color(1.0, 0.2, 0.1), "moves": ["swipe", "charge", "summon"]}},
+			"accent": Color(1.0, 0.3, 0.2), "eye": Color(1.0, 0.2, 0.1), "body": "mech", "element": "plasma", "summon": "soldier", "moves": ["swipe", "charge", "summon", "barrage"]}},
 	{"name": "BRAZIL", "city": "Rio de Janeiro", "landmark": "sugarloaf",
 		"sky_top": Color(0.2, 0.45, 0.85), "sky_horizon": Color(0.75, 0.85, 0.95), "ground_horizon": Color(0.4, 0.5, 0.4),
 		"sun": Color(1.0, 0.95, 0.85), "sun_energy": 2.0, "sun_rot": Vector3(-55, 150, 0),
@@ -95,7 +96,7 @@ const COUNTRIES := [
 			"roof_colors": [Color(0.6, 0.35, 0.25)], "cloud_cover": 0.3, "cloud_color": Color(1, 1, 1),
 			"cloud_shade": Color(0.62, 0.7, 0.82), "tree": Color(0.15, 0.4, 0.15), "skyline": 1.2, "saturation": 1.18},
 		"boss": {"name": "JAGUARON", "title": "Jungle Fury", "skin": Color(0.6, 0.45, 0.15), "belly": Color(0.85, 0.75, 0.5),
-			"accent": Color(0.3, 1.0, 0.3), "eye": Color(0.6, 1.0, 0.2), "moves": ["swipe", "leap", "charge"]}},
+			"accent": Color(0.3, 1.0, 0.3), "eye": Color(0.6, 1.0, 0.2), "body": "quad", "horns": false, "extras": ["crest"], "moves": ["swipe", "leap", "charge", "frenzy"]}},
 	{"name": "EGYPT", "city": "Cairo", "landmark": "pyramids",
 		"sky_top": Color(0.3, 0.5, 0.8), "sky_horizon": Color(0.95, 0.85, 0.65), "ground_horizon": Color(0.8, 0.65, 0.45),
 		"sun": Color(1.0, 0.92, 0.75), "sun_energy": 2.2, "sun_rot": Vector3(-60, 160, 0),
@@ -108,7 +109,7 @@ const COUNTRIES := [
 			"cloud_cover": 0.12, "cloud_color": Color(1.0, 0.97, 0.9), "cloud_shade": Color(0.8, 0.72, 0.62),
 			"tree": Color(0.3, 0.42, 0.16), "skyline": 1.0, "grade_shadow": Color(0.04, 0.02, 0.0)},
 		"boss": {"name": "SPHINXAR", "title": "Riddle of Sand", "skin": Color(0.7, 0.55, 0.3), "belly": Color(0.85, 0.75, 0.5),
-			"accent": Color(1.0, 0.8, 0.2), "eye": Color(0.3, 0.8, 1.0), "moves": ["swipe", "breath", "slam"]}},
+			"accent": Color(1.0, 0.8, 0.2), "eye": Color(0.3, 0.8, 1.0), "body": "quad", "extras": ["crest", "nose_horn"], "moves": ["swipe", "breath", "slam", "sandstorm"]}},
 	{"name": "INDIA", "city": "Mumbai", "landmark": "temple",
 		"sky_top": Color(0.35, 0.25, 0.5), "sky_horizon": Color(1.0, 0.55, 0.45), "ground_horizon": Color(0.6, 0.4, 0.35),
 		"sun": Color(1.0, 0.6, 0.45), "sun_energy": 1.5, "sun_rot": Vector3(-12, 150, 0),
@@ -121,7 +122,7 @@ const COUNTRIES := [
 			"cloud_color": Color(1.0, 0.62, 0.55), "cloud_shade": Color(0.4, 0.28, 0.45), "shop": 1.0,
 			"tree": Color(0.18, 0.32, 0.14), "skyline": 1.3},
 		"boss": {"name": "NAGARAJ", "title": "Serpent King", "skin": Color(0.2, 0.35, 0.2), "belly": Color(0.75, 0.7, 0.35),
-			"accent": Color(1.0, 0.85, 0.2), "eye": Color(1.0, 0.4, 0.8), "moves": ["swipe", "breath", "summon"]}},
+			"accent": Color(1.0, 0.85, 0.2), "eye": Color(1.0, 0.4, 0.8), "body": "serpent", "element": "venom", "extras": ["hood", "crest"], "moves": ["swipe", "breath", "summon", "lunge", "venom_rain"]}},
 	{"name": "AUSTRALIA", "city": "Sydney", "landmark": "sails",
 		"sky_top": Color(0.25, 0.5, 0.85), "sky_horizon": Color(0.95, 0.8, 0.7), "ground_horizon": Color(0.5, 0.55, 0.6),
 		"sun": Color(1.0, 0.88, 0.7), "sun_energy": 1.8, "sun_rot": Vector3(-30, 125, 0),
@@ -133,7 +134,7 @@ const COUNTRIES := [
 			"roof_colors": [Color(0.4, 0.4, 0.42)], "cloud_cover": 0.25, "cloud_color": Color(1.0, 0.95, 0.92),
 			"cloud_shade": Color(0.6, 0.62, 0.75), "tree": Color(0.25, 0.38, 0.2), "skyline": 1.4},
 		"boss": {"name": "CROCODON", "title": "Harbour Terror", "skin": Color(0.25, 0.32, 0.15), "belly": Color(0.65, 0.6, 0.4),
-			"accent": Color(0.9, 0.9, 0.3), "eye": Color(1.0, 0.8, 0.1), "moves": ["swipe", "charge", "slam", "leap"]}},
+			"accent": Color(0.9, 0.9, 0.3), "eye": Color(1.0, 0.8, 0.1), "body": "quad", "extras": ["snout", "tail_club"], "moves": ["swipe", "charge", "slam", "lunge", "sweep"]}},
 	{"name": "RUSSIA", "city": "Moscow", "landmark": "domes",
 		"sky_top": Color(0.15, 0.18, 0.35), "sky_horizon": Color(0.7, 0.55, 0.6), "ground_horizon": Color(0.6, 0.6, 0.65),
 		"sun": Color(1.0, 0.7, 0.55), "sun_energy": 1.0, "sun_rot": Vector3(-10, 165, 0),
@@ -146,7 +147,7 @@ const COUNTRIES := [
 			"cloud_cover": 0.6, "cloud_color": Color(0.95, 0.75, 0.75), "cloud_shade": Color(0.4, 0.38, 0.52),
 			"tree": Color(0.12, 0.22, 0.16), "skyline": 1.3, "grade_shadow": Color(0.0, 0.01, 0.05)},
 		"boss": {"name": "MAMMOTHRAX", "title": "Winter Behemoth", "skin": Color(0.4, 0.3, 0.25), "belly": Color(0.6, 0.55, 0.5),
-			"accent": Color(0.6, 0.9, 1.0), "eye": Color(0.6, 0.9, 1.0), "moves": ["swipe", "slam", "charge", "breath"]}},
+			"accent": Color(0.6, 0.9, 1.0), "eye": Color(0.6, 0.9, 1.0), "body": "ape", "extras": ["fur", "crystals"], "moves": ["swipe", "slam", "charge", "breath", "hurl", "quake"]}},
 	{"name": "ICELAND", "city": "Reykjavik", "landmark": "volcano",
 		"sky_top": Color(0.02, 0.08, 0.12), "sky_horizon": Color(0.1, 0.45, 0.35), "ground_horizon": Color(0.1, 0.15, 0.18),
 		"sun": Color(0.5, 1.0, 0.75), "sun_energy": 0.6, "sun_rot": Vector3(-30, 150, 0),
@@ -159,7 +160,7 @@ const COUNTRIES := [
 			"cloud_cover": 0.2, "cloud_color": Color(0.1, 0.18, 0.2), "cloud_shade": Color(0.02, 0.05, 0.07),
 			"stars": 1.0, "city_glow": Color(0.12, 0.1, 0.06), "shop": 1.2, "tree": Color(0.1, 0.2, 0.15), "skyline": 0.9},
 		"boss": {"name": "SURTUR", "title": "Lord of Lava", "skin": Color(0.15, 0.1, 0.1), "belly": Color(0.5, 0.2, 0.1),
-			"accent": Color(1.0, 0.35, 0.05), "eye": Color(1.0, 0.6, 0.1), "moves": ["breath", "slam", "leap", "summon", "swipe"]}},
+			"accent": Color(1.0, 0.35, 0.05), "eye": Color(1.0, 0.6, 0.1), "body": "golem", "moves": ["breath", "slam", "leap", "summon", "swipe", "hurl", "meteor"]}},
 	{"name": "JAPAN", "city": "Tokyo", "landmark": "radio_tower",
 		"sky_top": Color(0.05, 0.02, 0.12), "sky_horizon": Color(0.45, 0.15, 0.4), "ground_horizon": Color(0.12, 0.08, 0.15),
 		"sun": Color(0.9, 0.5, 0.9), "sun_energy": 0.6, "sun_rot": Vector3(-35, 150, 0),
@@ -173,7 +174,7 @@ const COUNTRIES := [
 			"neon_colors": [Color(1.0, 0.2, 0.55), Color(0.2, 0.85, 1.0), Color(1.0, 0.7, 0.15), Color(0.65, 0.35, 1.0), Color(0.3, 1.0, 0.5)],
 			"tree": Color(0.12, 0.2, 0.14), "skyline": 1.6, "grade_shadow": Color(0.02, 0.0, 0.05)},
 		"boss": {"name": "RYUJIN PRIME", "title": "The Last Dragon", "skin": Color(0.08, 0.1, 0.12), "belly": Color(0.35, 0.3, 0.35),
-			"accent": Color(0.8, 0.3, 1.0), "eye": Color(1.0, 0.2, 0.5), "moves": ["swipe", "charge", "slam", "breath", "summon", "leap"]}},
+			"accent": Color(0.8, 0.3, 1.0), "eye": Color(1.0, 0.2, 0.5), "body": "kaiju", "moves": ["swipe", "charge", "slam", "breath", "summon", "leap", "storm"]}},
 ]
 
 
@@ -188,8 +189,8 @@ static func country(i: int) -> Dictionary:
 ## Boss stats grow with each country.
 static func boss(country_idx: int) -> Dictionary:
 	var b: Dictionary = country(country_idx)["boss"].duplicate()
-	b["hp"] = 480.0 + country_idx * 110.0
-	b["scale"] = 1.4 + country_idx * 0.04
+	b["hp"] = 700.0 + country_idx * 160.0
+	b["scale"] = 1.9 + country_idx * 0.05
 	b["dmg"] = 16.0 + country_idx * 1.6
 	b["speed"] = 4.8 + country_idx * 0.15
 	b["cooldown"] = maxf(0.6, 1.6 - country_idx * 0.08)
@@ -223,7 +224,7 @@ static func level(country_idx: int, level_idx: int) -> Dictionary:
 				for id in Enemies.introduced(country_idx, level_idx):
 					budget -= _add(spawn, id)
 			var guard := 0
-			while budget > 0.4 and spawn.size() < 8 and guard < 20:
+			while budget > 0.3 and spawn.size() < 14 and guard < 24:
 				guard += 1
 				var id := Enemies.pick(rng, pool)
 				# Every wave leads with something on the ground.

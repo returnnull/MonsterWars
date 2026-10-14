@@ -6,8 +6,11 @@ extends Kaiju
 ##   missile   - SAM truck: raises its pod and launches homing missiles
 ##   maser     - maser cannon: charges a visible beam, then fires it down the street
 ##   mech      - bipedal walker: gun bursts at range, a kick up close
+##   apc       - armoured carrier: drops off a rifle squad, then machine-guns
 ## Small next to a kaiju, so the hit sphere is generous; stomps and swipes
 ## crush it. Built from boxes and cylinders.
+
+signal spawned_minion(node: Node)
 
 var kind := "tank"
 var def: Dictionary = {}
@@ -37,6 +40,7 @@ var _band := Vector2(9.0, 16.0)
 var _z_bias := 0.0
 var _beam_dir := 1.0
 var _beam_tick := 0.0
+var _deployed := false
 
 
 func _ready() -> void:
@@ -70,6 +74,9 @@ func _ready() -> void:
 		"maser":
 			_band = Vector2(9.0, 18.0)
 			_build_maser()
+		"apc":
+			_band = Vector2(6.0, 12.0)
+			_build_apc()
 		"mech":
 			_band = Vector2(3.5, 9.0)
 			hit_height = 2.4
@@ -135,6 +142,8 @@ func _start_act(adx: float) -> void:
 	match kind:
 		"mech":
 			_act = "kick" if adx < 5.5 else "burst"
+		"apc":
+			_act = "burst" if _deployed else "deploy"
 		"maser":
 			_act = "charge"
 			_beam_dir = facing
@@ -177,6 +186,20 @@ func _run_act(delta: float, p: Kaiju) -> void:
 				_end_act(3.8, 5.0)
 		"maser":
 			_maser(delta)
+		"apc":
+			if _act == "deploy":
+				_light_mat.emission_energy_multiplier = 8.0 if blink else 1.5
+				if _act_t >= 0.5 and not _deployed:
+					_deployed = true
+					_deploy()
+				if _act_t >= 1.2:
+					_end_act(0.8, 1.4)
+			else:
+				if _act_t >= 0.2 + _shots * 0.1 and _shots < 8:
+					_shots += 1
+					_bullet(p)
+				if _act_t >= 1.2:
+					_end_act(1.8, 2.6)
 		"mech":
 			if _act == "kick":
 				_light_mat.emission_energy_multiplier = 8.0 if blink else 1.5
@@ -194,6 +217,25 @@ func _run_act(delta: float, p: Kaiju) -> void:
 					_bullet(p)
 				if _act_t >= 1.2:
 					_end_act(2.0, 3.0)
+
+
+## Rear hatch opens and a rifle squad jumps out.
+func _deploy() -> void:
+	var n := 3
+	for i in n:
+		var s := Infantry.new()
+		s.kind = "soldier"
+		s.hp_mul = hp_mul
+		s.dmg_mul = dmg_mul
+		s.arena = arena
+		s.x_min = x_min
+		s.x_max = x_max
+		s.facing = facing
+		get_parent().add_child(s)
+		s.global_position = global_position + Vector3(-facing * (2.6 + i * 0.6), 0.3, (i - 1) * 1.1)
+		s.velocity.y = 5.0
+		spawned_minion.emit(s)
+	FX.dust(global_position - Vector3(facing * 2.4, 0, 0), 0.8)
 
 
 func _fire_shell(p: Kaiju) -> void:
@@ -263,7 +305,7 @@ func _bullet(p: Kaiju) -> void:
 	b.color = Color(1.0, 0.85, 0.3)
 	b.damage = dmg * 0.6
 	get_parent().add_child(b)
-	var muzzle := global_position + Vector3(facing * 1.5, 2.5, 0)
+	var muzzle := global_position + Vector3(facing * 1.5, 2.5 if kind == "mech" else 2.2, 0)
 	b.global_position = muzzle
 	b.velocity = (p.hit_center() - muzzle).normalized().rotated(Vector3.UP, randf_range(-0.05, 0.05)) * 28.0
 	FX.light_flash(muzzle, Color(1.0, 0.8, 0.3), 3.0, 5.0, 0.06)
@@ -498,6 +540,22 @@ func _build_mech() -> void:
 	_box(_vis, Vector3(0.9, 0.7, 1.0), body, Vector3(-0.9, 3.4, 0))
 	_cyl(_vis, 0.03, 1.0, dark, Vector3(-0.6, 4.1, 0.5))
 	_mi(_vis, _sphere_mesh(0.12), _light_mat, Vector3(-0.6, 4.6, 0.5), Vector3.ZERO)
+
+
+func _build_apc() -> void:
+	var body := _mat(Color(0.36, 0.4, 0.28))
+	var dark := _mat(Color(0.12, 0.12, 0.11), 0.2)
+	_wheels(dark, [-1.5, -0.5, 0.5, 1.5], 1.0, 0.5)
+	_box(_vis, Vector3(4.4, 1.2, 1.9), body, Vector3(0, 1.3, 0))
+	_box(_vis, Vector3(1.1, 0.8, 1.9), body, Vector3(2.35, 1.1, 0), Vector3(0, 0, 0.6))
+	_box(_vis, Vector3(0.1, 0.35, 1.2), _glass_mat(), Vector3(2.1, 1.75, 0), Vector3(0, 0, 0.6))
+	_box(_vis, Vector3(0.1, 1.0, 1.2), dark, Vector3(-2.22, 1.3, 0))
+	for side in [-1.0, 1.0]:
+		_box(_vis, Vector3(3.6, 0.08, 0.08), dark, Vector3(-0.2, 1.75, 0.96 * side))
+	_turret = _pivot(_vis, Vector3(0.3, 2.0, 0))
+	_cyl(_turret, 0.4, 0.35, body, Vector3.ZERO)
+	_cyl(_turret, 0.06, 1.3, dark, Vector3(0.7, 0.1, 0), Vector3(0, 0, PI / 2))
+	_mi(_vis, _sphere_mesh(0.12), _light_mat, Vector3(-0.8, 2.0, 0.6), Vector3.ZERO)
 
 
 func _glass_mat() -> StandardMaterial3D:
