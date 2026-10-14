@@ -32,12 +32,21 @@ Tryk **F9** i menuen for at låse alle baner op, hvis du vil teste.
   - Grenens ende: 6 point. Kræver at trin 2 er fyldt helt op.
 - At nå enden af en gren koster mindst 19 point. Med 50 point kan man altså nå enden af to grene, men aldrig alle tre, så man skal vælge.
 - Træet åbnes fra kaiju-valget med **X** (Switch) / **K**. Lær med B, nulstil alle point gratis med Y, tilbage med A.
-- Evnerne er forskellige fra helt til helt og bygger på 27 effekter: mere skade, liv, fart, rage, panser, livsdræn, brand, frost, kædelyn, chokbølger fra slam, større stomp, eksplosion når man undviger, kritiske slag, ekstra skade på svækkede fjender, og grene-ender som Berserk, Second Wind (overlev et dødeligt slag), Overdrive (rage fylder sig selv), Meteor-stomp, brændende aura, skjold, nova ved combo-afslutning og livsdræn ved drab.
+- Evnerne er forskellige fra helt til helt og bygger på 33 effekter: mere skade, liv, fart, rage, panser, livsdræn, brand, frost, kædelyn, chokbølger fra slam, større stomp, eksplosion når man undviger, kritiske slag, ekstra skade på svækkede fjender, og grene-ender som Berserk, Second Wind (overlev et dødeligt slag), Overdrive (rage fylder sig selv), Meteor-stomp, brændende aura, skjold, nova ved combo-afslutning og livsdræn ved drab.
 
 ## Rage og super
 
-- **Rage** fyldes op når du slår, bliver slået og vælter bygninger. Når baren er fuld, trykker du **R** for **rage-tilstand**: kaijuen gløder, slår 30 % hårdere, er 20 % hurtigere, tager mindre skade og kan ikke blive slået ud af balance. Baren tømmes over 10 sekunder.
-- Tryk **R** igen mens rage-tilstanden kører for at bruge resten på heltens **rage-angreb** (Atomic Beam, Nova Burst eller Earthquake).
+- **Rage** virker som mana. Baren fyldes når du giver skade, tager skade, vælter bygninger (og med visse evner når du besejrer fjender), og du bruger den på rage-evner. Hold **R** (tastatur **L**) og tryk en anden knap:
+
+| Rage-evne | Knapper (Switch / tastatur) | Pris | Hvad den gør |
+|---|---|---|---|
+| Rage Strike | R + Y / L + J | 25 | Kaster sig frem med et hårdt slag |
+| War Roar | R + B / L + mellemrum | 35 | Brøl der slår fjender tilbage og giver medspillere tæt på 15 rage |
+| Rage-angreb | R + X / L + K | 50 | Heltens Atomic Beam, Nova Burst eller Earthquake |
+| Rage-tilstand | Tryk kort på R / L | 30+ | Kaijuen gløder, slår 30 % hårdere, er 20 % hurtigere, tager mindre skade og kan ikke slås ud af balance. Bruger 10 rage i sekundet og slukkes med et nyt tryk eller når baren er tom |
+
+  Har du ikke nok rage, blinker baren rødt. De hvide streger i baren viser, hvornår du har råd til hver evne. I rage-tilstand får du kun halvt så meget rage.
+- **Rage i skilltræet.** Alle helte har evner, der ændrer hvor meget rage de får, eller hvordan de får den: mere rage fra alt, mere rage når man bliver ramt, rage for hver besejret fjende, billigere rage-evner og rage-tilstand, en større rage-bar, og grene-ender som Overdrive (rage fylder sig selv), Blood Pact (Noctyr: betal manglende rage med liv) og Tidal Fury (Coralis: halvdelen af den brugte rage fylder super-måleren).
 - **Super** er en ekstra måler, der fyldes langsomt når du gør skade og besejrer fjender. Når den er fuld, trykker du **ZL** for heltens unikke super-special:
 
 | Helt | Super-special |

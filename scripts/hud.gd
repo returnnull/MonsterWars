@@ -67,9 +67,10 @@ func _ready() -> void:
 
 	_controls = _label(root, "Players 2-4: press B on another controller to join\n" +
 		"Move: WASD / stick    Jump: Space / B    Light: J / Y    Heavy: K / X\n" +
-		"Dodge: Shift / A    Rage mode, then rage attack: L key / R    Super: U key / ZL    Pause: Esc / +\n" +
+		"Dodge: Shift / A    Super: U key / ZL    Pause: Esc / +\n" +
+		"Rage skills: hold L / R and press J / Y (strike), Space / B (roar) or K / X (rage attack). Tap L / R for rage mode\n" +
 		"Knock down buildings, then press heavy (K / X) on the wreckage to pick up a weapon",
-		Vector2(48, 925), 22, Color(1, 1, 1, 0.85))
+		Vector2(48, 895), 22, Color(1, 1, 1, 0.85))
 	_controls.visible = bool(Game.settings["hints"])
 
 	_pause_panel = _make_pause(root)
@@ -102,11 +103,27 @@ func bind(player: Player) -> void:
 	var rage_bar: ProgressBar = p["rage"]
 	player.health_changed.connect(func(hp: float, mx: float) -> void: hp_bar.value = 100.0 * hp / mx)
 	player.rage_changed.connect(func(r: float, mx: float) -> void: rage_bar.value = 100.0 * r / mx)
+	rage_bar.value = 100.0 * player.rage / player.rage_max
+	# Tick marks where the bar pays for each rage skill.
+	for c in rage_bar.get_children():
+		c.queue_free()
+	for skill in ["strike", "roar", "attack"]:
+		var tick := ColorRect.new()
+		tick.color = Color(1, 1, 1, 0.7)
+		tick.size = Vector2(2, rage_bar.size.y)
+		tick.position = Vector2(rage_bar.size.x * minf(player.rage_cost(skill) / player.rage_max, 1.0), 0)
+		tick.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		rage_bar.add_child(tick)
 	var super_bar: ProgressBar = p["super"]
 	super_bar.value = 0.0
 	player.super_changed.connect(func(v: float, mx: float) -> void: super_bar.value = 100.0 * v / mx)
 	hp_bar.value = 100.0 * player.hp / player.max_hp
 	p["trail"].value = hp_bar.value
+
+
+## Red flash on a player's rage bar when they can't pay for a rage skill.
+func flash_rage(slot: int) -> void:
+	_panels[slot]["rage_flash"] = 0.3
 
 
 func show_boss(boss: Kaiju) -> void:
@@ -159,14 +176,18 @@ func _process(delta: float) -> void:
 		var hp: ProgressBar = p["hp"]
 		var trail: ProgressBar = p["trail"]
 		trail.value = move_toward(trail.value, hp.value, 25.0 * delta) if trail.value > hp.value else hp.value
-		var full: bool = p["rage"].value >= 99.9
-		var raging: bool = p.has("player") and is_instance_valid(p["player"]) and p["player"].raging
-		if raging:
+		var pl_ok: bool = p.has("player") and is_instance_valid(p["player"])
+		var raging: bool = pl_ok and p["player"].raging
+		var rage_now: float = p["player"].rage if pl_ok else 0.0
+		var big: bool = pl_ok and p["player"].rage >= p["player"].rage_cost("attack")
+		p["rage_flash"] = maxf(float(p.get("rage_flash", 0.0)) - delta, 0.0)
+		if p["rage_flash"] > 0.0:
+			p["fill"].bg_color = Color(1.0, 0.1, 0.1)
+		elif raging:
 			p["fill"].bg_color = Color(1.0, 0.2 + pulse * 0.3, 0.1)
-			p["rage_label"].text = "RAGE MODE! [R]"
 		else:
-			p["fill"].bg_color = Color(1.0, 0.55 + pulse * 0.4, 0.12 + pulse * 0.6) if full else Color(1.0, 0.55, 0.12)
-			p["rage_label"].text = "RAGE! [R]" if full else "RAGE"
+			p["fill"].bg_color = Color(1.0, 0.55 + pulse * 0.4, 0.12 + pulse * 0.6) if big else Color(1.0, 0.55, 0.12)
+		p["rage_label"].text = ("RAGE MODE %d" if raging else "RAGE %d") % int(rage_now)
 		if p.has("player") and is_instance_valid(p["player"]):
 			var pl: Player = p["player"]
 			p["weapon"].text = ("%s  x%d   (Y: swing   X: throw)" % [Weapon.KINDS[pl.weapon]["name"], pl.weapon_uses]) if pl.weapon != "" else ""
@@ -284,18 +305,20 @@ func _make_pause(root: Control) -> Control:
 	_label(card, "KEYBOARD", Vector2(430, 44), 24, Color(1.0, 0.75, 0.4))
 	_label(card, "CONTROLLER", Vector2(690, 44), 24, Color(1.0, 0.75, 0.4))
 	var y := 110.0
+	# Rows shrink to fit the card when the list grows.
+	var step := minf(66.0, 735.0 / Game.CONTROLS.size())
 	for i in Game.CONTROLS.size():
 		var row: Array = Game.CONTROLS[i]
 		if i % 2 == 0:
 			var stripe := ColorRect.new()
 			stripe.color = Color(1, 1, 1, 0.04)
 			stripe.position = Vector2(20, y - 6)
-			stripe.size = Vector2(960, 62)
+			stripe.size = Vector2(960, step - 4.0)
 			card.add_child(stripe)
 		_label(card, row[0], Vector2(40, y), 28, Color.WHITE)
 		_label(card, row[1], Vector2(430, y + 2), 26, Color(0.8, 0.88, 1.0))
 		_label(card, row[2], Vector2(690, y + 2), 26, Color(1.0, 0.92, 0.7))
-		y += 66.0
+		y += step
 	return panel
 
 

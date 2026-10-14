@@ -98,6 +98,18 @@ func _press(slot: int, a: String) -> void:
 	Input.action_release(action)
 
 
+## Holds special and presses `a` with it (a rage skill).
+func _press_combo(slot: int, a: String) -> void:
+	var special := "p%d_special" % slot
+	Input.action_press(special)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	_press(slot, a)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	Input.action_release(special)
+
+
 func _physics_process(delta: float) -> void:
 	if main == null or not main.is_node_ready():
 		return
@@ -129,6 +141,9 @@ func _physics_process(delta: float) -> void:
 	elif main._finished:
 		var res := "CLEAR" if main._wave >= main.waves.size() else "LOST"
 		print("%s %s at t=%.1f score=%d" % [current, res, t, Game.score])
+		for p in Game.players:
+			if is_instance_valid(p):
+				print("  P%d %s rage skills %s" % [p.slot + 1, p.display_name(), p.rage_uses])
 		results.append("%s:%s" % [current, res])
 		_next()
 	elif limit > 0.0 and t > limit:
@@ -164,5 +179,14 @@ func _drive(p: Player, delta: float) -> void:
 				break
 	if fmod(t + off, 3.3) < delta: _press(s, "jump")
 	if fmod(t + off, 3.6) < delta: _press(s, "light")
-	if (p.rage >= 100.0 or (p.raging and p.rage < 70.0)) and fmod(t + off, 0.5) < delta: _press(s, "special")
+	# Rage skills: hold special and press a button; tap special for rage mode.
+	if fmod(t + off, 0.5) < delta:
+		if not p.raging and p.rage >= p.rage_max * 0.9:
+			_press(s, "special")
+		elif p.can_afford("attack") and randf() < 0.4:
+			_press_combo(s, "heavy")
+		elif p.can_afford("roar") and randf() < 0.3:
+			_press_combo(s, "jump")
+		elif p.can_afford("strike"):
+			_press_combo(s, "light")
 	if p.super_meter >= 100.0 and fmod(t + off, 0.5) < delta: _press(s, "super")

@@ -826,7 +826,13 @@ func _build_skills() -> void:
 		bl.size.x = 450
 		bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var super_def := Skills.super_def(_sk_hero)
-	_label(_root, "Rage attack: %s     Super special: %s" % [Content.SPECIAL_NAMES[h["special"]], super_def["name"]],
+	# Rage skill prices with this tree's "frugal" and "deep_rage" skills.
+	var m := Skills.mods(_sk_hero, ranks)
+	var price := func(skill: String) -> int:
+		return int(round(Player.RAGE_SKILLS[skill] * (1.0 - minf(float(m.get("frugal", 0.0)), 50.0) / 100.0)))
+	_label(_root, "Rage %d:  Strike %d   Roar %d   %s %d   Rage mode %d+     Super special: %s" % [
+		int(Player.RAGE_MAX + float(m.get("deep_rage", 0.0))), price.call("strike"), price.call("roar"),
+		Content.SPECIAL_NAMES[h["special"]], price.call("attack"), price.call("mode"), super_def["name"]],
 		Vector2(150, 890), 26, Color(1.0, 0.8, 0.4))
 	var sel_block := Skills.buy_block(xp, ranks, _sk_sel)
 	var hint := _label(_root, "" if sel_block == "" else sel_block, Vector2(150, 935), 26, Color(1.0, 0.5, 0.4))
