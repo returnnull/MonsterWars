@@ -806,16 +806,6 @@ func _process(delta: float) -> void:
 
 # --- helpers -------------------------------------------------------------
 
-## A capsule limb from a to b.
-func _seg(parent: Node3D, a: Vector3, b: Vector3, r: float, mat: Material, scl: Vector3 = Vector3.ONE) -> void:
-	var d := b - a
-	var l := d.length()
-	if l < 0.001:
-		return
-	var basis := Basis(Quaternion(Vector3.UP, d / l)) * Basis.from_scale(scl)
-	_part_xf(parent, _capsule(r, l + r * 2.0), mat, Transform3D(basis, (a + b) * 0.5))
-
-
 ## A curved claw/horn/tooth whose base sits at pos, pointing along `along`
 ## and curving toward `curve`, about `length` long.
 func _claw_at(parent: Node3D, pos: Vector3, along: Vector3, curve: Vector3, length: float, mat: Material) -> void:
@@ -827,15 +817,6 @@ func _claw_at(parent: Node3D, pos: Vector3, along: Vector3, curve: Vector3, leng
 	var z := x.cross(y)
 	var basis := Basis(x, y, z) * Basis.from_scale(Vector3(length * 0.9, length, length * 0.9))
 	_part_xf(parent, _claw(), mat, Transform3D(basis, pos))
-
-
-func _part_xf(parent: Node3D, mesh: Mesh, mat: Material, xf: Transform3D) -> void:
-	if not _pending.has(parent):
-		_pending[parent] = {}
-	var by_mat: Dictionary = _pending[parent]
-	if not by_mat.has(mat):
-		by_mat[mat] = []
-	by_mat[mat].append([mesh, xf])
 
 
 func _cylinder(r: float, h: float) -> Mesh:

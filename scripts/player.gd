@@ -100,6 +100,7 @@ func _ready() -> void:
 	z_min = -5.2
 	z_max = 3.0
 	model = KaijuModel.new()
+	model.look = _h.get("look", {})
 	add_child(model)
 	model.build(_h["skin"], _h["belly"], _h["accent"], _h["eye"], _h["horns"])
 	model.scale = Vector3.ONE * _h["size"]
@@ -588,7 +589,7 @@ func _state_beam(delta: float) -> void:
 	if state_t < BEAM_CHARGE:
 		return
 	_beam.visible = true
-	_beam.position = Vector3(facing * 2.2, 4.85, 0)
+	_beam.position = _mouth_pos()
 	_beam.rotation.y = 0.0 if facing > 0.0 else PI
 	var flicker := 1.0 + sin(state_t * 60.0) * 0.12
 	_beam.scale = Vector3(1, flicker, flicker)
@@ -884,6 +885,12 @@ func _make_beam(tint: Color) -> Node3D:
 	return root
 
 
+## Where breath beams start, in this body's space: the model's open mouth.
+func _mouth_pos() -> Vector3:
+	var m := to_local(model.mouth_global())
+	return Vector3(facing * maxf(absf(m.x), 1.5), m.y, 0)
+
+
 func _make_barrier() -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var sph := SphereMesh.new()
@@ -946,7 +953,7 @@ func _state_super(delta: float) -> void:
 		"mega_beam":
 			if state_t >= 0.5 and state_t < SUPER_TIME - 0.2:
 				_beam.visible = true
-				_beam.position = Vector3(facing * 2.2, 4.85, 0)
+				_beam.position = _mouth_pos()
 				_beam.rotation.y = 0.0 if facing > 0.0 else PI
 				var f := 1.0 + sin(state_t * 70.0) * 0.15
 				_beam.scale = Vector3(1.4, 3.2 * f, 3.2 * f)

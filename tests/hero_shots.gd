@@ -58,8 +58,8 @@ func _ready() -> void:
 			m.position.x = i * 11.0
 			m.rotation.y = -0.45
 			made.append(m)
-		cam.position = Vector3((group.size() - 1) * 5.5, 6.0, 30.0)
-		cam.look_at(Vector3((group.size() - 1) * 5.5, 3.6, 0))
+		cam.position = Vector3((group.size() - 1) * 5.5, 6.5, 34.0)
+		cam.look_at(Vector3((group.size() - 1) * 5.5, 4.2, 0))
 		await get_tree().create_timer(1.0).timeout
 		var n := start / PER_SHOT
 		get_viewport().get_texture().get_image().save_png("user://heroes_%d.png" % n)
@@ -73,6 +73,7 @@ func _ready() -> void:
 func _make(i: int, walk: bool) -> KaijuModel:
 	var h := Content.hero(i)
 	var m := KaijuModel.new()
+	m.look = h.get("look", {})
 	add_child(m)
 	m.build(h["skin"], h["belly"], h["accent"], h["eye"], h["horns"])
 	m.scale = Vector3.ONE * float(h["size"])

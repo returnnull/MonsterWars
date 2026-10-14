@@ -12,7 +12,9 @@ extends Node3D
 ## The look varies with the colours passed to build(): a stable hash of them
 ## picks the dorsal spike shape (leaf plates, cone spikes or swept blades),
 ## how many spike rows, their size, and extras such as a chest gem, glowing
-## seams between the belly plates, a head crest or forearm spikes.
+## seams between the belly plates, a head crest or forearm spikes, plus body
+## proportions (neck length, head size, snout, bulk, arm size, tail length).
+## `look` overrides any of these per hero.
 ##
 ## Motion is smoothed with damped springs: pose targets ease in and settle
 ## with a little overshoot, forearms, hands and the tail trail behind the
@@ -32,6 +34,9 @@ static var _meshes := {}
 ## Mesh resolution: 0 low, 1 medium (regular enemies), 2 high (heroes, bosses).
 ## Set before build().
 var detail := 2
+## Optional per-hero body overrides merged over the colour-hashed variant
+## (see _variant() for the keys). Set before build().
+var look := {}
 var parts := {}
 var walk_amount := 0.0
 var walk_speed := 1.0
@@ -90,6 +95,7 @@ func build(skin: Color, belly: Color, spike: Color, eye: Color, horns: bool = fa
 	var hips := _pivot("hips", self, Vector3(0, 2.4, 0))
 	_part(hips, _sphere(1.0), skin_mat, Vector3(-0.2, 0.2, 0), Vector3.ZERO, Vector3(1.25, 1.0, 1.35))
 	var torso := _pivot("torso", hips, Vector3.ZERO)
+	torso.scale = Vector3(1.0, 1.0, _v["bulk"])
 	var up := Vector2(0.42, 0.91)    # torso axis
 	var fwd := Vector2(0.91, -0.42)  # front of the torso
 	var base := Vector2(0.25, 1.3)
@@ -132,15 +138,26 @@ func build(skin: Color, belly: Color, spike: Color, eye: Color, horns: bool = fa
 		_part(torso, _sphere(0.55), armor_mat, Vector3(0.9, 2.42, 0.98 * side), Vector3(0.45 * side, 0, -0.3), Vector3(1.0, 0.5, 0.8))
 		_part(torso, _sphere(0.32), armor_mat, Vector3(0.72, 2.66, 0.9 * side), Vector3(0.45 * side, 0, -0.3), Vector3(1.0, 0.45, 0.8))
 
-	# --- neck ------------------------------------------------------------
-	var neck := _pivot("neck", torso, Vector3(0.85, 2.75, 0))
-	_part(neck, _capsule(0.66, 1.5), skin_mat, Vector3(0.15, 0.15, 0), Vector3(0, 0, -1.0))
-	for i in 3:
-		_part(neck, _sphere(0.4), belly_mat, Vector3(0.45 + i * 0.12, -0.25 + i * 0.22, 0), Vector3(0, 0, -0.9), Vector3(0.45, 0.6, 1.25))
-	# Skin folds around the neck.
-	for i in 3:
-		_part(neck, _sphere(0.7), skin_mat, Vector3(-0.05 + i * 0.22, -0.05 + i * 0.2, 0), Vector3(0, 0, -1.0 + 0.3),
-			Vector3(0.22, 0.95 - i * 0.05, 1.0 - i * 0.05))
+	# --- neck: thick, rising up and forward from the chest -----------------
+	var nl: float = _v["neck_len"]
+	var neck := _pivot("neck", torso, Vector3(0.8, 2.65, 0))
+	var nv := Vector3(0.3 + 0.45 * nl, 0.45 + 0.8 * nl, 0)  # neck base -> head
+	var nfwd := Vector3(nv.y, -nv.x, 0).normalized()  # throat side
+	for i in 5:
+		var t := float(i) / 4.0
+		var r := lerpf(0.8, 0.5, t)
+		_part(neck, _sphere(r), skin_mat, nv * t, Vector3(0, 0, -atan2(nv.x, nv.y)), Vector3(1.0, 0.85, 0.95))
+	_seg(neck, Vector3.ZERO, nv, 0.6, skin_mat, Vector3(1.0, 1.0, 0.95))
+	# Throat plates down the front and skin folds around the neck.
+	for i in 5:
+		var t := 0.1 + i * 0.2
+		var r := lerpf(0.78, 0.5, t)
+		_part(neck, _sphere(0.4), belly_mat, nv * t + nfwd * r * 0.72, Vector3(0, 0, -atan2(nv.x, nv.y) - 0.3),
+			Vector3(0.42, 0.5, 1.3 * r / 0.65))
+		if i % 2 == 1:
+			_part(neck, _sphere(r), skin_mat, nv * t, Vector3(0, 0, -atan2(nv.x, nv.y)), Vector3(1.08, 0.2, 1.05))
+	# Dewlap where the throat meets the chest.
+	_part(neck, _sphere(0.6), belly_mat, nfwd * 0.55 + Vector3(0.1, -0.1, 0), Vector3(0, 0, -0.6), Vector3(0.7, 0.9, 1.1))
 
 	# --- dorsal spikes from the neck down the back ------------------------
 	var shape: int = _v["spike_shape"]
@@ -162,11 +179,21 @@ func build(skin: Color, belly: Color, spike: Color, eye: Color, horns: bool = fa
 			for side in [-1.0, 1.0]:
 				var q := p2 - up * 0.05 - back * 0.4
 				_spike_piece(torso, shape, Vector3(q.x, q.y, 0.68 * side), rot - 0.2, h * 0.35, 0.6 * side)
-	for i in 3:
-		_spike_piece(neck, shape, Vector3(-0.42 + i * 0.22, 0.6 - i * 0.04, 0), 0.6, (0.6 - i * 0.12) * ss, 0.0)
+	# Spikes continue up the back of the neck, shrinking toward the head.
+	var nback := -nfwd
+	var nrot := atan2(-nback.x, nback.y)
+	for i in 4:
+		var t := 0.1 + i * 0.25
+		var r := lerpf(0.78, 0.5, t)
+		_spike_piece(neck, shape, nv * t + nback * r * 0.85, nrot, (0.75 - i * 0.13) * ss, 0.0)
+		if rows >= 3 and i < 2:
+			for side in [-1.0, 1.0]:
+				_spike_piece(neck, shape, nv * t + nback * r * 0.7 + Vector3(0, 0, 0.3 * side), nrot, (0.45 - i * 0.1) * ss, 0.3 * side)
 
 	# --- head: small, pushed forward, heavy jaw ---------------------------
-	var head := _pivot("head", torso, Vector3(1.05, 3.05, 0))
+	var head := _pivot("head", neck, nv + Vector3(0.15, 0.05, 0))
+	var hsz: float = _v["head_size"]
+	head.scale = Vector3(hsz * float(_v["snout"]), hsz, hsz)
 	_part(head, _sphere(0.7), skin_mat, Vector3(-0.05, 0.02, 0), Vector3.ZERO, Vector3(1.15, 0.9, 1.0))
 	_part(head, _capsule(0.42, 1.5), skin_mat, Vector3(0.68, -0.06, 0), Vector3(0, 0, -PI / 2 + 0.1), Vector3(1.0, 1.0, 1.28))
 	_part(head, _sphere(0.4), skin_mat, Vector3(1.15, 0.0, 0), Vector3.ZERO, Vector3(0.75, 0.55, 1.05))
@@ -229,6 +256,7 @@ func build(skin: Color, belly: Color, spike: Color, eye: Color, horns: bool = fa
 	for side in [1.0, -1.0]:
 		var arm_name := "arm_r" if side > 0 else "arm_l"
 		var arm := _pivot(arm_name, torso, Vector3(1.05, 2.3, 0.95 * side))
+		arm.scale = Vector3.ONE * float(_v["arm_size"])
 		_part(arm, _sphere(0.48), skin_mat, Vector3(0.0, -0.05, 0))
 		_part(arm, _capsule(0.42, 1.6), skin_mat, Vector3(0.02, -0.62, 0))
 		# Biceps and triceps.
@@ -287,10 +315,11 @@ func build(skin: Color, belly: Color, spike: Color, eye: Color, horns: bool = fa
 	# --- tail: thick, tapering, overlapping segments with ridge plates -------
 	var parent: Node3D = hips
 	var offset := Vector3(-0.9, 0.3, 0)
+	var tl: float = _v["tail_len"]
 	for i in TAIL_SEGMENTS:
 		var seg := _pivot("tail%d" % i, parent, offset)
-		var r := 0.9 * (1.0 - i * 0.085)
-		_part(seg, _capsule(r, r * 2.0 + 0.85), skin_mat, Vector3(-0.36, 0, 0), Vector3(0, 0, PI / 2), Vector3(1, 1, 1.05))
+		var r := 0.9 * (1.0 - i * 0.085) * float(_v["tail_thick"])
+		_part(seg, _capsule(r, r * 2.0 + 0.85 * tl), skin_mat, Vector3(-0.36, 0, 0), Vector3(0, 0, PI / 2), Vector3(1, 1, 1.05))
 		_part(seg, _sphere(r * 0.8), belly_mat, Vector3(-0.33, -r * 0.42, 0), Vector3(0, 0, 0.1), Vector3(1.0, 0.55, 1.0))
 		for side in [-1.0, 1.0]:
 			_part(seg, _sphere(r * 0.24), armor_mat, Vector3(-0.35, r * 0.25, r * 0.88 * side), Vector3(0.6 * side, 0, 0),
@@ -306,8 +335,13 @@ func build(skin: Color, belly: Color, spike: Color, eye: Color, horns: bool = fa
 			_part(seg, _claw(), skin_mat, Vector3(-0.85, 0, 0), Vector3(0, 0, PI / 2 + 0.15), Vector3(r * 4.5, 1.4, r * 4.5))
 		_tail.append(seg)
 		parent = seg
-		offset = Vector3(-0.68, -0.07, 0)
+		offset = Vector3(-0.68 * tl, -0.07, 0)
 	_commit()
+
+
+## World position of the tip of the open mouth (for breath beams).
+func mouth_global() -> Vector3:
+	return parts["jaw"].to_global(Vector3(1.1, 0.1, 0)) if parts.has("jaw") else global_position + Vector3(0, 5, 0)
 
 
 func spike_color() -> Color:
@@ -351,11 +385,11 @@ func _process(delta: float) -> void:
 	hips.rotation.x = s * 0.07 * w + sway * 0.015 * (1.0 - w)
 	hips.rotation.y = s * 0.05 * w
 	var torso: Node3D = parts["torso"]
-	torso.rotation.z = -ln + breathe * 0.02 - w * 0.06 + sq * 0.12
+	torso.rotation.z = -ln + breathe * 0.02 - w * 0.06 + sq * 0.12 + float(_v["posture"])
 	torso.rotation.y = -s * 0.08 * w
 	torso.rotation.x = -hips.rotation.x * 0.6
 	# Neck and head trail the torso slightly and stay steady while walking.
-	parts["neck"].rotation.z = ln * 0.15 + sin(_t * 1.7 - 0.4) * 0.03
+	parts["neck"].rotation.z = ln * 0.15 + sin(_t * 1.7 - 0.4) * 0.03 - float(_v["posture"]) * 0.6
 	var head: Node3D = parts["head"]
 	head.rotation.z = sin(_t * 1.7) * 0.05 + ln * 0.4 - absf(c) * 0.05 * w + w * 0.05 - sq * 0.15
 	head.rotation.y = s * 0.06 * w + sin(_t * 0.6) * 0.05 * (1.0 - w)
@@ -445,8 +479,8 @@ func _variant(skin: Color, belly: Color, spike: Color) -> Dictionary:
 	var h := hash(skin.to_html() + belly.to_html() + spike.to_html())
 	var r := RandomNumberGenerator.new()
 	r.seed = h
-	return {
-		"spike_shape": r.randi() % 3,
+	var v := {
+		"spike_shape": r.randi() % 5,
 		"rows": 2 + r.randi() % 2,
 		"spike_size": r.randf_range(0.85, 1.25),
 		"horn_size": r.randf_range(0.8, 1.3),
@@ -454,17 +488,39 @@ func _variant(skin: Color, belly: Color, spike: Color) -> Dictionary:
 		"seams": r.randf() < 0.4,
 		"crest": r.randf() < 0.3,
 		"arm_spikes": r.randf() < 0.4,
+		"neck_len": r.randf_range(0.85, 1.15),
+		"head_size": r.randf_range(0.95, 1.08),
+		"snout": r.randf_range(0.92, 1.1),
+		"bulk": r.randf_range(0.95, 1.08),
+		"arm_size": r.randf_range(0.92, 1.08),
+		"tail_len": r.randf_range(0.92, 1.1),
+		"tail_thick": 1.0,
+		"posture": 0.1,
 	}
+	v.merge(look, true)
+	return v
 
 
-## One dorsal spike: 0 leaf plate, 1 cone spike, 2 swept blade. `rot` tilts
-## it in the side plane (0 = straight up), `roll` leans it outward.
+## One dorsal spike: 0 leaf plate, 1 cone spike, 2 swept blade, 3 three-lobed
+## maple-leaf plate, 4 crystal shard cluster. `rot` tilts it in the side plane
+## (0 = straight up), `roll` leans it outward.
 func _spike_piece(parent: Node3D, shape: int, pos: Vector3, rot: float, h: float, roll: float) -> void:
 	match shape:
 		0:
 			_part(parent, _plate(), _spike_mat, pos, Vector3(roll, 0, rot), Vector3(h * 0.78, h, h * 0.22))
 		1:
 			_part(parent, _claw(), _spike_mat, pos, Vector3(roll, 0, rot + 0.25), Vector3(h * 0.9, h * 1.05, h * 0.9))
+		3:
+			_part(parent, _plate(), _spike_mat, pos, Vector3(roll, 0, rot), Vector3(h * 0.7, h * 1.1, h * 0.24))
+			for a in [-0.55, 0.55]:
+				_part(parent, _plate(), _spike_mat, pos, Vector3(roll, 0, rot + a), Vector3(h * 0.5, h * 0.72, h * 0.2))
+		4:
+			for k in 3:
+				var a: float = [0.0, -0.45, 0.4][k]
+				var l: float = h * [1.15, 0.75, 0.6][k]
+				var b := Basis.from_euler(Vector3(roll + (k - 1) * 0.25, 0, rot + a))
+				_part(parent, _shard(), _spike_mat, pos - b.y * l * 0.08,
+					Vector3(roll + (k - 1) * 0.25, 0, rot + a), Vector3(h * 0.85, l, h * 0.85))
 		_:
 			_part(parent, _plate(), _spike_mat, pos, Vector3(roll, 0, rot + 0.55), Vector3(h * 0.55, h * 1.25, h * 0.14))
 
@@ -554,6 +610,25 @@ func _part(parent: Node3D, mesh: Mesh, mat: Material, pos: Vector3,
 	if not by_mat.has(mat):
 		by_mat[mat] = []
 	var xf := Transform3D(Basis.from_euler(rot) * Basis.from_scale(scl), pos)
+	by_mat[mat].append([mesh, xf])
+
+
+## A capsule limb from a to b.
+func _seg(parent: Node3D, a: Vector3, b: Vector3, r: float, mat: Material, scl: Vector3 = Vector3.ONE) -> void:
+	var d := b - a
+	var l := d.length()
+	if l < 0.001:
+		return
+	var basis := Basis(Quaternion(Vector3.UP, d / l)) * Basis.from_scale(scl)
+	_part_xf(parent, _capsule(r, l + r * 2.0), mat, Transform3D(basis, (a + b) * 0.5))
+
+
+func _part_xf(parent: Node3D, mesh: Mesh, mat: Material, xf: Transform3D) -> void:
+	if not _pending.has(parent):
+		_pending[parent] = {}
+	var by_mat: Dictionary = _pending[parent]
+	if not by_mat.has(mat):
+		by_mat[mat] = []
 	by_mat[mat].append([mesh, xf])
 
 
@@ -688,6 +763,31 @@ static func _tri_flat(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, centr
 		st.set_normal(n)
 		st.set_uv(Vector2(0.5, v))
 		st.add_vertex(p)
+
+
+## Six-sided crystal: base radius 0.18 at y=0, faceted point at y=1.
+static func _shard() -> Mesh:
+	if _meshes.has("shard"):
+		return _meshes["shard"]
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var tip := Vector3(0, 1.0, 0)
+	var centre := Vector3(0, 0.4, 0)
+	for k in 6:
+		var a0 := TAU * k / 6.0
+		var a1 := TAU * (k + 1) / 6.0
+		var b0 := Vector3(cos(a0), 0, sin(a0)) * 0.18
+		var b1 := Vector3(cos(a1), 0, sin(a1)) * 0.18
+		var m0 := b0 * 1.15 + Vector3(0, 0.68, 0)
+		var m1 := b1 * 1.15 + Vector3(0, 0.68, 0)
+		_tri_flat(st, b0, m0, m1, centre, 0.4)
+		_tri_flat(st, b0, m1, b1, centre, 0.4)
+		_tri_flat(st, m0, tip, m1, centre, 0.0)
+		_tri_flat(st, b0, b1, Vector3.ZERO, centre + Vector3(0, 0.5, 0), 1.0)
+	st.generate_tangents()
+	var mesh := st.commit()
+	_meshes["shard"] = mesh
+	return mesh
 
 
 ## Faceted, jagged dorsal plate in the XY plane: base on y=0 (width 1),
