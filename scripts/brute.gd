@@ -6,8 +6,9 @@ extends Kaiju
 ## Moves: swipe, combo, charge, slam, breath, spit, summon, leap, explode,
 ## burrow, shock, lunge, hurl, plus the bosses' signature moves (SIGNATURES).
 ## Every move is telegraphed (wind-up pose +
-## glowing eyes). Regular enemies use a CreatureModel body plan (the def's
-## "body"); bosses keep the upright KaijuModel. Insects fight hit-and-run,
+## glowing eyes). Every enemy, bosses included, uses a CreatureModel body
+## plan (the def's "body"), never the heroes' upright kaiju model; bosses get
+## the high-detail meshes. Insects fight hit-and-run,
 ## zigzagging in and hopping back after a bite.
 
 signal spawned_minion(node: Node)
@@ -57,7 +58,7 @@ var _summon := "drone"
 var _combo_n := 0
 var _burrowed := false
 var _score := 1500
-var _body := "kaiju"
+var _body := "ape"
 ## Height of the body relative to a hero kaiju; places hit boxes and muzzles.
 var _tall := 1.0
 
@@ -85,7 +86,7 @@ func _ready() -> void:
 		colors = [boss_def.get("skin", Color(0.32, 0.08, 0.07)), boss_def.get("belly", Color(0.55, 0.32, 0.2)),
 			boss_def.get("accent", Color(1.0, 0.35, 0.1)), boss_def.get("eye", Color(1.0, 0.8, 0.15))]
 		_element = boss_def.get("element", "fire")
-		_body = boss_def.get("body", "kaiju")
+		_body = boss_def.get("body", "ape")
 		extras = boss_def.get("extras", [])
 		horns = boss_def.get("horns", true)
 		_summon = boss_def.get("summon", "drone")
@@ -108,7 +109,7 @@ func _ready() -> void:
 		_score = def.get("score", 1500)
 		horns = def.get("horns", false)
 		extras = def.get("extras", [])
-		_body = def.get("body", "kaiju")
+		_body = def.get("body", "ape")
 		var cdef = def.get("colors", "random")
 		if cdef is Array:
 			colors = cdef
@@ -131,13 +132,11 @@ func _ready() -> void:
 	hit_height = 3.0 * size_mul * maxf(_tall, 0.6)
 	z_min = -5.2
 	z_max = 3.0
-	if _body == "kaiju":
-		model = KaijuModel.new()
-	else:
-		var cm := CreatureModel.new()
-		cm.plan = _body
-		cm.extras = extras
-		model = cm
+	var cm := CreatureModel.new()
+	cm.plan = _body if CreatureModel.HEIGHT.has(_body) else "ape"
+	cm.extras = extras
+	cm.detail = 2 if kind == "boss" else 1
+	model = cm
 	add_child(model)
 	model.scale = _shape * size_mul
 	model.build(colors[0], colors[1], colors[2], colors[3], horns)

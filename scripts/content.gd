@@ -42,7 +42,7 @@ const HEROES := [
 const SPECIAL_NAMES := {"beam": "Atomic Beam", "nova": "Nova Burst", "quake": "Earthquake"}
 
 # Boss keys: moves (any Brute move plus its signature move, see Brute.SIGNATURES),
-# body (CreatureModel plan, or "kaiju"), extras, horns, element, summon.
+# body (CreatureModel plan; never the heroes' kaiju model), extras, horns, element, summon.
 const COUNTRIES := [
 	{"name": "DENMARK", "city": "Copenhagen", "landmark": "windmills",
 		"sky_top": Color(0.32, 0.4, 0.52), "sky_horizon": Color(0.75, 0.75, 0.75), "ground_horizon": Color(0.5, 0.5, 0.5),
@@ -57,7 +57,8 @@ const COUNTRIES := [
 			"sun_strength": 0.3, "wet": 1.0, "tree": Color(0.2, 0.34, 0.18), "skyline": 1.0,
 			"grade_shadow": Color(0.0, 0.02, 0.05), "saturation": 1.05},
 		"boss": {"name": "HAVTROLD", "title": "The Sea Troll", "skin": Color(0.15, 0.3, 0.32), "belly": Color(0.5, 0.6, 0.5),
-			"accent": Color(0.3, 0.9, 0.8), "eye": Color(0.9, 1.0, 0.6), "body": "kaiju", "moves": ["swipe", "charge", "quake"]}},
+			"accent": Color(0.3, 0.9, 0.8), "eye": Color(0.9, 1.0, 0.6), "body": "ape",
+			"extras": ["seaweed", "crest"], "horns": false, "moves": ["swipe", "charge", "quake"]}},
 	{"name": "FRANCE", "city": "Paris", "landmark": "iron_tower",
 		"sky_top": Color(0.2, 0.22, 0.45), "sky_horizon": Color(1.0, 0.65, 0.4), "ground_horizon": Color(0.6, 0.4, 0.3),
 		"sun": Color(1.0, 0.75, 0.5), "sun_energy": 1.6, "sun_rot": Vector3(-14, 160, 0),
@@ -174,7 +175,8 @@ const COUNTRIES := [
 			"neon_colors": [Color(1.0, 0.2, 0.55), Color(0.2, 0.85, 1.0), Color(1.0, 0.7, 0.15), Color(0.65, 0.35, 1.0), Color(0.3, 1.0, 0.5)],
 			"tree": Color(0.12, 0.2, 0.14), "skyline": 1.6, "grade_shadow": Color(0.02, 0.0, 0.05)},
 		"boss": {"name": "RYUJIN PRIME", "title": "The Last Dragon", "skin": Color(0.08, 0.1, 0.12), "belly": Color(0.35, 0.3, 0.35),
-			"accent": Color(0.8, 0.3, 1.0), "eye": Color(1.0, 0.2, 0.5), "body": "kaiju", "moves": ["swipe", "charge", "slam", "breath", "summon", "leap", "storm"]}},
+			"accent": Color(0.8, 0.3, 1.0), "eye": Color(1.0, 0.2, 0.5), "body": "serpent",
+			"extras": ["whiskers", "crest", "fins"], "moves": ["swipe", "charge", "slam", "breath", "summon", "leap", "storm"]}},
 ]
 
 
