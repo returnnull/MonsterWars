@@ -109,8 +109,13 @@ func _think(delta: float, p: Kaiju) -> Vector3:
 		if _cd <= 0.0 and adx < _band.y + 4.0:
 			_act_t = 0.0
 			_shots = 0
+	# Soldiers come in over the arena gates; inside they stay in the arena.
 	var nx := global_position.x + mv.x * 0.3
-	if nx < arena.x or nx > arena.y:
+	if global_position.x < arena.x:
+		mv.x = speed
+	elif global_position.x > arena.y:
+		mv.x = -speed
+	elif nx < arena.x or nx > arena.y:
 		mv.x = 0.0
 	return mv
 

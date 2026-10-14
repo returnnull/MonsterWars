@@ -1,6 +1,10 @@
 extends Node3D
 ## Plays one level (Game.level, from Content.level()): builds the country's
 ## stage, spawns the party, runs the arena waves and handles win/lose.
+## The level is a walk to the right through a row of arenas. A barricade
+## (ArenaGate) blocks the street at each arena's right edge; when a player
+## walks in, a second one closes behind them, and both are smashed open
+## once every enemy of the wave is down.
 
 var hud: Hud
 var cam: CameraRig
@@ -12,6 +16,7 @@ var _alive := 0
 var _finished := false
 var _arena_min := -8.0
 var _arena_max := 0.0
+var _gates: Array = []  # per wave: [left gate, right gate]
 
 
 func _ready() -> void:
@@ -23,8 +28,10 @@ func _ready() -> void:
 	lvl = Game.level
 	waves = lvl["waves"]
 	var country := Content.country(lvl["country"])
-	var builder := StageBuilder.new(self, country, lvl["length"], lvl["seed"])
+	var builder := StageBuilder.new(self, Content.with_mood(country, lvl.get("mood", "")), lvl["length"], lvl["seed"],
+		lvl.get("district", "downtown"))
 	builder.build()
+	_build_gates()
 
 	hud = Hud.new()
 	add_child(hud)
@@ -40,7 +47,7 @@ func _ready() -> void:
 	var weather := builder.make_weather()
 	if weather:
 		cam.add_child(weather)
-	hud.show_message(lvl["title"], 2.2)
+	hud.show_message(lvl["title"], 2.6, lvl.get("subtitle", ""))
 
 
 func _physics_process(_delta: float) -> void:
@@ -48,8 +55,9 @@ func _physics_process(_delta: float) -> void:
 	_leash_players()
 	if _finished or _wave_active or _wave >= waves.size():
 		return
+	var w: Dictionary = waves[_wave]
 	for p in Game.living_players():
-		if p.global_position.x >= waves[_wave]["x"] - 4.0:
+		if p.global_position.x >= _trigger_x(w):
 			_start_wave()
 			return
 
@@ -112,24 +120,64 @@ func _leash_players() -> void:
 		p.x_max = maxf(hi, lo)
 
 
+## Half the width of a wave's arena (older level data has none).
+static func _half(w: Dictionary) -> float:
+	return float(w.get("half", 20.0))
+
+
+## Where a player has to get to for a wave to start: a bit into its arena.
+static func _trigger_x(w: Dictionary) -> float:
+	return float(w["x"]) - _half(w) * 0.3
+
+
+## One pair of gates per arena. The right ones stand from the start.
+func _build_gates() -> void:
+	for w in waves:
+		var pair: Array = []
+		for side in [-1.0, 1.0]:
+			var g := ArenaGate.new()
+			g.kind = w.get("gate", "barricade")
+			g.position = Vector3(float(w["x"]) + side * (_half(w) + 1.0), 0, 0)
+			add_child(g)
+			pair.append(g)
+		pair[1].raise(true)
+		_gates.append(pair)
+
+
+## Before a wave the way on ends at its right gate; after the last one the
+## street is open to the end of the level.
 func _update_limits() -> void:
-	_arena_min = -8.0
-	_arena_max = (waves[_wave]["x"] + 4.0) if _wave < waves.size() else float(lvl["length"])
+	if _wave < waves.size():
+		var w: Dictionary = waves[_wave]
+		_arena_min = -8.0 if _wave == 0 else float(waves[_wave - 1]["x"]) - _half(waves[_wave - 1])
+		_arena_max = float(w["x"]) + _half(w) - 0.5
+	else:
+		_arena_min = -8.0 if waves.is_empty() else float(waves[-1]["x"]) - _half(waves[-1])
+		_arena_max = float(lvl["length"]) + 20.0
 
 
 func _start_wave() -> void:
 	_wave_active = true
 	var w: Dictionary = waves[_wave]
 	var cx: float = w["x"]
-	_arena_min = cx - 20.0
-	_arena_max = cx + 20.0
+	var half := _half(w)
+	_arena_min = cx - half + 0.5
+	_arena_max = cx + half - 0.5
+	if _wave < _gates.size():
+		_gates[_wave][0].raise()
+	# Anyone left behind the closing gate is pulled into the arena.
+	for p in Game.players:
+		if is_instance_valid(p) and p.global_position.x < _arena_min + 1.0:
+			p.global_position = Vector3(_arena_min + 2.0 + p.slot * 1.5, 8.0, p.global_position.z)
+			FX.dust(Vector3(p.global_position.x, 0.3, p.global_position.z), 1.2)
+	hud.show_go(false)
 	hud.show_message(w["title"], 1.6)
 	var kinds: Array = w["spawn"].duplicate()
 	if Game.players.size() >= 3 and w["title"] != "BOSS":
 		kinds.append("brute")
 	_alive = kinds.size()
 	for i in kinds.size():
-		_spawn(kinds[i], cx, i)
+		_spawn(kinds[i], cx, half, i)
 
 
 ## Enemy health scales with the level and the number of players.
@@ -137,9 +185,11 @@ func _player_mul() -> float:
 	return 1.0 + 0.5 * (Game.players.size() - 1)
 
 
-func _spawn(kind: String, cx: float, i: int) -> void:
+func _spawn(kind: String, cx: float, half: float, i: int) -> void:
 	await get_tree().create_timer(0.3 + i * 0.9, false).timeout
-	var e = make_enemy(kind, cx, 1.0 if i % 2 == 0 else -1.0)
+	if not is_inside_tree():
+		return
+	var e = make_enemy(kind, cx, 1.0 if i % 2 == 0 else -1.0, half)
 	add_child(e)
 	e.died.connect(_on_enemy_died)
 	if e.has_signal("spawned_minion"):
@@ -151,8 +201,9 @@ func _spawn(kind: String, cx: float, i: int) -> void:
 
 
 ## Builds any enemy by its Enemies.DEFS id (or "boss") for the arena centred
-## on `cx`, entering from `side`, scaled to the level and the party size.
-func make_enemy(kind: String, cx: float, side: float) -> Node3D:
+## on `cx` (`half` wide each way), entering from `side` over the gate,
+## scaled to the level and the party size.
+func make_enemy(kind: String, cx: float, side: float, half: float = 20.0) -> Node3D:
 	var def := Enemies.get_def(kind)
 	var hp_mul := float(lvl["hp_mul"]) * _player_mul()
 	var dmg_mul := float(lvl["dmg_mul"])
@@ -163,7 +214,7 @@ func make_enemy(kind: String, cx: float, side: float) -> Node3D:
 			f.def = def
 			f.hp_mul = hp_mul
 			f.dmg_mul = dmg_mul
-			f.position = Vector3(cx + side * 26.0, 14.0 if kind != "bomber" else 9.0, -2.0)
+			f.position = Vector3(cx + side * (half + 6.0), 14.0 if kind != "bomber" else 9.0, -2.0)
 			return f
 		"infantry":
 			var s := Infantry.new()
@@ -171,8 +222,8 @@ func make_enemy(kind: String, cx: float, side: float) -> Node3D:
 			s.def = def
 			s.hp_mul = hp_mul
 			s.dmg_mul = dmg_mul
-			s.arena = Vector2(cx - 20.0, cx + 20.0)
-			s.position = Vector3(cx + side * randf_range(20.0, 25.0), 0.2, randf_range(-4.0, 2.5))
+			s.arena = Vector2(cx - half, cx + half)
+			s.position = Vector3(cx + side * randf_range(half, half + 5.0), 0.2, randf_range(-4.0, 2.5))
 			s.facing = -side
 			return s
 		"ground":
@@ -181,8 +232,8 @@ func make_enemy(kind: String, cx: float, side: float) -> Node3D:
 			v.def = def
 			v.hp_mul = hp_mul
 			v.dmg_mul = dmg_mul
-			v.arena = Vector2(cx - 18.0, cx + 18.0)
-			v.position = Vector3(cx + side * 23.0, 0.2, randf_range(-3.0, 2.0))
+			v.arena = Vector2(cx - half + 2.0, cx + half - 2.0)
+			v.position = Vector3(cx + side * (half + 3.0), 0.2, randf_range(-3.0, 2.0))
 			v.facing = -side
 			return v
 	var b := Brute.new()
@@ -195,9 +246,9 @@ func make_enemy(kind: String, cx: float, side: float) -> Node3D:
 		b.hp_mul = _player_mul()
 	else:
 		b.def = def
-	b.x_min = cx - 22.5
-	b.x_max = cx + 22.5
-	b.position = Vector3(cx + side * 22.0, 0.2, randf_range(-3.0, 2.0))
+	b.x_min = cx - half - 2.5
+	b.x_max = cx + half + 2.5
+	b.position = Vector3(cx + side * (half + 2.0), 0.2, randf_range(-3.0, 2.0))
 	b.facing = -side
 	return b
 
@@ -220,6 +271,9 @@ func _on_enemy_died(who: Node) -> void:
 	if _alive > 0 or not _wave_active:
 		return
 	_wave_active = false
+	if _wave < _gates.size():
+		for g in _gates[_wave]:
+			g.open()
 	_wave += 1
 	if _wave >= waves.size():
 		_finished = true
@@ -232,6 +286,7 @@ func _on_enemy_died(who: Node) -> void:
 		hud.show_end("STAGE CLEAR", true)
 	else:
 		hud.show_message("GO  >>", 1.6)
+		hud.show_go(true)
 		_update_limits()
 		for p in Game.players:
 			if is_instance_valid(p) and p.dead:

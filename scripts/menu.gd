@@ -714,7 +714,7 @@ func _show_levels() -> void:
 		for w in lvl["waves"]:
 			for k in w["spawn"]:
 				kinds[k] = true
-		var info := "%d waves" % lvl["waves"].size()
+		var info := "%s\n%d waves" % [Content.DISTRICTS[lvl["district"]]["name"], lvl["waves"].size()]
 		if boss:
 			info = "BOSS\n" + c["boss"]["name"]
 		elif kinds.has("elite"):

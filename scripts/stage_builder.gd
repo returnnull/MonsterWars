@@ -5,12 +5,23 @@ extends RefCounted
 ## front row of buildings, three layers of background city with side streets
 ## running into the distance, the country's landmark and weather. Everything
 ## is added as children of `root`. Repeated props use MultiMesh.
+## `district` (Content.DISTRICTS) changes the street: building heights and
+## widths, and its own props (harbour water and cranes, factories, park).
 
 const ROAD_Z := -1.0
 const ROAD_HALF := 5.5
 const BACK_CURB := -6.75
 const FRONT_CURB := 4.75
 const CROSS_HALF := 3.0
+## Per district: front-row height and width, skyline height, share of the
+## front row left open (park lawns).
+const DISTRICT_LOOK := {
+	"downtown": {"front": 1.15, "sky": 1.2, "width": Vector2(5.5, 9.5), "gaps": 0.0},
+	"old_town": {"front": 0.55, "sky": 0.65, "width": Vector2(4.5, 7.0), "gaps": 0.0},
+	"harbor": {"front": 0.6, "sky": 0.75, "width": Vector2(7.0, 12.0), "gaps": 0.15},
+	"industrial": {"front": 0.5, "sky": 0.6, "width": Vector2(10.0, 16.0), "gaps": 0.1},
+	"park": {"front": 0.55, "sky": 0.85, "width": Vector2(5.5, 9.0), "gaps": 0.45},
+}
 
 var root: Node3D
 var c: Dictionary
@@ -18,12 +29,16 @@ var look: Dictionary
 var length := 250.0
 var rng := RandomNumberGenerator.new()
 var night := false
+var district := "downtown"
+var dl: Dictionary = DISTRICT_LOOK["downtown"]
 var crossings: Array[float] = []
 var _clear: Array = []  # [x0, x1, z] spans kept free for landmarks
 
 
-func _init(p_root: Node3D, country: Dictionary, stage_length: float, seed_value: int) -> void:
+func _init(p_root: Node3D, country: Dictionary, stage_length: float, seed_value: int, p_district: String = "downtown") -> void:
 	root = p_root
+	district = p_district if DISTRICT_LOOK.has(p_district) else "downtown"
+	dl = DISTRICT_LOOK[district]
 	c = country
 	look = c.get("look", {})
 	night = look.get("night", false)
@@ -39,6 +54,16 @@ func build() -> void:
 		"roof_flat": look.get("roof_flat", Color(0.3, 0.3, 0.31))}
 	if look.has("neon_colors"):
 		Building.style["neon_colors"] = look["neon_colors"]
+	match district:
+		"old_town":
+			Building.style["roofs"] = ["gable", "hip", "mansard", "gable"]
+			Building.style["facades"] = [0.15, 0.7, 0.0, 0.15]
+		"industrial":
+			Building.style["roofs"] = ["flat", "tank", "flat"]
+			Building.style["facades"] = [0.2, 0.0, 0.1, 0.7]
+			Building.style["neon"] = float(Building.style["neon"]) * 0.3
+		"harbor":
+			Building.style["roofs"] = ["flat", "gable", "tank"]
 	_plan()
 	_environment()
 	_ground()
@@ -49,9 +74,14 @@ func build() -> void:
 	_sky_life()
 	for lx in _landmark_xs:
 		_landmark(c["landmark"], lx)
+	_district_props()
+	if look.get("lightning", false):
+		_lightning()
 
 
 var _landmark_xs: Array[float] = []
+var _lots: Array[Vector2] = []
+var _fill: DirectionalLight3D  # open stretches of the front row [x0, x1]
 
 
 ## Decides where side streets and landmarks go, so the rows of buildings
@@ -91,7 +121,7 @@ func _blocks_landmark(x0: float, x1: float, z: float) -> bool:
 
 ## Returns a particle node for snow/rain to attach to the camera, or null.
 func make_weather() -> Node3D:
-	var kind: String = {"DENMARK": "rain", "RUSSIA": "snow", "ICELAND": "snow"}.get(c["name"], "")
+	var kind: String = look.get("weather", {"DENMARK": "rain", "RUSSIA": "snow", "ICELAND": "snow"}.get(c["name"], ""))
 	if kind == "":
 		return null
 	var p := GPUParticles3D.new()
@@ -205,6 +235,7 @@ func _environment() -> void:
 	sun.directional_shadow_blend_splits = true
 	root.add_child(sun)
 	var fill := DirectionalLight3D.new()
+	_fill = fill
 	fill.light_color = c["fill"]
 	fill.light_energy = c["fill_energy"]
 	fill.rotation_degrees = Vector3(-35, 20, 0)
@@ -298,8 +329,13 @@ func _ground() -> void:
 	# Back sidewalk (in front of the destructible row) and its curb.
 	_box(Vector3(span, 0.18, 1.2), pave, Vector3(mid, 0.09, -7.1))
 	_box(Vector3(span, 0.2, 0.18), curb, Vector3(mid, 0.1, ROAD_Z - ROAD_HALF - 0.09))
-	# Front sidewalk + plaza, curb.
-	_box(Vector3(span, 0.18, 8.0), pave, Vector3(mid, 0.09, FRONT_CURB + 4.0))
+	# Front sidewalk + plaza, curb. In the harbour the plaza is a quay.
+	if district == "harbor":
+		_box(Vector3(span, 0.18, 2.9), pave, Vector3(mid, 0.09, FRONT_CURB + 1.45))
+		_box(Vector3(span, 0.5, 0.5), _mat(Color(0.42, 0.4, 0.38), 0.9), Vector3(mid, 0.0, FRONT_CURB + 3.1))
+		_water(Vector3(mid, 0.02, FRONT_CURB + 3.35 + 60.0), Vector2(span, 120.0))
+	else:
+		_box(Vector3(span, 0.18, 8.0), pave, Vector3(mid, 0.09, FRONT_CURB + 4.0))
 	_box(Vector3(span, 0.2, 0.18), curb, Vector3(mid, 0.1, ROAD_Z + ROAD_HALF + 0.09))
 	# Granite band and low wall along the plaza.
 	_box(Vector3(span, 0.2, 0.5), _mat(Color(0.3, 0.3, 0.32), 0.6), Vector3(mid, 0.1, 6.6))
@@ -385,17 +421,21 @@ func _street_props() -> void:
 		caps.append(Transform3D(Basis.from_scale(Vector3(0.14, 0.06, 0.14)), Vector3(x, 0.75, FRONT_CURB + 0.45)))
 		x += 4.5
 	x = -36.0
+	# On the quay the planters and benches stand closer to the railing.
+	var pz := -2.0 if district == "harbor" else 0.0
 	while x < length + 60.0:
-		var kind := rng.randi() % 3
+		var kind := rng.randi() % 3 if district != "park" else 2
 		var px := x + rng.randf_range(-1.0, 1.0)
 		if kind == 0:
-			planters.append(Transform3D(Basis.from_scale(Vector3(2.2, 0.45, 0.9)), Vector3(px, 0.4, 7.6)))
+			planters.append(Transform3D(Basis.from_scale(Vector3(2.2, 0.45, 0.9)), Vector3(px, 0.4, 7.6 + pz)))
 			for i in 3:
-				shrubs.append(Transform3D(Basis.from_scale(Vector3(0.8, 0.55, 0.7) * rng.randf_range(0.8, 1.1)), Vector3(px - 0.65 + i * 0.65, 0.75, 7.6)))
+				shrubs.append(Transform3D(Basis.from_scale(Vector3(0.8, 0.55, 0.7) * rng.randf_range(0.8, 1.1)), Vector3(px - 0.65 + i * 0.65, 0.75, 7.6 + pz)))
 				shrub_cols.append(tree.lightened(rng.randf_range(0.0, 0.15)).lerp(Color(0.9, 0.92, 0.95), snow * 0.6))
 		elif kind == 1:
-			benches.append(Transform3D(Basis.from_scale(Vector3(1.4, 0.1, 0.4)), Vector3(px, 0.45, 7.2)))
-			benches.append(Transform3D(Basis.from_scale(Vector3(1.4, 0.35, 0.08)), Vector3(px, 0.65, 7.42)))
+			benches.append(Transform3D(Basis.from_scale(Vector3(1.4, 0.1, 0.4)), Vector3(px, 0.45, 7.2 + pz)))
+			benches.append(Transform3D(Basis.from_scale(Vector3(1.4, 0.35, 0.08)), Vector3(px, 0.65, 7.42 + pz)))
+		elif district == "harbor":
+			bollards.append(Transform3D(Basis.from_scale(Vector3(2.2, 0.5, 2.2)), Vector3(px, 0.4, FRONT_CURB + 2.4)))
 		else:
 			trunks.append(Transform3D(Basis.from_scale(Vector3(1, 1.1, 1)), Vector3(px, 0.73, 8.4)))
 			var s := rng.randf_range(0.8, 1.0)
@@ -405,7 +445,7 @@ func _street_props() -> void:
 					off = Vector3(0, 1.65, 0)
 				crowns.append(Transform3D(Basis.from_scale(Vector3(0.75, 0.65, 0.75) * s * rng.randf_range(0.8, 1.1)), Vector3(px, 0, 8.4) + off))
 				crown_cols.append(tree.lightened(rng.randf_range(-0.08, 0.15) + k * 0.03).lerp(Color(0.9, 0.92, 0.95), snow * (0.3 + k * 0.12)))
-		x += rng.randf_range(5.0, 8.0)
+		x += rng.randf_range(5.0, 8.0) if district != "park" else rng.randf_range(3.0, 5.0)
 	var metal := _mat(Color(0.2, 0.21, 0.22), 0.4, 0.7)
 	_multi(_cyl(0.07, 0.08, 6), metal, bollards)
 	_multi(_unit_box(), _glow(lamp_col, 3.0 if night else 0.3), caps, [], false)
@@ -502,14 +542,22 @@ func _cars() -> void:
 
 ## The destructible front row, broken by side streets.
 func _city() -> void:
-	var h: Vector2 = c["height"]
+	var h: Vector2 = c["height"] * float(dl["front"])
+	h.x = maxf(h.x, 3.5)
+	h.y = maxf(h.y, h.x + 2.0)
+	var wr: Vector2 = dl["width"]
 	var x := -20.0
 	while x < length + 30.0:
-		var w := rng.randf_range(5.5, 9.5)
+		var w := rng.randf_range(wr.x, wr.y)
 		if _near_crossing(x, x + w, 0.6):
 			x += 1.5
 			continue
-		var d := rng.randf_range(6.0, 9.0)
+		# Open lots (lawns, yards) between the buildings.
+		if rng.randf() < float(dl["gaps"]):
+			_lots.append(Vector2(x, x + w))
+			x += w + 1.0
+			continue
+		var d := rng.randf_range(6.0, 9.0) if district != "industrial" else rng.randf_range(9.0, 12.0)
 		var b := Building.new()
 		b.size = Vector3(w, rng.randf_range(h.x, h.y), d)
 		b.position = Vector3(x + w * 0.5, 0, -7.7 - d * 0.5)
@@ -521,7 +569,7 @@ func _skyline() -> void:
 	var lit: float = c["lit"]
 	var emis: float = c["emission"]
 	var h: Vector2 = c["height"]
-	var mul: float = look.get("skyline", 1.0)
+	var mul: float = look.get("skyline", 1.0) * float(dl["sky"])
 
 	# Row A: detailed static towers right behind the destructible row.
 	var mats: Array[ShaderMaterial] = []
@@ -733,6 +781,218 @@ func _sky_life() -> void:
 		tw.tween_property(pivot, "rotation:z", 0.5, t).set_trans(Tween.TRANS_SINE)
 		tw.tween_property(pivot, "rotation:z", -0.5, t).set_trans(Tween.TRANS_SINE)
 		x2 += rng.randf_range(50.0, 80.0)
+
+
+# --- districts -------------------------------------------------------------
+
+## Props that make each district its own place: open lots in the front row,
+## harbour cranes and containers, factory chimneys and tanks, park trees,
+## old town clock towers.
+func _district_props() -> void:
+	var boxes: Array = []
+	var box_cols: Array = []
+	var tree: Color = look.get("tree", Color(0.2, 0.35, 0.18))
+	var snow: float = look.get("snow", 0.0)
+	var trunks: Array = []
+	var crowns: Array = []
+	var crown_cols: Array = []
+	var container_cols := [Color(0.7, 0.18, 0.12), Color(0.15, 0.35, 0.6), Color(0.85, 0.55, 0.12),
+		Color(0.2, 0.45, 0.3), Color(0.55, 0.55, 0.58), Color(0.5, 0.2, 0.35)]
+	var add_tree := func(pos: Vector3, s: float) -> void:
+		trunks.append(Transform3D(Basis.from_scale(Vector3(1.6, 2.2, 1.6) * s), pos + Vector3(0, 1.1 * s, 0)))
+		for k in 4:
+			var off := Vector3(rng.randf_range(-0.7, 0.7), 2.4 + k * 0.3, rng.randf_range(-0.6, 0.6)) * s
+			crowns.append(Transform3D(Basis.from_scale(Vector3(1.7, 1.4, 1.7) * s * rng.randf_range(0.8, 1.15)), pos + off))
+			crown_cols.append(tree.lightened(rng.randf_range(-0.05, 0.2)).lerp(Color(0.9, 0.92, 0.95), snow * 0.5))
+	var stack := func(x0: float, z0: float, rows: int, cols: int, high: int) -> void:
+		for i in cols:
+			for j in rows:
+				var h := rng.randi_range(1, high)
+				for k in h:
+					var tf := Transform3D(Basis(Vector3.UP, rng.randf_range(-0.03, 0.03)).scaled(Vector3(6.0, 2.5, 2.4)),
+						Vector3(x0 + i * 6.3, 1.25 + k * 2.55, z0 - j * 2.6))
+					boxes.append(tf)
+					box_cols.append(container_cols[rng.randi() % container_cols.size()].darkened(rng.randf() * 0.25))
+	var lawn := _mat(tree.lightened(0.1).lerp(Color(0.85, 0.88, 0.9), snow * 0.8), 1.0)
+	for lot in _lots:
+		var w := lot.y - lot.x
+		var cx := (lot.x + lot.y) * 0.5
+		match district:
+			"park":
+				_box(Vector3(w + 1.0, 0.1, 12.0), lawn, Vector3(cx, 0.05, -14.0))
+				var n := int(w / 2.5)
+				for i in n:
+					add_tree.call(Vector3(lot.x + 1.2 + i * 2.5 + rng.randf_range(-0.4, 0.4), 0, rng.randf_range(-10.0, -18.0)), rng.randf_range(0.8, 1.3))
+			"harbor", "industrial":
+				stack.call(lot.x + 1.0, -9.5, 2, maxi(1, int(w / 6.3)), 3)
+			_:
+				pass
+	match district:
+		"park":
+			# Woods behind the front row and lawns along the side streets.
+			var x := -30.0
+			while x < length + 50.0:
+				if not _near_crossing(x - 2.0, x + 2.0):
+					add_tree.call(Vector3(x, 0, rng.randf_range(-16.5, -19.0)), rng.randf_range(1.0, 1.6))
+				x += rng.randf_range(3.0, 5.0)
+			_box(Vector3(length + 200.0, 0.06, 14.0), lawn, Vector3(length * 0.5, 0.02, -16.5))
+		"harbor":
+			var x := rng.randf_range(0.0, 20.0)
+			while x < length + 60.0:
+				if not _blocks_landmark(x - 8.0, x + 8.0, -40.0):
+					_crane(Vector3(x, 0, -42.0 - rng.randf() * 4.0))
+				stack.call(x + 10.0, -24.0, 3, rng.randi_range(2, 4), 4)
+				x += rng.randf_range(45.0, 70.0)
+		"industrial":
+			var x := rng.randf_range(0.0, 25.0)
+			while x < length + 60.0:
+				if not _blocks_landmark(x - 3.0, x + 3.0, -36.0):
+					_chimney(Vector3(x, 0, -36.0 - rng.randf() * 10.0), rng.randf_range(22.0, 34.0))
+				for i in rng.randi_range(1, 3):
+					_tank(Vector3(x + 8.0 + i * 6.5, 0, -27.0 - rng.randf() * 3.0), rng.randf_range(2.2, 3.0))
+				x += rng.randf_range(40.0, 60.0)
+		"old_town":
+			var x := rng.randf_range(10.0, 40.0)
+			while x < length + 40.0:
+				_clock_tower(Vector3(x, 0, -24.0 - rng.randf() * 4.0))
+				x += rng.randf_range(70.0, 100.0)
+	if not boxes.is_empty():
+		_multi(_unit_box(), _vc_mat(0.6, 0.3), boxes, box_cols)
+	if not trunks.is_empty():
+		_multi(_cyl(0.06, 0.1, 6), _mat(Color(0.25, 0.18, 0.12), 0.9), trunks)
+		_multi(_sphere_mesh(), _vc_mat(0.9), crowns, crown_cols)
+
+
+## Harbour water: dark, glossy and rippled by a scrolling normal map.
+func _water(pos: Vector3, size: Vector2) -> void:
+	var m := StandardMaterial3D.new()
+	var deep := Color(c["fog"]).lerp(Color(0.03, 0.12, 0.16), 0.75)
+	m.albedo_color = deep
+	m.roughness = 0.08
+	m.metallic = 0.2
+	var n := NoiseTexture2D.new()
+	n.seamless = true
+	n.as_normal_map = true
+	n.bump_strength = 3.0
+	n.width = 256
+	n.height = 256
+	var noise := FastNoiseLite.new()
+	noise.frequency = 0.03
+	n.noise = noise
+	m.normal_enabled = true
+	m.normal_texture = n
+	m.normal_scale = 0.6
+	m.uv1_scale = Vector3(size.x / 12.0, size.y / 12.0, 1.0)
+	_plane(size, m, pos)
+	var tw := root.create_tween().set_loops()
+	tw.tween_property(m, "uv1_offset", Vector3(1.0, 0.5, 0.0), 40.0).from(Vector3.ZERO)
+
+
+## A container gantry crane.
+func _crane(pos: Vector3) -> void:
+	var col: Color = [Color(0.75, 0.2, 0.12), Color(0.15, 0.35, 0.65), Color(0.85, 0.65, 0.1)][rng.randi() % 3]
+	var m := _mat(col, 0.5, 0.5)
+	for sx in [-5.0, 5.0]:
+		for sz in [-3.0, 3.0]:
+			_box(Vector3(0.7, 24.0, 0.7), m, pos + Vector3(sx, 12.0, sz))
+	_box(Vector3(11.0, 1.2, 7.0), m, pos + Vector3(0, 24.0, 0))
+	_box(Vector3(1.4, 1.4, 30.0), m, pos + Vector3(0, 26.0, 6.0))
+	_box(Vector3(3.0, 3.0, 4.0), _mat(col.darkened(0.3), 0.5, 0.5), pos + Vector3(0, 28.0, -2.0))
+	_box(Vector3(0.1, 10.0, 0.1), _mat(Color(0.1, 0.1, 0.1)), pos + Vector3(0, 20.5, 14.0))
+	_mesh_s(_unit_box(), _glow(Color(1, 0.15, 0.1), 4.0), pos + Vector3(0, 27.0, 20.5), Vector3.ONE * 0.4)
+
+
+## Factory chimney with red and white bands and a smoke plume.
+func _chimney(pos: Vector3, h: float) -> void:
+	var white := _mat(Color(0.85, 0.83, 0.8), 0.8)
+	var red := _mat(Color(0.7, 0.15, 0.1), 0.8)
+	var bands := 6
+	for i in bands:
+		var r0 := lerpf(2.0, 1.2, float(i) / bands)
+		var r1 := lerpf(2.0, 1.2, float(i + 1) / bands)
+		_mesh(_frustum(r0 * 2.0, r1 * 2.0, h / bands, 12), white if i % 2 == 0 or i < bands - 2 else red,
+			pos + Vector3(0, h / bands * (i + 0.5), 0))
+	_box(Vector3(10.0, 7.0, 8.0), _mat(Color(0.35, 0.33, 0.32), 0.9), pos + Vector3(-5.0, 3.5, 4.0))
+	var p := GPUParticles3D.new()
+	p.amount = 40
+	p.lifetime = 9.0
+	p.preprocess = 9.0
+	p.visibility_aabb = AABB(Vector3(-30, -5, -30), Vector3(60, 60, 60))
+	var pm := ParticleProcessMaterial.new()
+	pm.direction = Vector3(0.4, 1, 0)
+	pm.spread = 12.0
+	pm.initial_velocity_min = 2.0
+	pm.initial_velocity_max = 3.0
+	pm.gravity = Vector3(0.6, 0.2, 0)
+	pm.scale_min = 2.0
+	pm.scale_max = 3.5
+	var curve := Curve.new()
+	curve.add_point(Vector2(0, 0.4))
+	curve.add_point(Vector2(1, 2.0))
+	var ct := CurveTexture.new()
+	ct.curve = curve
+	pm.scale_curve = ct
+	pm.color = Color(0.6, 0.58, 0.55, 0.5) if not night else Color(0.3, 0.3, 0.32, 0.5)
+	var g := Gradient.new()
+	g.colors = PackedColorArray([Color(1, 1, 1, 0.8), Color(1, 1, 1, 0.0)])
+	var gt := GradientTexture1D.new()
+	gt.gradient = g
+	pm.color_ramp = gt
+	p.process_material = pm
+	var q := QuadMesh.new()
+	q.size = Vector2(2, 2)
+	var sm := StandardMaterial3D.new()
+	sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	sm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	sm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	sm.vertex_color_use_as_albedo = true
+	sm.albedo_texture = _radial_tex(Color(1, 1, 1, 1), Color(1, 1, 1, 0))
+	q.material = sm
+	p.draw_pass_1 = q
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	p.position = pos + Vector3(0, h + 0.5, 0)
+	root.add_child(p)
+
+
+## Round storage tank with a domed top.
+func _tank(pos: Vector3, r: float) -> void:
+	var m := _mat(Color(0.75, 0.75, 0.72), 0.5, 0.5)
+	var h := r * 2.2
+	_mesh(_frustum(r * 2.0, r * 2.0, h, 20), m, pos + Vector3(0, h * 0.5, 0))
+	var dome := SphereMesh.new()
+	dome.radius = r
+	dome.height = r * 0.6
+	dome.is_hemisphere = true
+	_mesh(dome, m, pos + Vector3(0, h, 0))
+
+
+## Old town clock tower with a pointed roof and a lit clock face.
+func _clock_tower(pos: Vector3) -> void:
+	var stone := _mat(Color(0.6, 0.5, 0.42), 0.9)
+	_box(Vector3(5.0, 22.0, 5.0), stone, pos + Vector3(0, 11.0, 0))
+	_box(Vector3(5.6, 1.0, 5.6), stone, pos + Vector3(0, 22.5, 0))
+	var roof: Array = look.get("roof_colors", [Color(0.25, 0.3, 0.3)])
+	_mesh(_frustum(5.4, 0.0, 9.0, 4), _mat(roof[0], 0.6, 0.2), pos + Vector3(0, 27.5, 0)).rotation.y = PI / 4
+	var face := CylinderMesh.new()
+	face.top_radius = 1.6
+	face.bottom_radius = 1.6
+	face.height = 0.2
+	var mi := _mesh(face, _glow(Color(1.0, 0.9, 0.7), 1.5 if night else 0.3), pos + Vector3(0, 18.0, 2.55))
+	mi.rotation.x = PI / 2
+
+
+## Storm lightning: the sky light flashes now and then.
+## (No extra directional light: more than three crash the Mobile renderer.)
+func _lightning() -> void:
+	if _fill == null:
+		return
+	var base := _fill.light_energy
+	var tw := _fill.create_tween().set_loops()
+	tw.tween_interval(rng.randf_range(5.0, 9.0))
+	tw.tween_property(_fill, "light_energy", base + 4.0, 0.05)
+	tw.tween_property(_fill, "light_energy", base + 0.5, 0.1)
+	tw.tween_property(_fill, "light_energy", base + 3.0, 0.05)
+	tw.tween_property(_fill, "light_energy", base, 0.4)
 
 
 # --- landmarks -------------------------------------------------------------
