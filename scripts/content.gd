@@ -6,43 +6,45 @@ extends RefCounted
 const LEVELS_PER_COUNTRY := 10
 
 # special: "beam" (straight breath beam), "nova" (radial blasts), "quake" (travelling ground shockwaves)
+# look: body shape overrides for KaijuModel (spike_shape, rows, neck_len, head_size, snout, bulk,
+# arm_size, tail_len, tail_thick, posture, crest, gem, seams, arm_spikes, spike_size).
 const HEROES := [
 	{"name": "GORRAX", "title": "The Original", "skin": Color(0.2, 0.33, 0.3), "belly": Color(0.68, 0.62, 0.48),
 		"accent": Color(0.3, 0.85, 1.0), "eye": Color(0.5, 0.95, 1.0), "horns": false, "size": 1.0,
-		"hp": 260.0, "speed": 1.0, "power": 1.0, "special": "beam"},
+		"hp": 260.0, "speed": 1.0, "power": 1.0, "special": "beam", "look": {"spike_shape": 3, "rows": 3, "neck_len": 1.0, "posture": 0.14, "snout": 1.0}},
 	{"name": "VOLTRA", "title": "Storm Runner", "skin": Color(0.36, 0.33, 0.18), "belly": Color(0.75, 0.68, 0.45),
 		"accent": Color(1.0, 0.9, 0.25), "eye": Color(1.0, 0.95, 0.5), "horns": true, "size": 0.92,
-		"hp": 210.0, "speed": 1.25, "power": 0.9, "special": "beam"},
+		"hp": 210.0, "speed": 1.25, "power": 0.9, "special": "beam", "look": {"spike_shape": 2, "rows": 2, "neck_len": 1.25, "bulk": 0.9, "arm_size": 0.9, "head_size": 0.92, "snout": 1.15, "tail_len": 1.25, "tail_thick": 0.88}},
 	{"name": "MAGMOS", "title": "Molten Heart", "skin": Color(0.32, 0.16, 0.13), "belly": Color(0.7, 0.5, 0.36),
 		"accent": Color(1.0, 0.4, 0.15), "eye": Color(1.0, 0.6, 0.25), "horns": true, "size": 1.12,
-		"hp": 300.0, "speed": 0.85, "power": 1.3, "special": "quake"},
+		"hp": 300.0, "speed": 0.85, "power": 1.3, "special": "quake", "look": {"spike_shape": 4, "rows": 3, "neck_len": 0.85, "bulk": 1.1, "head_size": 1.05, "seams": true, "tail_thick": 1.08}},
 	{"name": "SYLVARA", "title": "Void Empress", "skin": Color(0.25, 0.2, 0.34), "belly": Color(0.65, 0.58, 0.7),
 		"accent": Color(0.85, 0.4, 1.0), "eye": Color(0.95, 0.6, 1.0), "horns": false, "size": 1.0,
-		"hp": 240.0, "speed": 1.1, "power": 1.0, "special": "nova"},
+		"hp": 240.0, "speed": 1.1, "power": 1.0, "special": "nova", "look": {"spike_shape": 2, "rows": 3, "neck_len": 1.35, "bulk": 0.94, "snout": 1.2, "crest": true, "gem": true, "posture": 0.16}},
 	{"name": "TERRAXA", "title": "Living Mountain", "skin": Color(0.3, 0.3, 0.2), "belly": Color(0.55, 0.5, 0.35),
 		"accent": Color(0.5, 1.0, 0.35), "eye": Color(0.7, 1.0, 0.4), "horns": true, "size": 1.18,
-		"hp": 360.0, "speed": 0.8, "power": 1.15, "special": "quake"},
+		"hp": 360.0, "speed": 0.8, "power": 1.15, "special": "quake", "look": {"spike_shape": 1, "rows": 3, "neck_len": 0.75, "bulk": 1.16, "arm_size": 1.2, "head_size": 1.08, "tail_len": 0.85, "tail_thick": 1.15, "posture": 0.04}},
 	{"name": "GLACIOR", "title": "Frost Titan", "skin": Color(0.55, 0.62, 0.7), "belly": Color(0.85, 0.9, 0.95),
 		"accent": Color(0.6, 0.9, 1.0), "eye": Color(0.8, 1.0, 1.0), "horns": true, "size": 1.05,
-		"hp": 280.0, "speed": 0.95, "power": 1.05, "special": "beam"},
+		"hp": 280.0, "speed": 0.95, "power": 1.05, "special": "beam", "look": {"spike_shape": 4, "rows": 2, "neck_len": 1.05, "spike_size": 1.25, "seams": true, "tail_len": 1.05}},
 	{"name": "NOCTYR", "title": "Night Stalker", "skin": Color(0.12, 0.1, 0.14), "belly": Color(0.35, 0.25, 0.3),
 		"accent": Color(1.0, 0.15, 0.3), "eye": Color(1.0, 0.3, 0.3), "horns": true, "size": 0.95,
-		"hp": 220.0, "speed": 1.3, "power": 1.05, "special": "nova"},
+		"hp": 220.0, "speed": 1.3, "power": 1.05, "special": "nova", "look": {"spike_shape": 2, "rows": 2, "neck_len": 1.25, "bulk": 0.92, "arm_size": 1.1, "head_size": 0.92, "snout": 1.25, "arm_spikes": true, "tail_len": 1.15, "tail_thick": 0.9}},
 	{"name": "CORALIS", "title": "Reef Guardian", "skin": Color(0.16, 0.36, 0.38), "belly": Color(0.9, 0.6, 0.5),
 		"accent": Color(0.3, 1.0, 0.8), "eye": Color(0.5, 1.0, 0.9), "horns": false, "size": 1.0,
-		"hp": 270.0, "speed": 1.05, "power": 0.95, "special": "beam"},
+		"hp": 270.0, "speed": 1.05, "power": 0.95, "special": "beam", "look": {"spike_shape": 0, "rows": 3, "neck_len": 1.12, "crest": true, "tail_len": 1.15, "snout": 1.08}},
 	{"name": "SOLAR REX", "title": "Sun Tyrant", "skin": Color(0.45, 0.32, 0.12), "belly": Color(0.85, 0.75, 0.5),
 		"accent": Color(1.0, 0.75, 0.2), "eye": Color(1.0, 0.9, 0.4), "horns": true, "size": 1.08,
-		"hp": 260.0, "speed": 0.95, "power": 1.25, "special": "nova"},
+		"hp": 260.0, "speed": 0.95, "power": 1.25, "special": "nova", "look": {"spike_shape": 3, "rows": 2, "neck_len": 0.95, "head_size": 1.15, "snout": 1.22, "arm_size": 0.85, "posture": 0.06}},
 	{"name": "RUSTFANG", "title": "Scrapyard King", "skin": Color(0.4, 0.38, 0.38), "belly": Color(0.55, 0.3, 0.2),
 		"accent": Color(1.0, 0.25, 0.1), "eye": Color(1.0, 0.4, 0.2), "horns": true, "size": 1.1,
-		"hp": 320.0, "speed": 0.9, "power": 1.2, "special": "quake"},
+		"hp": 320.0, "speed": 0.9, "power": 1.2, "special": "quake", "look": {"spike_shape": 1, "rows": 2, "neck_len": 0.9, "bulk": 1.1, "arm_size": 1.15, "arm_spikes": true, "gem": false, "tail_thick": 1.05}},
 ]
 
 const SPECIAL_NAMES := {"beam": "Atomic Beam", "nova": "Nova Burst", "quake": "Earthquake"}
 
 # Boss keys: moves (any Brute move plus its signature move, see Brute.SIGNATURES),
-# body (CreatureModel plan, or "kaiju"), extras, horns, element, summon.
+# body (CreatureModel plan; never the heroes' kaiju model), extras, horns, element, summon.
 const COUNTRIES := [
 	{"name": "DENMARK", "city": "Copenhagen", "landmark": "windmills",
 		"sky_top": Color(0.32, 0.4, 0.52), "sky_horizon": Color(0.75, 0.75, 0.75), "ground_horizon": Color(0.5, 0.5, 0.5),
@@ -57,7 +59,8 @@ const COUNTRIES := [
 			"sun_strength": 0.3, "wet": 1.0, "tree": Color(0.2, 0.34, 0.18), "skyline": 1.0,
 			"grade_shadow": Color(0.0, 0.02, 0.05), "saturation": 1.05},
 		"boss": {"name": "HAVTROLD", "title": "The Sea Troll", "skin": Color(0.15, 0.3, 0.32), "belly": Color(0.5, 0.6, 0.5),
-			"accent": Color(0.3, 0.9, 0.8), "eye": Color(0.9, 1.0, 0.6), "body": "kaiju", "moves": ["swipe", "charge", "quake"]}},
+			"accent": Color(0.3, 0.9, 0.8), "eye": Color(0.9, 1.0, 0.6), "body": "ape",
+			"extras": ["seaweed", "crest"], "horns": false, "moves": ["swipe", "charge", "quake"]}},
 	{"name": "FRANCE", "city": "Paris", "landmark": "iron_tower",
 		"sky_top": Color(0.2, 0.22, 0.45), "sky_horizon": Color(1.0, 0.65, 0.4), "ground_horizon": Color(0.6, 0.4, 0.3),
 		"sun": Color(1.0, 0.75, 0.5), "sun_energy": 1.6, "sun_rot": Vector3(-14, 160, 0),
@@ -174,7 +177,8 @@ const COUNTRIES := [
 			"neon_colors": [Color(1.0, 0.2, 0.55), Color(0.2, 0.85, 1.0), Color(1.0, 0.7, 0.15), Color(0.65, 0.35, 1.0), Color(0.3, 1.0, 0.5)],
 			"tree": Color(0.12, 0.2, 0.14), "skyline": 1.6, "grade_shadow": Color(0.02, 0.0, 0.05)},
 		"boss": {"name": "RYUJIN PRIME", "title": "The Last Dragon", "skin": Color(0.08, 0.1, 0.12), "belly": Color(0.35, 0.3, 0.35),
-			"accent": Color(0.8, 0.3, 1.0), "eye": Color(1.0, 0.2, 0.5), "body": "kaiju", "moves": ["swipe", "charge", "slam", "breath", "summon", "leap", "storm"]}},
+			"accent": Color(0.8, 0.3, 1.0), "eye": Color(1.0, 0.2, 0.5), "body": "serpent",
+			"extras": ["whiskers", "crest", "fins"], "moves": ["swipe", "charge", "slam", "breath", "summon", "leap", "storm"]}},
 ]
 
 

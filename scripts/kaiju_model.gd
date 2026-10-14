@@ -4,21 +4,39 @@ extends Node3D
 ## Faces +X and has its origin at the feet. The owner sets the pose targets
 ## (walk_amount, arm_r, arm_l, jaw, lean, spin, glow) every frame.
 ## Named pivots live in `parts` (hips, torso, neck, head, jaw, arm_r/arm_l,
-## arm_r_fore/arm_l_fore, leg_r/leg_l, tail0..tail6); the right hand sits at
-## about (0.1, -1.3, 0) in arm_r_fore. The static pieces on each pivot are
-## merged into one mesh per material to keep draw calls low.
+## arm_r_fore/arm_l_fore, arm_r_hand/arm_l_hand, leg_r/leg_l (thighs),
+## leg_r_shin/leg_l_shin, leg_r_foot/leg_l_foot, tail0..tail9); the right
+## hand sits at about (0.1, -1.3, 0) in arm_r_fore. The static pieces on each
+## pivot are merged into one mesh per material to keep draw calls low.
 ##
 ## The look varies with the colours passed to build(): a stable hash of them
 ## picks the dorsal spike shape (leaf plates, cone spikes or swept blades),
 ## how many spike rows, their size, and extras such as a chest gem, glowing
-## seams between the belly plates, a head crest or forearm spikes.
+## seams between the belly plates, a head crest or forearm spikes, plus body
+## proportions (neck length, head size, snout, bulk, arm size, tail length).
+## `look` overrides any of these per hero.
+##
+## Motion is smoothed with damped springs: pose targets ease in and settle
+## with a little overshoot, forearms, hands and the tail trail behind the
+## body, the legs bend at the knee and keep the feet flat, and landings
+## squash the body down.
 
 const SKIN_SHADER := preload("res://shaders/kaiju_skin.gdshader")
 const SPIKE_SHADER := preload("res://shaders/kaiju_spike.gdshader")
+const TAIL_SEGMENTS := 10
+## Spring frequency (rad/s) and damping ratio per pose channel.
+const SPRINGS := {"arm_r": [24.0, 0.72], "arm_l": [24.0, 0.72], "jaw": [30.0, 0.6], "lean": [16.0, 0.8],
+	"squash": [14.0, 0.45], "turn": [9.0, 0.9]}
 
 static var _tex := {}
 static var _meshes := {}
 
+## Mesh resolution: 0 low, 1 medium (regular enemies), 2 high (heroes, bosses).
+## Set before build().
+var detail := 2
+## Optional per-hero body overrides merged over the colour-hashed variant
+## (see _variant() for the keys). Set before build().
+var look := {}
 var parts := {}
 var walk_amount := 0.0
 var walk_speed := 1.0
@@ -40,9 +58,15 @@ var _t := 0.0
 var _walk := 0.0
 var _phase := 0.0
 var _spike_color := Color.WHITE
-var _cur := {"arm_r": 0.25, "arm_l": 0.25, "jaw": 0.0, "lean": 0.0}
+var _cur := {"arm_r": 0.25, "arm_l": 0.25, "jaw": 0.0, "lean": 0.0, "squash": 0.0, "turn": 0.0}
+var _vel := {}  # spring velocities, same keys as _cur
 var _pending := {}  # pivot -> {material -> [[mesh, transform], ...]}
 var _v := {}  # look variant
+var _last_pos := Vector3.ZERO
+var _last_yaw := 0.0
+var _vy := 0.0
+var _yaw_rate := 0.0
+var _moved := false
 
 
 func build(skin: Color, belly: Color, spike: Color, eye: Color, horns: bool = false) -> void:
@@ -57,7 +81,9 @@ func build(skin: Color, belly: Color, spike: Color, eye: Color, horns: bool = fa
 	_spike_mat = _spike(skin.darkened(0.45), spike.lerp(Color.WHITE, 0.15), spike, 0.3, 0.3)
 	_seam_mat = _spike(spike.darkened(0.5), spike, spike, 0.2, 0.4)
 	var mouth_mat := _flat(Color(0.32, 0.07, 0.08), 0.35)
+	var tongue_mat := _flat(Color(0.55, 0.18, 0.2), 0.3)
 	var socket_mat := _flat(skin.darkened(0.8), 0.9)
+	var pupil_mat := _flat(Color(0.02, 0.02, 0.02), 0.2)
 	_eye_mat = StandardMaterial3D.new()
 	_eye_mat.albedo_color = eye
 	_eye_mat.emission_enabled = true
@@ -69,6 +95,7 @@ func build(skin: Color, belly: Color, spike: Color, eye: Color, horns: bool = fa
 	var hips := _pivot("hips", self, Vector3(0, 2.4, 0))
 	_part(hips, _sphere(1.0), skin_mat, Vector3(-0.2, 0.2, 0), Vector3.ZERO, Vector3(1.25, 1.0, 1.35))
 	var torso := _pivot("torso", hips, Vector3.ZERO)
+	torso.scale = Vector3(1.0, 1.0, _v["bulk"])
 	var up := Vector2(0.42, 0.91)    # torso axis
 	var fwd := Vector2(0.91, -0.42)  # front of the torso
 	var base := Vector2(0.25, 1.3)
@@ -76,29 +103,61 @@ func build(skin: Color, belly: Color, spike: Color, eye: Color, horns: bool = fa
 	_part(torso, _sphere(1.1), skin_mat, Vector3(0.62, 2.15, 0), Vector3(0, 0, -0.4), Vector3(1.0, 0.95, 1.15))
 	# Shoulder hump behind the neck.
 	_part(torso, _sphere(1.0), skin_mat, Vector3(-0.05, 2.45, 0), Vector3(0, 0, -0.5), Vector3(1.05, 0.85, 1.05))
+	# Pectorals and flank muscles.
+	for side in [-1.0, 1.0]:
+		var pc := base + up * 1.05 + fwd * 0.62
+		_part(torso, _sphere(0.62), skin_mat, Vector3(pc.x, pc.y, 0.55 * side), Vector3(0, 0.25 * side, -0.5), Vector3(0.75, 0.9, 0.95))
+		var fl := base + up * 0.1 + fwd * 0.2
+		_part(torso, _sphere(0.7), skin_mat, Vector3(fl.x, fl.y, 0.72 * side), Vector3(0, 0, -0.43), Vector3(0.9, 1.5, 0.6))
 	# Overlapping belly plates down the front, with glowing seams on some.
-	for i in 8:
-		var s := -1.55 + i * 0.42
+	for i in 11:
+		var s := -1.6 + i * 0.31
 		var r := 1.0 - absf(s) * 0.12
 		var p := base + up * s + fwd * (r * 1.02 + (0.12 if s > 0.6 else 0.0))
 		var w := 0.95 - absf(s - 0.2) * 0.14
 		_part(torso, _sphere(0.5), belly_mat, Vector3(p.x, p.y, 0), Vector3(0, 0, -0.43 - 0.22),
-			Vector3(0.5, 0.6, w * 1.75))
-		if _v["seams"] and i < 7:
-			var q := p + up * 0.22 + fwd * 0.12
+			Vector3(0.42, 0.46, w * 1.75))
+		if _v["seams"] and i < 10:
+			var q := p + up * 0.16 + fwd * 0.1
 			_part(torso, _box(Vector3(0.05, 0.05, w * 1.3)), _seam_mat, Vector3(q.x, q.y, 0), Vector3(0, 0, -0.43))
 	if _v["gem"]:
 		var g := base + up * 1.25 + fwd * 1.0
 		_part(torso, _sphere(0.24), _seam_mat, Vector3(g.x, g.y, 0), Vector3(0, 0, -0.4), Vector3(0.6, 1.0, 1.0))
+		_part(torso, _sphere(0.3), armor_mat, Vector3(g.x - 0.05, g.y, 0), Vector3(0, 0, -0.4), Vector3(0.5, 1.15, 1.15))
+	# Rows of bony scutes along the flanks.
+	for row in 2:
+		for i in 9:
+			var s := -1.5 + i * 0.36 + row * 0.18
+			var p := base + up * s - fwd * (0.1 + row * 0.35)
+			var zz := 1.1 - row * 0.12 - absf(s) * 0.12
+			for side in [-1.0, 1.0]:
+				_part(torso, _sphere(0.2), armor_mat, Vector3(p.x, p.y, zz * side), Vector3(0.6 * side, 0, -0.43),
+					Vector3(1.0, 0.75, 0.45))
 	# Shoulder armour.
 	for side in [-1.0, 1.0]:
 		_part(torso, _sphere(0.55), armor_mat, Vector3(0.9, 2.42, 0.98 * side), Vector3(0.45 * side, 0, -0.3), Vector3(1.0, 0.5, 0.8))
+		_part(torso, _sphere(0.32), armor_mat, Vector3(0.72, 2.66, 0.9 * side), Vector3(0.45 * side, 0, -0.3), Vector3(1.0, 0.45, 0.8))
 
-	# --- neck ------------------------------------------------------------
-	var neck := _pivot("neck", torso, Vector3(0.85, 2.75, 0))
-	_part(neck, _capsule(0.66, 1.5), skin_mat, Vector3(0.15, 0.15, 0), Vector3(0, 0, -1.0))
-	for i in 3:
-		_part(neck, _sphere(0.4), belly_mat, Vector3(0.45 + i * 0.12, -0.25 + i * 0.22, 0), Vector3(0, 0, -0.9), Vector3(0.45, 0.6, 1.25))
+	# --- neck: thick, rising up and forward from the chest -----------------
+	var nl: float = _v["neck_len"]
+	var neck := _pivot("neck", torso, Vector3(0.8, 2.65, 0))
+	var nv := Vector3(0.3 + 0.45 * nl, 0.45 + 0.8 * nl, 0)  # neck base -> head
+	var nfwd := Vector3(nv.y, -nv.x, 0).normalized()  # throat side
+	for i in 5:
+		var t := float(i) / 4.0
+		var r := lerpf(0.8, 0.5, t)
+		_part(neck, _sphere(r), skin_mat, nv * t, Vector3(0, 0, -atan2(nv.x, nv.y)), Vector3(1.0, 0.85, 0.95))
+	_seg(neck, Vector3.ZERO, nv, 0.6, skin_mat, Vector3(1.0, 1.0, 0.95))
+	# Throat plates down the front and skin folds around the neck.
+	for i in 5:
+		var t := 0.1 + i * 0.2
+		var r := lerpf(0.78, 0.5, t)
+		_part(neck, _sphere(0.4), belly_mat, nv * t + nfwd * r * 0.72, Vector3(0, 0, -atan2(nv.x, nv.y) - 0.3),
+			Vector3(0.42, 0.5, 1.3 * r / 0.65))
+		if i % 2 == 1:
+			_part(neck, _sphere(r), skin_mat, nv * t, Vector3(0, 0, -atan2(nv.x, nv.y)), Vector3(1.08, 0.2, 1.05))
+	# Dewlap where the throat meets the chest.
+	_part(neck, _sphere(0.6), belly_mat, nfwd * 0.55 + Vector3(0.1, -0.1, 0), Vector3(0, 0, -0.6), Vector3(0.7, 0.9, 1.1))
 
 	# --- dorsal spikes from the neck down the back ------------------------
 	var shape: int = _v["spike_shape"]
@@ -110,6 +169,8 @@ func build(skin: Color, belly: Color, spike: Color, eye: Color, horns: bool = fa
 		var p2 := base + up * s + back * 0.98
 		var rot := atan2(-back.x, back.y) + 0.15
 		_spike_piece(torso, shape, Vector3(p2.x, p2.y, 0), rot, h, 0.0)
+		# A ridge of skin the spikes grow out of.
+		_part(torso, _sphere(0.3), skin_mat, Vector3(p2.x, p2.y, 0), Vector3(0, 0, rot), Vector3(0.9, 0.45, 0.7))
 		if rows >= 2 and i > 0:
 			for side in [-1.0, 1.0]:
 				var q := p2 + up * 0.2 - back * 0.12
@@ -118,26 +179,47 @@ func build(skin: Color, belly: Color, spike: Color, eye: Color, horns: bool = fa
 			for side in [-1.0, 1.0]:
 				var q := p2 - up * 0.05 - back * 0.4
 				_spike_piece(torso, shape, Vector3(q.x, q.y, 0.68 * side), rot - 0.2, h * 0.35, 0.6 * side)
-	for i in 3:
-		_spike_piece(neck, shape, Vector3(-0.42 + i * 0.22, 0.6 - i * 0.04, 0), 0.6, (0.6 - i * 0.12) * ss, 0.0)
+	# Spikes continue up the back of the neck, shrinking toward the head.
+	var nback := -nfwd
+	var nrot := atan2(-nback.x, nback.y)
+	for i in 4:
+		var t := 0.1 + i * 0.25
+		var r := lerpf(0.78, 0.5, t)
+		_spike_piece(neck, shape, nv * t + nback * r * 0.85, nrot, (0.75 - i * 0.13) * ss, 0.0)
+		if rows >= 3 and i < 2:
+			for side in [-1.0, 1.0]:
+				_spike_piece(neck, shape, nv * t + nback * r * 0.7 + Vector3(0, 0, 0.3 * side), nrot, (0.45 - i * 0.1) * ss, 0.3 * side)
 
 	# --- head: small, pushed forward, heavy jaw ---------------------------
-	var head := _pivot("head", torso, Vector3(1.05, 3.05, 0))
+	var head := _pivot("head", neck, nv + Vector3(0.15, 0.05, 0))
+	var hsz: float = _v["head_size"]
+	head.scale = Vector3(hsz * float(_v["snout"]), hsz, hsz)
 	_part(head, _sphere(0.7), skin_mat, Vector3(-0.05, 0.02, 0), Vector3.ZERO, Vector3(1.15, 0.9, 1.0))
 	_part(head, _capsule(0.42, 1.5), skin_mat, Vector3(0.68, -0.06, 0), Vector3(0, 0, -PI / 2 + 0.1), Vector3(1.0, 1.0, 1.28))
 	_part(head, _sphere(0.4), skin_mat, Vector3(1.15, 0.0, 0), Vector3.ZERO, Vector3(0.75, 0.55, 1.05))
+	# Bumpy skull top.
+	for i in 6:
+		var a := float(i) / 5.0
+		_part(head, _sphere(0.12), armor_mat, Vector3(-0.35 + a * 0.75, 0.55 - absf(a - 0.4) * 0.25, (0.18 if i % 2 == 0 else -0.18)),
+			Vector3.ZERO, Vector3(1.2, 0.6, 1.0))
 	# Heavy brow ridges over dark sockets with glowing eyes.
 	for side in [-1.0, 1.0]:
 		_part(head, _capsule(0.13, 0.7), armor_mat, Vector3(0.45, 0.33, 0.38 * side), Vector3(0.3 * side, 0, -PI / 2 + 0.35))
 		_part(head, _sphere(0.17), socket_mat, Vector3(0.58, 0.18, 0.39 * side), Vector3.ZERO, Vector3(1.2, 0.75, 0.6))
 		_part(head, _sphere(0.1), _eye_mat, Vector3(0.64, 0.18, 0.43 * side), Vector3.ZERO, Vector3(1.4, 0.7, 0.6))
+		_part(head, _sphere(0.04), pupil_mat, Vector3(0.7, 0.18, 0.465 * side), Vector3.ZERO, Vector3(0.6, 1.5, 0.5))
+		# Lower lid.
+		_part(head, _capsule(0.05, 0.36), skin_mat, Vector3(0.63, 0.1, 0.44 * side), Vector3(0.2 * side, 0, -PI / 2 + 0.1))
 		# Cheeks and jaw muscles.
 		_part(head, _sphere(0.42), skin_mat, Vector3(0.05, -0.22, 0.42 * side), Vector3.ZERO, Vector3(1.15, 0.85, 0.55))
 		_part(head, _sphere(0.06), socket_mat, Vector3(1.38, 0.12, 0.15 * side))
+		_part(head, _sphere(0.1), skin_mat, Vector3(1.33, 0.1, 0.16 * side), Vector3.ZERO, Vector3(1.0, 0.7, 0.9))
+		# Lip ridge over the teeth.
+		_part(head, _capsule(0.08, 1.2), skin_mat, Vector3(0.8, -0.26, 0.36 * side), Vector3(0.06 * side, 0, -PI / 2 + 0.04))
 		# Upper teeth: a row of fangs, bigger at the front.
-		for i in 7:
-			var tl := 0.16 + (0.1 if i == 5 else 0.0) + i * 0.008
-			_part(head, _claw(), claw_mat, Vector3(0.35 + i * 0.16, -0.33, (0.33 - i * 0.015) * side),
+		for i in 9:
+			var tl := 0.14 + (0.1 if i == 7 else 0.0) + i * 0.007
+			_part(head, _claw(), claw_mat, Vector3(0.32 + i * 0.125, -0.33, (0.33 - i * 0.012) * side),
 				Vector3(PI, 0, 0.2), Vector3(tl * 0.55, tl, tl * 0.55))
 		if horns:
 			var hs: float = _v["horn_size"]
@@ -145,6 +227,8 @@ func build(skin: Color, belly: Color, spike: Color, eye: Color, horns: bool = fa
 				Vector3(0.9, 1.3, 0.9) * hs)
 			_part(head, _claw(), claw_mat, Vector3(-0.55, 0.15, 0.48 * side), Vector3(0.6 * side, 0, 1.6),
 				Vector3(0.5, 0.7, 0.5) * hs)
+			# Horn bases.
+			_part(head, _sphere(0.16), armor_mat, Vector3(-0.3, 0.45, 0.42 * side), Vector3.ZERO, Vector3(1.0, 0.6, 1.0) * hs)
 	if _v["crest"]:
 		for i in 3:
 			_spike_piece(head, 0, Vector3(0.2 - i * 0.35, 0.58 - i * 0.08, 0), 0.45 + i * 0.2, (0.55 - i * 0.08) * ss, 0.0)
@@ -157,67 +241,107 @@ func build(skin: Color, belly: Color, spike: Color, eye: Color, horns: bool = fa
 	_part(jaw_pivot, _capsule(0.16, 1.1), belly_mat, Vector3(0.5, -0.12, 0), Vector3(0, 0, -PI / 2 + 0.05), Vector3(1.0, 0.8, 1.6))
 	_part(jaw_pivot, _sphere(0.3), skin_mat, Vector3(0.0, -0.05, 0), Vector3.ZERO, Vector3(1.0, 0.7, 1.35))
 	_part(jaw_pivot, _box(Vector3(1.0, 0.05, 0.52)), mouth_mat, Vector3(0.58, 0.12, 0))
+	_part(jaw_pivot, _capsule(0.1, 0.8), tongue_mat, Vector3(0.45, 0.15, 0), Vector3(0, 0, -PI / 2 + 0.08), Vector3(1.0, 0.6, 1.6))
+	# Throat folds under the jaw.
+	for i in 3:
+		_part(jaw_pivot, _capsule(0.05, 0.6), belly_mat, Vector3(0.1 + i * 0.25, -0.24, 0), Vector3(PI / 2, 0, 0), Vector3(1.0, 1.0, 0.8))
 	for side in [-1.0, 1.0]:
-		for i in 6:
-			var tl := 0.13 + i * 0.006
-			_part(jaw_pivot, _claw(), claw_mat, Vector3(0.25 + i * 0.16, 0.12, 0.27 * side), Vector3(0, 0, -0.2),
+		for i in 8:
+			var tl := 0.12 + i * 0.005
+			_part(jaw_pivot, _claw(), claw_mat, Vector3(0.22 + i * 0.125, 0.12, 0.27 * side), Vector3(0, 0, -0.2),
 				Vector3(tl * 0.55, tl, tl * 0.55))
 	_part(head, _box(Vector3(1.0, 0.05, 0.6)), mouth_mat, Vector3(0.72, -0.31, 0))
 
-	# --- arms: plated forearms, big curved claws ---------------------------
+	# --- arms: muscled upper arms, plated forearms, jointed clawed fingers --
 	for side in [1.0, -1.0]:
 		var arm_name := "arm_r" if side > 0 else "arm_l"
 		var arm := _pivot(arm_name, torso, Vector3(1.05, 2.3, 0.95 * side))
+		arm.scale = Vector3.ONE * float(_v["arm_size"])
 		_part(arm, _sphere(0.48), skin_mat, Vector3(0.0, -0.05, 0))
 		_part(arm, _capsule(0.42, 1.6), skin_mat, Vector3(0.02, -0.62, 0))
+		# Biceps and triceps.
+		_part(arm, _sphere(0.36), skin_mat, Vector3(0.18, -0.6, 0.02 * side), Vector3(0, 0, 0.1), Vector3(0.8, 1.35, 0.95))
+		_part(arm, _sphere(0.32), skin_mat, Vector3(-0.17, -0.7, 0), Vector3(0, 0, -0.1), Vector3(0.75, 1.3, 0.9))
 		var fore := _pivot(arm_name + "_fore", arm, Vector3(0, -1.2, 0))
 		fore.rotation.z = 0.7
+		# Elbow knob.
+		_part(fore, _sphere(0.3), armor_mat, Vector3(-0.12, 0.02, 0), Vector3.ZERO, Vector3(1.0, 0.85, 0.95))
 		_part(fore, _capsule(0.34, 1.35), skin_mat, Vector3(0.0, -0.55, 0))
+		_part(fore, _sphere(0.3), skin_mat, Vector3(-0.08, -0.3, 0.05 * side), Vector3.ZERO, Vector3(0.9, 1.4, 0.95))
 		for i in 3:
 			_part(fore, _sphere(0.3), armor_mat, Vector3(0.2, -0.2 - i * 0.3, 0), Vector3(0, 0, 0.15), Vector3(0.6, 0.75, 1.15))
 		if _v["arm_spikes"]:
 			for i in 2:
 				_spike_piece(fore, 1, Vector3(-0.22, -0.3 - i * 0.35, 0), PI / 2 + 0.5, 0.35 * ss, 0.0)
-		_part(fore, _sphere(0.32), skin_mat, Vector3(0.06, -1.2, 0), Vector3.ZERO, Vector3(1.15, 0.9, 1.2))
+		# Hand on its own wrist pivot so it can trail the forearm.
+		var hand := _pivot(arm_name + "_hand", fore, Vector3(0.06, -1.05, 0))
+		_part(hand, _sphere(0.32), skin_mat, Vector3(0.0, -0.15, 0), Vector3.ZERO, Vector3(1.15, 0.9, 1.2))
 		for c in 3:
 			var z := (c - 1) * 0.17
-			_part(fore, _sphere(0.11), skin_mat, Vector3(0.2, -1.38, z))
-			_part(fore, _claw(), claw_mat, Vector3(0.24, -1.44, z), Vector3(0, 0, PI - 0.35), Vector3(0.75, 0.62, 0.75))
-		_part(fore, _claw(), claw_mat, Vector3(-0.08, -1.3, 0.2 * side), Vector3(0.3 * side, 0, PI + 0.5), Vector3(0.6, 0.5, 0.6))
+			_part(hand, _sphere(0.11), skin_mat, Vector3(0.12, -0.3, z))
+			_part(hand, _capsule(0.085, 0.26), skin_mat, Vector3(0.155, -0.36, z), Vector3(0, 0, 0.6))
+			_part(hand, _sphere(0.08), skin_mat, Vector3(0.18, -0.4, z))
+			_part(hand, _claw(), claw_mat, Vector3(0.18, -0.39, z), Vector3(0, 0, PI - 0.35), Vector3(0.75, 0.62, 0.75))
+		_part(hand, _sphere(0.1), skin_mat, Vector3(-0.1, -0.22, 0.17 * side))
+		_part(hand, _claw(), claw_mat, Vector3(-0.14, -0.25, 0.2 * side), Vector3(0.3 * side, 0, PI + 0.5), Vector3(0.6, 0.5, 0.6))
 
-	# --- legs: massive thighs, clawed feet ----------------------------------
+	# --- legs: massive thighs, knees, clawed feet ---------------------------
 	for side in [1.0, -1.0]:
-		var leg := _pivot("leg_r" if side > 0 else "leg_l", hips, Vector3(0, 0.1, 0.85 * side))
+		var nm := "leg_r" if side > 0 else "leg_l"
+		var leg := _pivot(nm, hips, Vector3(0, 0.1, 0.85 * side))
 		_part(leg, _sphere(0.95), skin_mat, Vector3(0.05, -0.45, 0.05 * side), Vector3(0, 0, 0.1), Vector3(1.05, 1.35, 1.0))
-		_part(leg, _capsule(0.55, 1.6), skin_mat, Vector3(0.18, -1.45, 0))
-		_part(leg, _sphere(0.42), armor_mat, Vector3(0.55, -1.05, 0), Vector3.ZERO, Vector3(0.6, 0.7, 0.9))
-		_part(leg, _sphere(0.62), skin_mat, Vector3(0.35, -2.1, 0), Vector3.ZERO, Vector3(1.45, 0.55, 1.1))
+		# Outer thigh muscle and hamstring.
+		_part(leg, _sphere(0.6), skin_mat, Vector3(0.25, -0.55, 0.32 * side), Vector3(0, 0, 0.2), Vector3(0.9, 1.3, 0.75))
+		_part(leg, _sphere(0.55), skin_mat, Vector3(-0.3, -0.7, 0.05 * side), Vector3(0, 0, -0.15), Vector3(0.8, 1.2, 0.9))
+		var shin := _pivot(nm + "_shin", leg, Vector3(0.3, -1.0, 0))
+		_part(shin, _capsule(0.55, 1.6), skin_mat, Vector3(-0.12, -0.45, 0))
+		_part(shin, _sphere(0.42), armor_mat, Vector3(0.25, -0.05, 0), Vector3.ZERO, Vector3(0.6, 0.7, 0.9))
+		_part(shin, _sphere(0.2), armor_mat, Vector3(0.36, -0.25, 0), Vector3.ZERO, Vector3(0.7, 0.8, 1.0))
+		# Calf.
+		_part(shin, _sphere(0.45), skin_mat, Vector3(-0.42, -0.35, 0), Vector3(0, 0, -0.1), Vector3(0.75, 1.3, 0.9))
+		var foot := _pivot(nm + "_foot", shin, Vector3(-0.1, -0.95, 0))
+		_part(foot, _sphere(0.62), skin_mat, Vector3(0.15, -0.15, 0), Vector3.ZERO, Vector3(1.45, 0.55, 1.1))
+		# Ankle scutes.
+		for i in 4:
+			_part(foot, _sphere(0.14), armor_mat, Vector3(0.0 + i * 0.22, 0.1 - i * 0.05, 0.42 * (1.0 if i % 2 == 0 else -1.0)),
+				Vector3.ZERO, Vector3(1.0, 0.6, 0.8))
 		for c in 3:
 			var z := (c - 1) * 0.34
-			_part(leg, _sphere(0.2), skin_mat, Vector3(0.95, -2.2, z), Vector3.ZERO, Vector3(1.3, 0.8, 1.0))
-			_part(leg, _claw(), claw_mat, Vector3(1.15, -2.22, z), Vector3(0, 0, -PI / 2 + 0.1), Vector3(0.9, 0.75, 0.9))
-		_part(leg, _claw(), claw_mat, Vector3(-0.3, -2.25, 0), Vector3(0, 0, PI / 2 - 0.2), Vector3(0.7, 0.55, 0.7))
+			_part(foot, _sphere(0.22), skin_mat, Vector3(0.55, -0.22, z), Vector3.ZERO, Vector3(1.2, 0.8, 1.0))
+			_part(foot, _sphere(0.18), skin_mat, Vector3(0.78, -0.26, z), Vector3.ZERO, Vector3(1.2, 0.75, 0.95))
+			_part(foot, _claw(), claw_mat, Vector3(0.95, -0.27, z), Vector3(0, 0, -PI / 2 + 0.1), Vector3(0.9, 0.75, 0.9))
+		_part(foot, _claw(), claw_mat, Vector3(-0.5, -0.3, 0), Vector3(0, 0, PI / 2 - 0.2), Vector3(0.7, 0.55, 0.7))
 
 	# --- tail: thick, tapering, overlapping segments with ridge plates -------
 	var parent: Node3D = hips
 	var offset := Vector3(-0.9, 0.3, 0)
-	for i in 7:
+	var tl: float = _v["tail_len"]
+	for i in TAIL_SEGMENTS:
 		var seg := _pivot("tail%d" % i, parent, offset)
-		var r := 0.9 * (1.0 - i * 0.125)
-		_part(seg, _capsule(r, r * 2.0 + 1.25), skin_mat, Vector3(-0.5, 0, 0), Vector3(0, 0, PI / 2), Vector3(1, 1, 1.05))
-		_part(seg, _sphere(r * 0.8), belly_mat, Vector3(-0.45, -r * 0.42, 0), Vector3(0, 0, 0.1), Vector3(1.3, 0.55, 1.0))
+		var r := 0.9 * (1.0 - i * 0.085) * float(_v["tail_thick"])
+		_part(seg, _capsule(r, r * 2.0 + 0.85 * tl), skin_mat, Vector3(-0.36, 0, 0), Vector3(0, 0, PI / 2), Vector3(1, 1, 1.05))
+		_part(seg, _sphere(r * 0.8), belly_mat, Vector3(-0.33, -r * 0.42, 0), Vector3(0, 0, 0.1), Vector3(1.0, 0.55, 1.0))
+		for side in [-1.0, 1.0]:
+			_part(seg, _sphere(r * 0.24), armor_mat, Vector3(-0.35, r * 0.25, r * 0.88 * side), Vector3(0.6 * side, 0, 0),
+				Vector3(1.4, 0.7, 0.45))
 		var ph := (0.3 + r * 0.6) * ss
-		_spike_piece(seg, shape, Vector3(-0.25, r * 0.88, 0), 0.4, ph, 0.0)
-		_spike_piece(seg, shape, Vector3(-0.72, r * 0.85, 0), 0.4, ph * 0.8, 0.0)
-		if rows >= 2 and i < 5:
+		_spike_piece(seg, shape, Vector3(-0.18, r * 0.88, 0), 0.4, ph, 0.0)
+		if i % 2 == 0:
+			_spike_piece(seg, shape, Vector3(-0.52, r * 0.85, 0), 0.4, ph * 0.8, 0.0)
+		if rows >= 2 and i < 7 and i % 2 == 1:
 			for side in [-1.0, 1.0]:
-				_spike_piece(seg, shape, Vector3(-0.5, r * 0.7, r * 0.45 * side), 0.45, ph * 0.5, 0.45 * side)
-		if i == 6:
-			_part(seg, _claw(), skin_mat, Vector3(-1.2, 0, 0), Vector3(0, 0, PI / 2 + 0.15), Vector3(r * 4.5, 1.6, r * 4.5))
+				_spike_piece(seg, shape, Vector3(-0.36, r * 0.7, r * 0.45 * side), 0.45, ph * 0.5, 0.45 * side)
+		if i == TAIL_SEGMENTS - 1:
+			_part(seg, _claw(), skin_mat, Vector3(-0.85, 0, 0), Vector3(0, 0, PI / 2 + 0.15), Vector3(r * 4.5, 1.4, r * 4.5))
 		_tail.append(seg)
 		parent = seg
-		offset = Vector3(-0.95, -0.1, 0)
+		offset = Vector3(-0.68 * tl, -0.07, 0)
 	_commit()
+
+
+## World position of the tip of the open mouth (for breath beams).
+func mouth_global() -> Vector3:
+	return parts["jaw"].to_global(Vector3(1.1, 0.1, 0)) if parts.has("jaw") else global_position + Vector3(0, 5, 0)
 
 
 func spike_color() -> Color:
@@ -231,32 +355,111 @@ func flash() -> void:
 func _process(delta: float) -> void:
 	if parts.is_empty():
 		return
-	_t += delta
-	_walk = lerpf(_walk, walk_amount, 1.0 - exp(-10.0 * delta))
-	_phase += delta * 8.5 * walk_speed * maxf(_walk, 0.05)
-	var k := 1.0 - exp(-16.0 * delta)
-	_cur["arm_r"] = lerpf(_cur["arm_r"], arm_r, k)
-	_cur["arm_l"] = lerpf(_cur["arm_l"], arm_l, k)
-	_cur["jaw"] = lerpf(_cur["jaw"], jaw, k)
-	_cur["lean"] = lerpf(_cur["lean"], lean, k)
-
+	_pose(delta)
+	var ar: float = _cur["arm_r"]
+	var al: float = _cur["arm_l"]
+	var ln: float = _cur["lean"]
+	var sq: float = _cur["squash"]
+	var w := _walk
 	var s := sin(_phase)
+	var c := cos(_phase)
 	var breathe := sin(_t * 2.0)
-	parts["leg_r"].rotation.z = s * 0.6 * _walk
-	parts["leg_l"].rotation.z = -s * 0.6 * _walk
-	parts["hips"].position.y = 2.4 + absf(cos(_phase)) * 0.2 * _walk + breathe * 0.04
-	parts["hips"].rotation.x = s * 0.05 * _walk
-	parts["torso"].rotation.z = -_cur["lean"] + breathe * 0.02
-	parts["torso"].rotation.y = s * 0.06 * _walk
-	parts["arm_r"].rotation.z = _cur["arm_r"] - s * 0.35 * _walk
-	parts["arm_l"].rotation.z = _cur["arm_l"] + s * 0.35 * _walk
-	parts["head"].rotation.z = sin(_t * 1.7) * 0.05 + _cur["lean"] * 0.4
+	var sway := sin(_t * 0.7)
+
+	# Legs: thighs swing, knees fold while the leg swings forward, feet stay
+	# level. A landing squash bends both knees.
+	for side in [1.0, -1.0]:
+		var nm := "leg_r" if side > 0 else "leg_l"
+		var ls: float = s * side
+		var lc: float = c * side
+		var thigh: float = ls * 0.55 * w + sq * 0.35 + 0.08
+		var knee: float = -maxf(lc, 0.0) * 0.85 * w - 0.16 - sq * 0.7 - (1.0 - w) * 0.04 * (1.0 + sway * side)
+		parts[nm].rotation.z = thigh
+		parts[nm + "_shin"].rotation.z = knee
+		parts[nm + "_foot"].rotation.z = -(thigh + knee) * 0.9 + maxf(-lc, 0.0) * maxf(-ls, 0.0) * 0.4 * w
+
+	# Body: bob twice per stride, rock side to side over the standing leg,
+	# drop on landings, breathe when idle.
+	var hips: Node3D = parts["hips"]
+	hips.position.y = 2.38 + absf(c) * 0.16 * w - 0.06 * w + breathe * 0.035 - sq * 0.35
+	hips.rotation.x = s * 0.07 * w + sway * 0.015 * (1.0 - w)
+	hips.rotation.y = s * 0.05 * w
+	var torso: Node3D = parts["torso"]
+	torso.rotation.z = -ln + breathe * 0.02 - w * 0.06 + sq * 0.12 + float(_v["posture"])
+	torso.rotation.y = -s * 0.08 * w
+	torso.rotation.x = -hips.rotation.x * 0.6
+	# Neck and head trail the torso slightly and stay steady while walking.
+	parts["neck"].rotation.z = ln * 0.15 + sin(_t * 1.7 - 0.4) * 0.03 - float(_v["posture"]) * 0.6
+	var head: Node3D = parts["head"]
+	head.rotation.z = sin(_t * 1.7) * 0.05 + ln * 0.4 - absf(c) * 0.05 * w + w * 0.05 - sq * 0.15
+	head.rotation.y = s * 0.06 * w + sin(_t * 0.6) * 0.05 * (1.0 - w)
+	head.rotation.x = -hips.rotation.x * 0.8
 	parts["jaw"].rotation.z = -_cur["jaw"] * 0.7
+
+	# Arms swing against the legs; forearms and hands lag behind the upper
+	# arm's motion and snap through after it.
+	for side in [1.0, -1.0]:
+		var nm := "arm_r" if side > 0 else "arm_l"
+		var v: float = ar if side > 0 else al
+		var vv: float = _vel.get(nm, 0.0)
+		parts[nm].rotation.z = v - s * 0.35 * w * side
+		parts[nm].rotation.x = -side * (0.06 + breathe * 0.015)
+		parts[nm + "_fore"].rotation.z = 0.7 + clampf(-vv * 0.035, -0.45, 0.6) + sin(_phase - 0.8) * 0.12 * w * side \
+			- clampf(v - 1.5, 0.0, 1.5) * 0.25
+		parts[nm + "_hand"].rotation.z = clampf(-vv * 0.03, -0.5, 0.5) + sin(_t * 1.9 + side) * 0.04
+
+	# Tail: travelling wave in step with the stride, trails turns, rises to
+	# balance a forward lean and droops on the way up from a jump.
+	var turn: float = _cur["turn"]
 	for i in _tail.size():
 		var seg := _tail[i]
-		seg.rotation.y = sin(_t * 2.2 - i * 0.7) * 0.12 * (1.0 + _walk)
-		seg.rotation.z = -0.04 + sin(_t * 1.3 - i * 0.5) * 0.05
+		var k := float(i + 1) / _tail.size()
+		seg.rotation.y = sin(_t * 2.2 - i * 0.55) * 0.09 * (1.0 + w) + sin(_phase - 0.9 - i * 0.45) * 0.07 * w \
+			- turn * 0.12 * k
+		seg.rotation.z = -0.03 + sin(_t * 1.3 - i * 0.4) * 0.035 + ln * 0.05 + clampf(-_vy * 0.006, -0.08, 0.08) \
+			- sq * 0.06 * (1.0 - k)
 
+	_update_glow(delta)
+
+
+## Advances the springs, walk phase and the body's own motion (vertical speed,
+## turning rate, landings) that drive the secondary animation.
+func _pose(delta: float, gait: float = 8.5) -> void:
+	_t += delta
+	_walk = lerpf(_walk, walk_amount, 1.0 - exp(-8.0 * delta))
+	_phase += delta * gait * walk_speed * maxf(_walk, 0.05)
+	var targets := {"arm_r": arm_r, "arm_l": arm_l, "jaw": jaw, "lean": lean, "squash": 0.0, "turn": 0.0}
+	var pos := global_position
+	var yaw := rotation.y
+	if _moved and delta > 0.0:
+		var vy := (pos.y - _last_pos.y) / delta
+		if _vy < -8.0 and vy > _vy * 0.3:
+			# Just landed: kick the squash spring.
+			_vel["squash"] = _vel.get("squash", 0.0) + clampf(-_vy * 0.22, 0.0, 6.0)
+		_vy = vy
+		_yaw_rate = lerpf(_yaw_rate, wrapf(yaw - _last_yaw, -PI, PI) / delta, 1.0 - exp(-20.0 * delta))
+		targets["turn"] = clampf(_yaw_rate * 0.25, -2.0, 2.0)
+	_last_pos = pos
+	_last_yaw = yaw
+	_moved = true
+	# Small fixed substeps keep the springs stable at low frame rates.
+	var steps := clampi(ceili(delta / (1.0 / 120.0)), 1, 8)
+	var dt := delta / steps
+	for key in targets:
+		var spring: Array = SPRINGS[key]
+		var f: float = spring[0]
+		var z: float = spring[1]
+		var x: float = _cur.get(key, 0.0)
+		var v: float = _vel.get(key, 0.0)
+		var target: float = targets[key]
+		for _i in steps:
+			v += (f * f * (target - x) - 2.0 * z * f * v) * dt
+			x += v * dt
+		_cur[key] = x
+		_vel[key] = v
+
+
+func _update_glow(delta: float) -> void:
 	if _flash > 0.0:
 		_flash = maxf(_flash - delta * 7.0, 0.0)
 		var c := Vector3(1, 0.95, 0.9) * _flash * 1.5
@@ -276,8 +479,8 @@ func _variant(skin: Color, belly: Color, spike: Color) -> Dictionary:
 	var h := hash(skin.to_html() + belly.to_html() + spike.to_html())
 	var r := RandomNumberGenerator.new()
 	r.seed = h
-	return {
-		"spike_shape": r.randi() % 3,
+	var v := {
+		"spike_shape": r.randi() % 5,
 		"rows": 2 + r.randi() % 2,
 		"spike_size": r.randf_range(0.85, 1.25),
 		"horn_size": r.randf_range(0.8, 1.3),
@@ -285,17 +488,39 @@ func _variant(skin: Color, belly: Color, spike: Color) -> Dictionary:
 		"seams": r.randf() < 0.4,
 		"crest": r.randf() < 0.3,
 		"arm_spikes": r.randf() < 0.4,
+		"neck_len": r.randf_range(0.85, 1.15),
+		"head_size": r.randf_range(0.95, 1.08),
+		"snout": r.randf_range(0.92, 1.1),
+		"bulk": r.randf_range(0.95, 1.08),
+		"arm_size": r.randf_range(0.92, 1.08),
+		"tail_len": r.randf_range(0.92, 1.1),
+		"tail_thick": 1.0,
+		"posture": 0.1,
 	}
+	v.merge(look, true)
+	return v
 
 
-## One dorsal spike: 0 leaf plate, 1 cone spike, 2 swept blade. `rot` tilts
-## it in the side plane (0 = straight up), `roll` leans it outward.
+## One dorsal spike: 0 leaf plate, 1 cone spike, 2 swept blade, 3 three-lobed
+## maple-leaf plate, 4 crystal shard cluster. `rot` tilts it in the side plane
+## (0 = straight up), `roll` leans it outward.
 func _spike_piece(parent: Node3D, shape: int, pos: Vector3, rot: float, h: float, roll: float) -> void:
 	match shape:
 		0:
 			_part(parent, _plate(), _spike_mat, pos, Vector3(roll, 0, rot), Vector3(h * 0.78, h, h * 0.22))
 		1:
 			_part(parent, _claw(), _spike_mat, pos, Vector3(roll, 0, rot + 0.25), Vector3(h * 0.9, h * 1.05, h * 0.9))
+		3:
+			_part(parent, _plate(), _spike_mat, pos, Vector3(roll, 0, rot), Vector3(h * 0.7, h * 1.1, h * 0.24))
+			for a in [-0.55, 0.55]:
+				_part(parent, _plate(), _spike_mat, pos, Vector3(roll, 0, rot + a), Vector3(h * 0.5, h * 0.72, h * 0.2))
+		4:
+			for k in 3:
+				var a: float = [0.0, -0.45, 0.4][k]
+				var l: float = h * [1.15, 0.75, 0.6][k]
+				var b := Basis.from_euler(Vector3(roll + (k - 1) * 0.25, 0, rot + a))
+				_part(parent, _shard(), _spike_mat, pos - b.y * l * 0.08,
+					Vector3(roll + (k - 1) * 0.25, 0, rot + a), Vector3(h * 0.85, l, h * 0.85))
 		_:
 			_part(parent, _plate(), _spike_mat, pos, Vector3(roll, 0, rot + 0.55), Vector3(h * 0.55, h * 1.25, h * 0.14))
 
@@ -388,6 +613,25 @@ func _part(parent: Node3D, mesh: Mesh, mat: Material, pos: Vector3,
 	by_mat[mat].append([mesh, xf])
 
 
+## A capsule limb from a to b.
+func _seg(parent: Node3D, a: Vector3, b: Vector3, r: float, mat: Material, scl: Vector3 = Vector3.ONE) -> void:
+	var d := b - a
+	var l := d.length()
+	if l < 0.001:
+		return
+	var basis := Basis(Quaternion(Vector3.UP, d / l)) * Basis.from_scale(scl)
+	_part_xf(parent, _capsule(r, l + r * 2.0), mat, Transform3D(basis, (a + b) * 0.5))
+
+
+func _part_xf(parent: Node3D, mesh: Mesh, mat: Material, xf: Transform3D) -> void:
+	if not _pending.has(parent):
+		_pending[parent] = {}
+	var by_mat: Dictionary = _pending[parent]
+	if not by_mat.has(mat):
+		by_mat[mat] = []
+	by_mat[mat].append([mesh, xf])
+
+
 func _commit() -> void:
 	for pivot in _pending:
 		var by_mat: Dictionary = _pending[pivot]
@@ -407,24 +651,34 @@ static func _cached(key: String, make: Callable) -> Mesh:
 		_meshes[key] = make.call()
 	return _meshes[key]
 
+## Radial segment count for a round part of radius `r`: big parts get many
+## segments so silhouettes stay smooth, small ones stay cheap.
+func _segments(r: float) -> int:
+	var base := 10.0 + 26.0 * clampf(r / 1.2, 0.0, 1.0)
+	var mul: float = [0.6, 0.85, 1.25][clampi(detail, 0, 2)]
+	return maxi(8, int(round(base * mul / 2.0)) * 2)
+
 
 func _capsule(r: float, h: float) -> Mesh:
-	return _cached("cap_%.3f_%.3f" % [r, h], func() -> Mesh:
+	var seg := _segments(r)
+	var rings := maxi(6, int(seg * (0.35 + clampf(h / (r * 8.0), 0.0, 0.4))))
+	return _cached("cap_%.3f_%.3f_%d_%d" % [r, h, seg, rings], func() -> Mesh:
 		var c := CapsuleMesh.new()
 		c.radius = r
 		c.height = maxf(h, r * 2.0)
-		c.radial_segments = 20
-		c.rings = 8
+		c.radial_segments = seg
+		c.rings = rings
 		return c)
 
 
 func _sphere(r: float) -> Mesh:
-	return _cached("sph_%.3f" % r, func() -> Mesh:
+	var seg := _segments(r)
+	return _cached("sph_%.3f_%d" % [r, seg], func() -> Mesh:
 		var s := SphereMesh.new()
 		s.radius = r
 		s.height = r * 2.0
-		s.radial_segments = 18
-		s.rings = 9
+		s.radial_segments = seg
+		s.rings = seg / 2
 		return s)
 
 
@@ -437,22 +691,26 @@ func _box(size: Vector3) -> Mesh:
 
 ## Curved, tapering claw / horn / tooth: base radius 0.15 at the origin,
 ## about 1 long, curving from +Y toward +X. UV.y = 0 at the tip.
-static func _claw() -> Mesh:
-	if _meshes.has("claw"):
-		return _meshes["claw"]
+func _claw() -> Mesh:
+	var d := clampi(detail, 0, 2)
+	return _claw_mesh([6, 8, 12][d], [6, 8, 12][d])
+
+
+static func _claw_mesh(steps: int, sides: int) -> Mesh:
+	var key := "claw_%d_%d" % [steps, sides]
+	if _meshes.has(key):
+		return _meshes[key]
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var steps := 7
-	var sides := 7
 	var rings: Array = []
 	var centres: Array = []
 	for j in steps + 1:
 		var t := float(j) / steps
 		var th := t * 1.1
 		var cpos := Vector3(0.9 * (1.0 - cos(th)), 0.9 * sin(th), 0)
-		var tang := Vector3(sin(th), cos(th), 0)
 		var nrm := Vector3(cos(th), -sin(th), 0)
-		var rad := 0.15 * (1.0 - t) + 0.004
+		# Slightly convex taper: fuller near the base, sharp at the tip.
+		var rad := 0.15 * pow(1.0 - t, 0.85) + 0.004
 		var ring: Array = []
 		for k in sides:
 			var a := TAU * k / sides
@@ -465,19 +723,19 @@ static func _claw() -> Mesh:
 			var a: Vector3 = rings[j][k]
 			var b: Vector3 = rings[j][k2]
 			var c: Vector3 = rings[j + 1][k2]
-			var d: Vector3 = rings[j + 1][k]
+			var e: Vector3 = rings[j + 1][k]
 			var cen: Vector3 = (centres[j] + centres[j + 1]) * 0.5
 			var v0 := 1.0 - float(j) / steps
 			var v1 := 1.0 - float(j + 1) / steps
 			_tri_smooth(st, [a, b, c], [centres[j], centres[j], centres[j + 1]], [v0, v0, v1], cen)
-			_tri_smooth(st, [a, c, d], [centres[j], centres[j + 1], centres[j + 1]], [v0, v1, v1], cen)
+			_tri_smooth(st, [a, c, e], [centres[j], centres[j + 1], centres[j + 1]], [v0, v1, v1], cen)
 	# Base cap.
 	for k in sides:
 		var k2 := (k + 1) % sides
 		_tri_flat(st, centres[0], rings[0][k], rings[0][k2], centres[0] + Vector3(0, 0.1, 0), 1.0)
 	st.generate_tangents()
 	var mesh := st.commit()
-	_meshes["claw"] = mesh
+	_meshes[key] = mesh
 	return mesh
 
 
@@ -505,6 +763,31 @@ static func _tri_flat(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, centr
 		st.set_normal(n)
 		st.set_uv(Vector2(0.5, v))
 		st.add_vertex(p)
+
+
+## Six-sided crystal: base radius 0.18 at y=0, faceted point at y=1.
+static func _shard() -> Mesh:
+	if _meshes.has("shard"):
+		return _meshes["shard"]
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var tip := Vector3(0, 1.0, 0)
+	var centre := Vector3(0, 0.4, 0)
+	for k in 6:
+		var a0 := TAU * k / 6.0
+		var a1 := TAU * (k + 1) / 6.0
+		var b0 := Vector3(cos(a0), 0, sin(a0)) * 0.18
+		var b1 := Vector3(cos(a1), 0, sin(a1)) * 0.18
+		var m0 := b0 * 1.15 + Vector3(0, 0.68, 0)
+		var m1 := b1 * 1.15 + Vector3(0, 0.68, 0)
+		_tri_flat(st, b0, m0, m1, centre, 0.4)
+		_tri_flat(st, b0, m1, b1, centre, 0.4)
+		_tri_flat(st, m0, tip, m1, centre, 0.0)
+		_tri_flat(st, b0, b1, Vector3.ZERO, centre + Vector3(0, 0.5, 0), 1.0)
+	st.generate_tangents()
+	var mesh := st.commit()
+	_meshes["shard"] = mesh
+	return mesh
 
 
 ## Faceted, jagged dorsal plate in the XY plane: base on y=0 (width 1),

@@ -288,6 +288,7 @@ func _stage_hero(hero: int) -> void:
 		c.queue_free()
 	var h := Content.hero(hero)
 	_stage_model = KaijuModel.new()
+	_stage_model.look = h.get("look", {})
 	_stage_pivot.add_child(_stage_model)
 	_stage_model.build(h["skin"], h["belly"], h["accent"], h["eye"], h["horns"])
 	_stage_model.scale = Vector3.ONE * float(h["size"]) * 1.25
@@ -479,8 +480,8 @@ func _show_heroes(restore: Array = []) -> void:
 		var pivot := Node3D.new()
 		vp.add_child(pivot)
 		var cam := Camera3D.new()
-		cam.position = Vector3(0, 4.0, 13.0)
-		cam.rotation.x = -0.12
+		cam.position = Vector3(0, 4.6, 16.5)
+		cam.rotation.x = -0.1
 		cam.fov = 40.0
 		vp.add_child(cam)
 		var sun := DirectionalLight3D.new()
@@ -586,6 +587,7 @@ func _set_hero(slot: int, hero: int) -> void:
 	for c in d["pivot"].get_children():
 		c.queue_free()
 	var m := KaijuModel.new()
+	m.look = h.get("look", {})
 	d["pivot"].add_child(m)
 	m.build(h["skin"], h["belly"], h["accent"], h["eye"], h["horns"])
 	m.glow = 1.0

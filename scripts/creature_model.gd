@@ -34,6 +34,10 @@ var _stinger: Node3D
 var _mands: Array[Node3D] = []
 
 
+func _init() -> void:
+	detail = 1
+
+
 func build(skin: Color, belly: Color, spike: Color, eye: Color, horns: bool = false) -> void:
 	_spike_color = spike
 	_v = _variant(skin, belly, spike)
@@ -490,6 +494,20 @@ func _build_serpent(horns: bool) -> void:
 	if has("crest"):
 		for i in _neck.size():
 			_spike_piece(_neck[i], 2, bend[i] * 0.5 + Vector3(-0.5, 0.0, 0), 0.9, 0.7, 0.0)
+	if has("whiskers"):
+		# Dragon barbels trailing from the snout, and a flowing mane.
+		for side in [-1.0, 1.0]:
+			var prev := Vector3(1.15, -0.05, 0.3 * side)
+			for k in range(1, 8):
+				var nxt := Vector3(1.15 - k * 0.38, -0.05 - 0.22 * sin(k * 0.55), (0.3 + k * 0.3) * side)
+				_seg(head, prev, nxt, 0.055 - k * 0.005, _m["glow"])
+				prev = nxt
+		for i in _neck.size():
+			for j in 3:
+				var o: Vector3 = bend[i] * (0.2 + j * 0.3)
+				_claw_at(_neck[i], o + Vector3(-0.55, 0.1, (j - 1) * 0.3), Vector3(-1, 0.35, (j - 1) * 0.5), Vector3.DOWN,
+					1.1 - i * 0.06, _m["spike"])
+		_claw_at(head, Vector3(-0.3, 0.3, 0), Vector3(-1, 0.4, 0), Vector3.DOWN, 1.3, _m["spike"])
 
 
 # --- ape / golem ---------------------------------------------------------
@@ -579,6 +597,8 @@ func _build_ape(horns: bool) -> void:
 			var arm: Node3D = parts["arm_r" if side > 0 else "arm_l"]
 			for i in 6:
 				_claw_at(arm, Vector3(-0.35, -0.3 - i * 0.25, 0.3 * side), Vector3(-0.6, -0.6, 0.4 * side), Vector3.DOWN, 0.6, fur)
+	if has("seaweed"):
+		_seaweed(head)
 	if has("crystals"):
 		for i in 6:
 			_claw_at(_body, Vector3(-0.7 + i * 0.2, 1.2 + i * 0.32, (i % 3 - 1) * 0.55), Vector3(-0.6, 1, (i % 3 - 1) * 0.5),
@@ -617,6 +637,41 @@ func _build_ape(horns: bool) -> void:
 			_spike_piece(head, 0, Vector3(0.1 - i * 0.3, 0.55 - i * 0.05, 0), 0.4 + i * 0.2, 0.7 - i * 0.12, 0.0)
 
 
+## Sea troll dressing: kelp hanging off the shoulders, back and arms, and
+## barnacle clusters crusted over the hide.
+func _seaweed(head: Node3D) -> void:
+	var kelp := _skin(Color(0.3, 0.5, 0.16), Color(0.1, 0.2, 0.06), 0.55, 0.0, 0.8, 0.6)
+	var shell := _skin(Color(0.82, 0.8, 0.72), Color(0.45, 0.42, 0.36), 0.8, 0.0, 1.2, 0.0)
+	var r := RandomNumberGenerator.new()
+	r.seed = 11
+	# Points on the surface of the chest blob (see _build_ape).
+	var centre := Vector3(0.3, 1.45, 0)
+	var radii := Vector3(1.15, 1.1, 1.25) * 1.45
+	var anchors: Array = []
+	for i in 18:
+		var d := Vector3(r.randf_range(-1.0, 0.5), r.randf_range(0.2, 1.0), r.randf_range(-1.0, 1.0)).normalized()
+		anchors.append([_body, centre + d * radii * 0.97])
+	for side in [1.0, -1.0]:
+		for i in 3:
+			anchors.append([parts["arm_r" if side > 0 else "arm_l"], Vector3(r.randf_range(-0.4, 0.2), -0.2 - i * 0.45, 0.55 * side)])
+	for a in anchors:
+		var prev: Vector3 = a[1]
+		var drift := Vector3(r.randf_range(-0.35, 0.05), -1.0, r.randf_range(-0.15, 0.15)).normalized()
+		var n := r.randi_range(4, 6)
+		for k in n:
+			var nxt := prev + (drift + Vector3(sin(k * 1.3 + prev.x * 3.0) * 0.3, 0, 0)) * 0.4
+			_seg(a[0], prev, nxt, 0.16 - k * 0.018, kelp, Vector3(1.6, 1.0, 0.3))
+			prev = nxt
+	for i in 26:
+		var d := Vector3(r.randf_range(-1.0, 1.0), r.randf_range(-0.3, 1.0), r.randf_range(-1.0, 1.0)).normalized()
+		var p := centre + d * radii * 0.98
+		_part(_body, _sphere(0.16), shell, p, Vector3.ZERO, Vector3(1.0, 0.7, 1.0))
+		_claw_at(_body, p, d, Vector3.UP, r.randf_range(0.3, 0.45), shell)
+	for i in 5:
+		var d := Vector3(r.randf_range(-1.0, 0.3), r.randf_range(0.3, 1.0), r.randf_range(-1.0, 1.0)).normalized()
+		_claw_at(head, d * 0.62, d, Vector3.UP, 0.3, shell)
+
+
 func _blob(parent: Node3D, r: float, mat: Material, pos: Vector3, scl: Vector3, rock: bool) -> void:
 	if not rock:
 		_part(parent, _sphere(r), mat, pos, Vector3.ZERO, scl)
@@ -634,8 +689,6 @@ func _blob(parent: Node3D, r: float, mat: Material, pos: Vector3, scl: Vector3, 
 func _process(delta: float) -> void:
 	if parts.is_empty():
 		return
-	_t += delta
-	_walk = lerpf(_walk, walk_amount, 1.0 - exp(-10.0 * delta))
 	var gait := 8.5
 	match plan:
 		"insect":
@@ -644,12 +697,7 @@ func _process(delta: float) -> void:
 			gait = 7.0
 		"serpent":
 			gait = 5.0
-	_phase += delta * gait * walk_speed * maxf(_walk, 0.05)
-	var k := 1.0 - exp(-16.0 * delta)
-	_cur["arm_r"] = lerpf(_cur["arm_r"], arm_r, k)
-	_cur["arm_l"] = lerpf(_cur["arm_l"], arm_l, k)
-	_cur["jaw"] = lerpf(_cur["jaw"], jaw, k)
-	_cur["lean"] = lerpf(_cur["lean"], lean, k)
+	_pose(delta, gait)
 	var ar: float = _cur["arm_r"] - 0.25
 	var al: float = _cur["arm_l"] - 0.25
 	var rear := clampf(maxf(ar, al) / 2.6, 0.0, 1.0)
@@ -657,24 +705,29 @@ func _process(delta: float) -> void:
 	var jw: float = _cur["jaw"]
 	var s := sin(_phase)
 	var breathe := sin(_t * 2.0)
+	var sq: float = _cur["squash"]
+	var turn: float = _cur["turn"]
 
 	match plan:
 		"quad":
 			var pitch := rear * 0.5 - ln * 0.4
 			_body.rotation.z = pitch
-			_body.position.y = _body_y + absf(cos(_phase)) * 0.15 * _walk + breathe * 0.04 + rear * 0.5
-			_body.rotation.x = s * 0.04 * _walk
+			_body.position.y = _body_y + absf(cos(_phase)) * 0.15 * _walk + breathe * 0.04 + rear * 0.5 - sq * 0.3
+			_body.rotation.x = s * 0.05 * _walk
+			_body.rotation.y = s * 0.04 * _walk
 			for l in _legs:
 				var front: bool = String(l["n"].name).begins_with("leg_f")
 				var rz: float = sin(_phase + l["ph"]) * l["swing"] * _walk
 				if front:
 					rz += rear * (0.9 + 0.3 * sin(_t * 9.0))
 				rz -= pitch
+				rz += sq * (0.25 if front else -0.25)
 				l["n"].rotation.z = rz
-			_neck[0].rotation.z = -rear * 0.2 + ln * 0.15 + sin(_t * 1.6) * 0.04
+			_neck[0].rotation.z = -rear * 0.2 + ln * 0.15 + sin(_t * 1.6) * 0.04 - absf(cos(_phase)) * 0.05 * _walk + sq * 0.2
+			_neck[0].rotation.y = turn * 0.08
 			parts["jaw"].rotation.z = -jw * 0.6
 		"insect", "mech":
-			_body.position.y = _body_y + absf(sin(_phase * 2.0)) * 0.06 * _walk + breathe * 0.03
+			_body.position.y = _body_y + absf(sin(_phase * 2.0)) * 0.06 * _walk + breathe * 0.03 - sq * 0.15
 			_body.rotation.z = rear * 0.25 - ln * 0.25
 			for l in _legs:
 				var p: float = _phase + l["ph"]
@@ -698,7 +751,7 @@ func _process(delta: float) -> void:
 				_abdomen.scale = Vector3.ONE * (1.0 + breathe * (0.05 if has("bloated") or has("bomb_glow") else 0.015))
 			for t in _tail:
 				t.rotation.z = -ln * 0.6 - rear * 0.25 + sin(_t * 2.4) * 0.05
-				t.rotation.y = sin(_t * 1.5) * 0.08
+				t.rotation.y = sin(_t * 1.5) * 0.08 - turn * 0.1
 			for i in _mands.size():
 				_mands[i].rotation.y = (1.0 if i == 0 else -1.0) * (jw * 0.6 + sin(_t * 7.0) * 0.06)
 			if plan == "mech":
@@ -706,25 +759,28 @@ func _process(delta: float) -> void:
 		"serpent":
 			for i in _tail.size():
 				var amp := 0.18 + 0.22 * _walk
-				_tail[i].rotation.y = sin(_t * 3.0 * walk_speed + _phase - i * 0.8) * amp * (0.4 if i == 0 else 1.0)
+				_tail[i].rotation.y = sin(_t * 3.0 * walk_speed + _phase - i * 0.8) * amp * (0.4 if i == 0 else 1.0) \
+					- turn * 0.08 * float(i + 1) / _tail.size()
 			var strike_k := ln * 0.55 - rear * 0.35
 			for i in _neck.size():
 				_neck[i].rotation.z = -strike_k * (0.35 if i < 3 else 0.2) + sin(_t * 1.7 - i * 0.6) * 0.04
-				_neck[i].rotation.y = sin(_t * 1.3 - i * 0.5) * 0.05
+				_neck[i].rotation.y = sin(_t * 1.3 - i * 0.5) * 0.05 + turn * 0.04
 			parts["jaw"].rotation.z = -jw * 0.9
 			if has("worm"):
 				parts["jaw"].scale = Vector3.ONE * (1.0 + jw * 0.6)
 		_:
 			_body.rotation.z = _body_rest + rear * 0.35 - ln * 0.5 + breathe * 0.02
 			_body.rotation.y = s * 0.07 * _walk
-			parts["hips"].position.y = _body_y + absf(cos(_phase)) * 0.18 * _walk + breathe * 0.04
+			parts["hips"].position.y = _body_y + absf(cos(_phase)) * 0.18 * _walk + breathe * 0.04 - sq * 0.3
+			parts["hips"].rotation.x = s * 0.06 * _walk
 			for l in _legs:
 				l["n"].rotation.z = sin(_phase + l["ph"]) * l["swing"] * _walk
 			for a in _arms:
 				var v := ar if a["side"] > 0 else al
 				var sw: float = -s * 0.45 * _walk * a["side"]
+				var vv: float = _vel.get("arm_r" if a["side"] > 0 else "arm_l", 0.0)
 				a["n"].rotation.z = a["rest"] + v * 1.0 + sw
-				a["fore"].rotation.z = a["fore_rest"] - v * 0.25
+				a["fore"].rotation.z = a["fore_rest"] - v * 0.25 + clampf(-vv * 0.03, -0.4, 0.5) + sin(_phase - 0.8) * 0.1 * _walk * a["side"]
 			parts["head"].rotation.z = -_body.rotation.z * 0.8 + sin(_t * 1.7) * 0.05
 			parts["jaw"].rotation.z = -jw * 0.7
 			for i in _neck.size():
@@ -733,7 +789,7 @@ func _process(delta: float) -> void:
 				_neck[i].rotation.x = side * (0.25 + sin(_t * 6.0) * 0.35 * (0.3 + rear))
 	if plan == "quad":
 		for i in _tail.size():
-			_tail[i].rotation.y = sin(_t * 2.0 - i * 0.7) * 0.12 * (1.0 + _walk)
+			_tail[i].rotation.y = sin(_t * 2.0 - i * 0.7) * 0.12 * (1.0 + _walk) - turn * 0.1 * float(i + 1) / _tail.size()
 			_tail[i].rotation.z = -0.03 + sin(_t * 1.3 - i * 0.5) * 0.04
 
 	if _flash > 0.0:
@@ -750,16 +806,6 @@ func _process(delta: float) -> void:
 
 # --- helpers -------------------------------------------------------------
 
-## A capsule limb from a to b.
-func _seg(parent: Node3D, a: Vector3, b: Vector3, r: float, mat: Material, scl: Vector3 = Vector3.ONE) -> void:
-	var d := b - a
-	var l := d.length()
-	if l < 0.001:
-		return
-	var basis := Basis(Quaternion(Vector3.UP, d / l)) * Basis.from_scale(scl)
-	_part_xf(parent, _capsule(r, l + r * 2.0), mat, Transform3D(basis, (a + b) * 0.5))
-
-
 ## A curved claw/horn/tooth whose base sits at pos, pointing along `along`
 ## and curving toward `curve`, about `length` long.
 func _claw_at(parent: Node3D, pos: Vector3, along: Vector3, curve: Vector3, length: float, mat: Material) -> void:
@@ -773,20 +819,11 @@ func _claw_at(parent: Node3D, pos: Vector3, along: Vector3, curve: Vector3, leng
 	_part_xf(parent, _claw(), mat, Transform3D(basis, pos))
 
 
-func _part_xf(parent: Node3D, mesh: Mesh, mat: Material, xf: Transform3D) -> void:
-	if not _pending.has(parent):
-		_pending[parent] = {}
-	var by_mat: Dictionary = _pending[parent]
-	if not by_mat.has(mat):
-		by_mat[mat] = []
-	by_mat[mat].append([mesh, xf])
-
-
 func _cylinder(r: float, h: float) -> Mesh:
-	return _cached("cyl_%.3f_%.3f" % [r, h], func() -> Mesh:
+	return _cached("cyl_%.3f_%.3f_%d" % [r, h, _segments(r)], func() -> Mesh:
 		var c := CylinderMesh.new()
 		c.top_radius = r
 		c.bottom_radius = r
 		c.height = h
-		c.radial_segments = 16
+		c.radial_segments = _segments(r)
 		return c)
