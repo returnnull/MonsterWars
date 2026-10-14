@@ -91,6 +91,8 @@ Med våben i hånden er let angreb et sving (2-hits combo) og tungt angreb et ka
 - **Nova Burst:** tre energieksplosioner rundt om dig.
 - **Earthquake:** jordskælv der bevæger sig fremad langs gaden.
 
+Heltenes modeller ligger i `assets/heroes/` og er 10 varianter af Quaternius' T-Rex ([Poly Pizza](https://poly.pizza/m/UYtneO5FpF), CC0) med rygplader, horn, farver og proportioner, der er lavet med `tools/make_hero_variants.py` (Blender som Python-modul: `pip install bpy`). Hver .glb har skelettet og animationerne Idle, Walk, Run, Attack, Jump og Death. Fjerner du `model` fra en helt i `scripts/content.gd`, bruger den igen den procedurale model.
+
 ## Lande og bosser
 
 | # | Land | By | Stemning | Vartegn | Boss | Bossens angreb |
@@ -207,6 +209,9 @@ scripts/flyer.gd           Drone-fjende
 scripts/projectile.gd      Plasma-skud
 scripts/building.gd        Destruerbare bygninger
 scripts/kaiju_model.gd     Procedural kaiju-model og animation
+scripts/glb_kaiju_model.gd Heltemodel fra .glb (assets/heroes) styret af samme pose-mål
+assets/heroes/             De 10 T-Rex-varianter (CC0, Quaternius)
+tools/make_hero_variants.py  Blender-script der laver T-Rex-varianterne
 scripts/camera_rig.gd      Kamera med look-ahead og shake
 scripts/hud.gd             HUD, pause og slutskærm
 scripts/fx.gd              Partikler, lysglimt og chokbølger
