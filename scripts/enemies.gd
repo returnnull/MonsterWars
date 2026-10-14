@@ -2,7 +2,9 @@ class_name Enemies
 extends RefCounted
 ## Every regular enemy type as data, plus which country introduces it.
 ##
-## class: "kaiju" (Brute), "air" (Flyer) or "ground" (Vehicle).
+## class: "kaiju" (Brute), "air" (Flyer), "ground" (Vehicle) or "infantry"
+## (Infantry). Most of every wave is military; kaiju and heavy robots are
+## rarer (see KAIJU_WEIGHT and ROBOT_WEIGHT in pool()).
 ## Shared keys: name, hp, dmg, speed, xp, score, cost (threat used to fill
 ## waves), group (how many spawn per pick, default 1), desc.
 ## Kaiju keys: size, shape (non-uniform model scale), colors [skin, belly,
@@ -112,9 +114,18 @@ const DEFS := {
 		"colors": [Color(0.42, 0.44, 0.48), Color(0.25, 0.26, 0.3), Color(0.3, 0.8, 1.0), Color(1.0, 0.15, 0.1)],
 		"horns": true, "moves": ["swipe", "breath", "charge"], "element": "plasma", "armour": true,
 		"extras": [], "xp": 40, "score": 3200, "cost": 3.0},
-	"elite": {"name": "ELITE", "class": "kaiju", "body": "ape", "desc": "Armoured brute mini-boss",
-		"hp": 220.0, "dmg": 16.0, "speed": 5.0, "size": 1.22, "colors": "elite", "horns": true,
-		"moves": ["swipe", "charge", "hurl"], "armour": true, "extras": ["armor_plates", "crest"], "xp": 60, "score": 3000, "cost": 4.0},
+	"elite": {"name": "WARBOT", "class": "kaiju", "body": "mech", "desc": "Heavy war robot: plasma cannon, charge and missile volleys",
+		"hp": 260.0, "dmg": 16.0, "speed": 4.5, "size": 1.3,
+		"colors": [Color(0.38, 0.4, 0.44), Color(0.22, 0.23, 0.26), Color(1.0, 0.3, 0.15), Color(1.0, 0.2, 0.1)],
+		"moves": ["swipe", "charge", "breath", "barrage"], "element": "plasma", "armour": true, "extras": [],
+		"xp": 60, "score": 3000, "cost": 4.0},
+	# --- infantry ------------------------------------------------------------
+	"soldier": {"name": "SOLDIERS", "class": "infantry", "desc": "Rifle squad: fires bursts and scatters when you get close",
+		"hp": 10.0, "dmg": 2.5, "speed": 5.5, "group": 4, "xp": 3, "score": 150, "cost": 0.35},
+	"rocket": {"name": "ROCKET TROOPERS", "class": "infantry", "desc": "Shoulder-launched rockets that burst on impact",
+		"hp": 12.0, "dmg": 7.0, "speed": 4.5, "group": 2, "xp": 5, "score": 250, "cost": 0.6},
+	"flamer": {"name": "FLAMETHROWERS", "class": "infantry", "desc": "Rush in and spray fire that sets you alight",
+		"hp": 14.0, "dmg": 2.0, "speed": 6.0, "group": 2, "xp": 5, "score": 250, "cost": 0.6},
 	# --- air -----------------------------------------------------------------
 	"drone": {"name": "DRONE", "class": "air", "desc": "Hovers, shoots plasma, swoops low",
 		"hp": 35.0, "dmg": 8.0, "xp": 12, "score": 600, "cost": 1.0},
@@ -135,27 +146,35 @@ const DEFS := {
 		"hp": 65.0, "dmg": 9.0, "speed": 3.5, "xp": 18, "score": 1100, "cost": 2.0},
 	"mech": {"name": "MECH WALKER", "class": "ground", "desc": "Bipedal mech: gun bursts and kicks",
 		"hp": 120.0, "dmg": 8.0, "speed": 4.0, "xp": 24, "score": 1600, "cost": 2.5},
+	"apc": {"name": "APC", "class": "ground", "desc": "Armoured carrier: drops off a rifle squad, then machine-guns",
+		"hp": 75.0, "dmg": 3.0, "speed": 6.0, "xp": 14, "score": 900, "cost": 1.5},
 	"maser": {"name": "MASER CANNON", "class": "ground", "desc": "Charges a long-range beam",
 		"hp": 90.0, "dmg": 5.0, "speed": 2.2, "xp": 24, "score": 1500, "cost": 2.5},
 }
 
 ## Per country: which enemy types it introduces and at which level (0-9).
 ## "new" types stay in the mix for every later country; "local" types only
-## show up in their own country (and in the Japan finale).
+## show up in their own country (and in the Japan finale). Military units
+## carry each country; the kaiju are the odd monster among them.
 const ROSTER := [
-	{"new": [["brute", 0], ["drone", 1], ["crawler", 2], ["tank", 5]], "local": [["mossback", 3]]},
-	{"new": [["rhinox", 0], ["heli", 3]], "local": [["gargling", 1]]},
-	{"new": [["mite", 0], ["missile", 2], ["bomber", 5]], "local": [["mech", 3]]},
-	{"new": [["scythe", 0], ["boomtick", 3]], "local": [["venomaw", 1]]},
-	{"new": [["pyrodon", 0], ["artillery", 2]], "local": [["scorpex", 1]]},
-	{"new": [["wasp", 0], ["broodmother", 2]], "local": [["nagling", 1]]},
-	{"new": [["shellback", 0]], "local": [["saltjaw", 1]]},
-	{"new": [["frostfang", 0], ["maser", 2], ["titanodon", 5]], "local": []},
-	{"new": [["geysirwurm", 0], ["saucer", 2]], "local": [["magmite", 1]]},
+	{"new": [["soldier", 0], ["tank", 1], ["rocket", 2], ["heli", 4], ["brute", 6]], "local": [["mossback", 3]]},
+	{"new": [["apc", 0], ["drone", 1], ["rhinox", 3]], "local": [["gargling", 2]]},
+	{"new": [["missile", 0], ["bomber", 2], ["mite", 4]], "local": [["mech", 1]]},
+	{"new": [["flamer", 0], ["scythe", 3], ["boomtick", 5]], "local": [["venomaw", 1]]},
+	{"new": [["artillery", 0], ["pyrodon", 3]], "local": [["scorpex", 1]]},
+	{"new": [["wasp", 0], ["broodmother", 3]], "local": [["nagling", 1]]},
+	{"new": [["crawler", 0], ["shellback", 2]], "local": [["saltjaw", 1]]},
+	{"new": [["maser", 0], ["frostfang", 2], ["titanodon", 5]], "local": []},
+	{"new": [["saucer", 0], ["geysirwurm", 2]], "local": [["magmite", 1]]},
 	{"new": [["voltwyrm", 0]], "local": [["mechadon", 1]]},
 ]
 
+## Basic kaiju that fade out of the mix in later countries.
 const BASICS := ["brute", "crawler", "drone"]
+## Pool weight multipliers: kaiju and heavy robots are the exception.
+const KAIJU_WEIGHT := 0.3
+const ROBOT_WEIGHT := 0.4
+const ROBOTS := ["mech", "mechadon", "maser"]
 
 
 static func get_def(id: String) -> Dictionary:
@@ -194,13 +213,21 @@ static func pool(country_idx: int, level_idx: int) -> Array:
 			var w := 2.2 if c == country_idx else 1.0
 			if c < country_idx and e[0] in BASICS and country_idx >= 3:
 				w = 0.5
-			out.append([e[0], w])
+			out.append([e[0], w * _weight(e[0])])
 		for e in r["local"]:
 			if c == country_idx and int(e[1]) <= level_idx:
-				out.append([e[0], 2.0])
+				out.append([e[0], 2.0 * _weight(e[0])])
 			elif c < country_idx and country_idx == ROSTER.size() - 1:
-				out.append([e[0], 0.6])
+				out.append([e[0], 0.6 * _weight(e[0])])
 	return out
+
+
+static func _weight(id: String) -> float:
+	if id in ROBOTS:
+		return ROBOT_WEIGHT
+	if get_def(id)["class"] == "kaiju":
+		return KAIJU_WEIGHT
+	return 1.0
 
 
 static func pick(rng: RandomNumberGenerator, entries: Array) -> String:

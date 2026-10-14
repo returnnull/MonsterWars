@@ -97,31 +97,48 @@ Med våben i hånden er let angreb et sving (2-hits combo) og tungt angreb et ka
 | 9 | Island | Reykjavik | Nordlys, sne | Vulkan | Surtur | Alt undtagen stormløb |
 | 10 | Japan | Tokyo | Neon-nat | Radiotårn | Ryujin Prime | Alle seks angreb |
 
-Fjender: 31 almindelige fjendetyper (se `scripts/enemies.gd`) plus elite-kaijuer og bosser. Hvert land introducerer 1-3 nye typer og har sine egne lokale fjender, så blandingen bliver mere varieret undervejs.
+Fjender: 35 almindelige fjendetyper (se `scripts/enemies.gd`) plus en tung kamprobot som elite og en boss i hvert land. Det meste af hver bølge er militær: soldater, raketsoldater, flammekastere, mandskabsvogne, kampvogne, artilleri, missiler, helikoptere, jetfly og droner. En gang imellem kommer en svær robot (Mech Walker, Maser Cannon, Mechadon eller elite-robotten Warbot), og enkelte fjender er kaiju-monstre. Over alle 100 baner er ca. 81 % af fjenderne militær, 17 % kaiju og 2 % robotter.
 
-Fjende-monstrene er bygget helt anderledes end heltene, så man altid kan se forskel (`scripts/creature_model.gd`). Hver type har en af seks kropstyper med sin egen kampstil:
+Soldaterne er små ved siden af en kaiju. De holder afstand og skyder, flygter når du kommer tæt på, og flyver gennem luften når de bliver ramt. Mandskabsvognene kører frem og sætter et hold soldater af.
+
+Kaiju-fjenderne er bygget helt anderledes end heltene (`scripts/creature_model.gd`), med seks kropstyper og hver sin kampstil:
 
 | Kropstype | Fjender | Kampstil |
 |---|---|---|
 | Firbenet bæst | Mossback, Rhinox, Venomaw, Pyrodon, Shellback, Saltjaw, Titanodon | Stejler før slag, stormløb, haleslag |
 | Insekt / edderkop | Skitter, Mite, Scythe, Boomtick, Scorpex, Broodmother | Zigzagger ind, bider og hopper tilbage |
 | Slange / orm | Nagling, Geysirwurm, Voltwyrm | Hugger frem fra afstand, graver sig ned |
-| Abe | Brawler, Gargling, Frostfang, Elite | Går på knoerne og kaster kampesten |
+| Abe | Brawler, Gargling, Frostfang | Går på knoerne og kaster kampesten |
 | Golem | Magmite | Klippekrop med glødende revner, kaster magma |
-| Maskine | Mechadon | Firbenet kampmaskine med plasmakanon |
+| Maskine | Mechadon, Warbot | Firbenet kampmaskine med plasmakanon og missiler |
 
 | Land | Nye fjender | Lokal fjende |
 |---|---|---|
-| Danmark | Brawler (abe, kaster sten), Drone, Skitter (edderkop), Tank | Mossback (mosbegroet skjoldbæst, jordslag) |
-| Frankrig | Rhinox (næsehorn, stormløb), Gunship (helikopter, salver) | Gargling (vinget abe, springer) |
-| USA | Mite (sværm), SAM Launcher (målsøgende missiler), Bomber Jet | Mech Walker |
-| Brasilien | Scythe (mantis, kombo-hug), Boomtick (flåt, eksploderer) | Venomaw (tudse, syre-spytter) |
-| Egypten | Pyrodon (kraveøgle, ild-ånde), Artillery (granater på markerede felter) | Scorpex (skorpion, giftspyt) |
-| Indien | Wasp Drone (kamikaze), Broodmother (edderkop, udklækker mites) | Nagling (kobra, hug) |
-| Australien | Shellback (pansret skjoldbæst) | Saltjaw (krokodille, stormløb og hug) |
-| Rusland | Frostfang (yeti, is-ånde gør dig langsom), Maser Cannon (ladet stråle), Titanodon (kæmpe) | |
-| Island | Geysirwurm (kæmpeorm, bryder op under dig), Saucer | Magmite (lava-golem) |
-| Japan | Voltwyrm (lyn-ål, kalder lyn ned) | Mechadon (kampmaskine) |
+| Danmark | Soldater, Tank, Raketsoldater, Gunship, Brawler (abe) | Mossback (mosbegroet skjoldbæst) |
+| Frankrig | Mandskabsvogn (sætter soldater af), Drone, Rhinox (næsehorn) | Gargling (vinget abe) |
+| USA | SAM Launcher (målsøgende missiler), Bomber Jet, Mite (sværm) | Mech Walker (robot) |
+| Brasilien | Flammekastere, Scythe (mantis), Boomtick (flåt, eksploderer) | Venomaw (tudse, syre) |
+| Egypten | Artillery (granater på markerede felter), Pyrodon (kraveøgle, ild) | Scorpex (skorpion) |
+| Indien | Wasp Drone (kamikaze), Broodmother (edderkop) | Nagling (kobra) |
+| Australien | Skitter (edderkop), Shellback (skjoldbæst) | Saltjaw (krokodille) |
+| Rusland | Maser Cannon (ladet stråle), Frostfang (yeti), Titanodon (kæmpe) | |
+| Island | Saucer, Geysirwurm (kæmpeorm) | Magmite (lava-golem) |
+| Japan | Voltwyrm (lyn-ål) | Mechadon (kampmaskine) |
+
+Bosserne er en blanding af kaiju, monstre og en kæmperobot. De er meget større end almindelige fjender, har en stor livsbar i bunden af skærmen, og hver boss har sit eget unikke angreb:
+
+| Boss | Krop | Unikt angreb |
+|---|---|---|
+| Havtrold | Kaiju | Jordskælv: chokbølger ruller ud til begge sider |
+| Gargouille | Vinget abe | Styrtdyk: flyver op og lander med en kæmpe chokbølge |
+| Ironclaw | Kæmperobot | Missilsalve, og sætter soldater af |
+| Jaguaron | Firbenet | Raseri: tre spring i træk |
+| Sphinxar | Firbenet | Sandstorm: ånde der fejer fra højt til lavt |
+| Nagaraj | Slange | Giftregn: fem giftklatter på én gang |
+| Crocodon | Krokodille | Halefej hele vejen rundt (hop over den) |
+| Mammothrax | Yeti | Jordskælv og kampesten |
+| Surtur | Lava-golem | Meteorregn på markerede felter |
+| Ryujin Prime | Kaiju | Lynstorm: tre lynnedslag efter hver spiller |
 
 Fjenderne bliver stærkere bane for bane, og bosserne bliver større og hårdere land for land. Jordslag kan undgås ved at hoppe.
 

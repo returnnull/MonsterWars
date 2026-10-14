@@ -4,7 +4,8 @@ extends Kaiju
 ## whose data sets size, look, stats and move set, or "boss" (a country's
 ## boss; its moves come from `boss_def`).
 ## Moves: swipe, combo, charge, slam, breath, spit, summon, leap, explode,
-## burrow, shock, lunge, hurl. Every move is telegraphed (wind-up pose +
+## burrow, shock, lunge, hurl, plus the bosses' signature moves (SIGNATURES).
+## Every move is telegraphed (wind-up pose +
 ## glowing eyes). Regular enemies use a CreatureModel body plan (the def's
 ## "body"); bosses keep the upright KaijuModel. Insects fight hit-and-run,
 ## zigzagging in and hopping back after a bite.
@@ -20,7 +21,11 @@ const PALETTES := [
 	[Color(0.18, 0.28, 0.35), Color(0.5, 0.55, 0.55), Color(1.0, 0.4, 0.4), Color(1.0, 0.5, 0.2)],
 ]
 const WINDUP := {"swipe": 0.55, "charge": 0.9, "slam": 0.9, "breath": 0.7, "summon": 1.0, "leap": 0.5,
-	"spit": 0.6, "combo": 0.45, "explode": 1.1, "burrow": 0.6, "shock": 0.8, "lunge": 0.5, "hurl": 0.75}
+	"spit": 0.6, "combo": 0.45, "explode": 1.1, "burrow": 0.6, "shock": 0.8, "lunge": 0.5, "hurl": 0.75,
+	"barrage": 0.9, "meteor": 1.0, "quake": 0.9, "storm": 0.9, "venom_rain": 0.8, "frenzy": 0.5,
+	"sweep": 0.8, "sandstorm": 0.8, "dive": 0.6}
+## Boss-only signature moves; a boss favours its own when it is in range.
+const SIGNATURES := ["barrage", "meteor", "quake", "storm", "venom_rain", "frenzy", "sweep", "sandstorm", "dive"]
 const ELEMENT_COLORS := {"fire": Color(1.0, 0.45, 0.08), "acid": Color(0.45, 1.0, 0.15),
 	"venom": Color(0.8, 0.3, 1.0), "ice": Color(0.55, 0.9, 1.0), "plasma": Color(0.3, 0.8, 1.0)}
 
@@ -79,7 +84,11 @@ func _ready() -> void:
 		_base_cooldown = Vector2(c * 0.6, c * 1.2)
 		colors = [boss_def.get("skin", Color(0.32, 0.08, 0.07)), boss_def.get("belly", Color(0.55, 0.32, 0.2)),
 			boss_def.get("accent", Color(1.0, 0.35, 0.1)), boss_def.get("eye", Color(1.0, 0.8, 0.15))]
-		_element = "fire"
+		_element = boss_def.get("element", "fire")
+		_body = boss_def.get("body", "kaiju")
+		extras = boss_def.get("extras", [])
+		horns = boss_def.get("horns", true)
+		_summon = boss_def.get("summon", "drone")
 	else:
 		if def.is_empty():
 			def = Enemies.get_def(kind)
@@ -270,9 +279,26 @@ func _pick_move(adx: float, adz: float, melee: float) -> String:
 		var limit := 5 if _summon == "drone" else 9
 		if get_tree().get_nodes_in_group("enemies").size() < limit:
 			options.append("summon")
+	for m in SIGNATURES:
+		if m in moves and _signature_ok(m, adx, melee) and randf() < 0.55:
+			options.append(m)
+			options.append(m)
 	if options.is_empty():
 		return ""
 	return options.pick_random()
+
+
+func _signature_ok(m: String, adx: float, melee: float) -> bool:
+	match m:
+		"barrage", "dive", "frenzy":
+			return adx > 6.0 and adx < 26.0
+		"quake":
+			return adx < 22.0
+		"venom_rain", "sandstorm":
+			return adx > 4.0 and adx < 22.0
+		"sweep":
+			return adx < melee + 3.0
+	return true
 
 
 func _swipe(mul: float) -> void:
@@ -314,10 +340,53 @@ func _begin_act(p: Kaiju) -> void:
 				_spit(p)
 		"summon":
 			_do_summon()
-		"leap":
-			velocity.y = 19.0
-			var target_x := p.global_position.x if p else global_position.x + facing * 10.0
-			_leap_vx = clampf(target_x - global_position.x, -22.0, 22.0)
+		"leap", "frenzy", "dive":
+			_combo_n = 1
+			_jump_at(p, 30.0 if move == "dive" else 19.0)
+		"barrage", "sandstorm":
+			_combo_n = 0
+			_fire_t = 0.0
+		"meteor":
+			# Burning rocks rain down on marked spots around every player.
+			FX.energy(hit_center() + Vector3(0, 3, 0), _elem_color())
+			Game.shake(0.5)
+			for q in Game.living_players():
+				for i in 4:
+					_hazard("shell", Vector3(q.global_position.x + randf_range(-6, 6), 0, q.global_position.z + randf_range(-2, 2)),
+						3.0, 1.1 + i * 0.3, dmg * 0.9, Color(1.0, 0.4, 0.05), "fire")
+		"quake":
+			# Shockwaves ripple outward along the street on both sides.
+			FX.shockwave(global_position, 6.0, Color(1.0, 0.7, 0.4))
+			Game.shake(0.9)
+			var z := p.global_position.z if p else global_position.z
+			for k in range(1, 7):
+				for side in [-1.0, 1.0]:
+					_hazard("blast", Vector3(global_position.x + side * k * 4.0, 0, z), 2.6, 0.25 + k * 0.2, dmg * 0.8,
+						Color(1.0, 0.6, 0.3), "")
+		"storm":
+			FX.bolt(hit_center() + Vector3(0, 3, 0), hit_center() + Vector3(0, 18, -1), _elem_color())
+			for q in Game.living_players():
+				for i in 3:
+					var lead: Vector3 = q.velocity * (0.4 + i * 0.3)
+					_hazard("bolt", Vector3(q.global_position.x + lead.x + randf_range(-2, 2), 0, q.global_position.z),
+						2.8, 0.8 + i * 0.55, dmg, _elem_color(), "")
+		"venom_rain":
+			if p:
+				for i in 5:
+					_glob_at(Vector3(p.global_position.x + (i - 2) * 3.2, 0.2, p.global_position.z + randf_range(-2, 2)))
+		"sweep":
+			# Full spin with the tail: hits all round, jumping clears it.
+			var r := 4.5 * size_mul
+			FX.shockwave(global_position, r, Color(1.0, 0.85, 0.5))
+			FX.dust(global_position, 2.5)
+			Game.shake(0.7)
+			for q in Game.living_players():
+				var d: Vector3 = q.global_position - global_position
+				if q.global_position.y < 1.4 and Vector2(d.x, d.z).length() < r:
+					if q.take_hit(dmg * 1.2, Vector3(signf(d.x) * 22.0, 10.0, 0), self):
+						FX.hit_spark(q.hit_center(), 18.0)
+			strike(global_position + Vector3(0, 1, 0), r, 0.0, Vector3.ZERO, "none", 40.0)
+			create_tween().tween_property(model, "spin", TAU, 0.45).from(0.0)
 		"explode":
 			_explode()
 		"burrow":
@@ -344,6 +413,10 @@ func _begin_act(p: Kaiju) -> void:
 
 ## Lobs an arcing glob that bursts where the target stands.
 func _spit(p: Kaiju) -> void:
+	_glob_at(Vector3(p.global_position.x, 0.2, p.global_position.z))
+
+
+func _glob_at(to: Vector3) -> void:
 	var b := Projectile.new()
 	b.style = "glob"
 	b.color = _elem_color()
@@ -355,7 +428,6 @@ func _spit(p: Kaiju) -> void:
 	get_parent().add_child(b)
 	var start := global_position + Vector3(facing * 2.0 * size_mul, 4.4 * size_mul * _tall, 0)
 	b.global_position = start
-	var to := Vector3(p.global_position.x, 0.2, p.global_position.z)
 	var t := clampf(absf(to.x - start.x) / 15.0, 0.6, 1.3)
 	var v := (to - start) / t
 	v.y += 0.5 * b.gravity * t
@@ -385,10 +457,39 @@ func _hurl(p: Kaiju) -> void:
 	Game.shake(0.3)
 
 
+func _jump_at(p: Kaiju, vy: float) -> void:
+	velocity.y = vy
+	var target_x := p.global_position.x if p else global_position.x + facing * 10.0
+	var t := 2.0 * vy / GRAVITY
+	_leap_vx = clampf((target_x - global_position.x) / t, -26.0, 26.0) if move == "dive" else clampf(target_x - global_position.x, -22.0, 22.0)
+
+
+func _hazard(style: String, pos: Vector3, radius: float, delay: float, damage: float, color: Color, element: String) -> void:
+	var h := Hazard.new()
+	h.style = style
+	h.radius = radius
+	h.delay = delay
+	h.damage = damage
+	h.color = color
+	h.element = element
+	get_parent().add_child(h)
+	pos.x = clampf(pos.x, x_min, x_max)
+	h.global_position = pos
+
+
 func _do_summon() -> void:
 	for i in 2:
 		var m: Node3D
-		if _summon == "drone":
+		if Enemies.get_def(_summon)["class"] == "infantry":
+			var s := Infantry.new()
+			s.kind = _summon
+			s.hp_mul = hp_mul
+			s.dmg_mul = dmg_mul
+			s.arena = Vector2(x_min, x_max)
+			m = s
+			get_parent().add_child(s)
+			s.global_position = global_position + Vector3(-facing * (3.0 + i * 1.5), 0.3, (i - 0.5) * 2.0)
+		elif _summon == "drone":
 			var f := Flyer.new()
 			f.kind = "drone"
 			f.hp_mul = hp_mul * 0.6
@@ -460,8 +561,43 @@ func _surface(attack: bool) -> void:
 
 func _act(delta: float, p: Kaiju) -> Vector3:
 	match move:
-		"swipe", "slam", "summon", "spit", "shock", "hurl":
-			if state_t >= 0.3:
+		"swipe", "slam", "summon", "spit", "shock", "hurl", "meteor", "quake", "storm", "venom_rain", "sweep":
+			if state_t >= (0.6 if move == "sweep" else 0.3):
+				_set_state(S.RECOVER)
+		"barrage":
+			# A volley of homing missiles from the back.
+			_fire_t -= delta
+			if _fire_t <= 0.0 and _combo_n < 6:
+				_fire_t = 0.14
+				_combo_n += 1
+				var b := Projectile.new()
+				b.style = "missile"
+				b.color = Color(1.0, 0.55, 0.2)
+				b.damage = dmg * 0.6
+				b.splash = 2.0
+				b.homing = 2.4
+				b.homing_delay = 0.5
+				b.target = Game.living_players().pick_random() if not Game.living_players().is_empty() else p
+				b.velocity = Vector3(-facing * randf_range(2.0, 6.0), 16.0, randf_range(-3.0, 3.0))
+				get_parent().add_child(b)
+				b.global_position = global_position + Vector3(-facing * 1.0 * size_mul, 6.0 * size_mul * _tall, 0)
+				FX.smoke(b.global_position, 0.6, Color(0.75, 0.75, 0.72))
+			if state_t >= 1.3:
+				_set_state(S.RECOVER)
+		"sandstorm":
+			# A breath that sweeps from high to low across the street.
+			_fire_t -= delta
+			if _fire_t <= 0.0:
+				_fire_t = 0.07
+				var b := Projectile.new()
+				b.color = Color(1.0, 0.8, 0.4)
+				b.damage = dmg * 0.4
+				b.size = 1.3
+				get_parent().add_child(b)
+				b.global_position = global_position + Vector3(facing * 2.4 * size_mul * _shape.x, 4.6 * size_mul * _tall, 0)
+				var ang := lerpf(0.35, -0.45, state_t / 1.4)
+				b.velocity = Vector3(facing, 0, 0).rotated(Vector3.BACK, ang * facing).rotated(Vector3.UP, randf_range(-0.2, 0.2)) * 24.0
+			if state_t >= 1.4:
 				_set_state(S.RECOVER)
 		"lunge":
 			# Fast strike from range: the head snaps forward and back.
@@ -527,9 +663,9 @@ func _act(delta: float, p: Kaiju) -> Vector3:
 				_surface(false)
 				_set_state(S.RECOVER)
 			return mv
-		"leap":
+		"leap", "frenzy", "dive":
 			if state_t > 0.2 and is_on_floor():
-				var r := 5.5 * size_mul / 1.5
+				var r := 5.5 * size_mul / 1.5 * (1.6 if move == "dive" else 1.0)
 				var hot := kind == "magmite"
 				FX.shockwave(global_position, r, Color(1.0, 0.4, 0.1) if hot else Color(1.0, 0.7, 0.4))
 				FX.dust(global_position, 2.0)
@@ -544,6 +680,14 @@ func _act(delta: float, p: Kaiju) -> Vector3:
 							if hot:
 								Projectile.apply_element(q, "fire", dmg)
 				strike(global_position + Vector3(0, 1, 0), r, 0.0, Vector3.ZERO, "none", 40.0)
+				if move == "frenzy" and _combo_n < 3:
+					# Pounces again straight away.
+					_combo_n += 1
+					state_t = 0.0
+					if p:
+						face_toward(p.global_position.x - global_position.x)
+					_jump_at(p, 16.0)
+					return Vector3(_leap_vx, 0, 0)
 				_set_state(S.RECOVER)
 				return Vector3.ZERO
 			if state_t > 2.5:
@@ -625,7 +769,13 @@ func _animate(delta: float, mv: Vector3) -> void:
 					al = 3.0
 					lean = -0.3
 					jaw = 0.6
-				"leap", "burrow":
+				"barrage", "meteor", "quake", "storm", "venom_rain", "sweep", "sandstorm":
+					ar = 2.6
+					al = 2.6
+					lean = -0.45
+					jaw = 1.0
+					model.glow = 1.0
+				"leap", "burrow", "frenzy", "dive":
 					lean = 0.5
 					ar = -0.5
 					al = -0.5
@@ -676,10 +826,19 @@ func _animate(delta: float, mv: Vector3) -> void:
 					jaw = 1.0
 					ar = 2.2
 					al = 2.2
-				"leap":
+				"leap", "frenzy", "dive":
 					ar = 2.4
 					al = 2.4
 					lean = 0.3
+				"barrage", "meteor", "quake", "storm", "venom_rain", "sandstorm":
+					jaw = 1.0
+					ar = 2.0
+					al = 2.0
+					model.glow = 1.0
+				"sweep":
+					lean = 0.4
+					ar = 1.2
+					al = 1.2
 		S.RECOVER:
 			ar = 0.6
 			lean = 0.15

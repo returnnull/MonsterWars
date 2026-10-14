@@ -1,6 +1,7 @@
 extends Node3D
 ## Dev helper: lines up every enemy kaiju type and saves screenshots to
-## user://bestiary_N.png, four types per shot. BESTIARY_IDS "a,b" limits it.
+## user://bestiary_N.png, four types per shot. BESTIARY_IDS "a,b" picks the
+## ids instead (any class; "boss3" is country 4's boss).
 
 const PER_SHOT := 4
 
@@ -53,11 +54,10 @@ func _ready() -> void:
 		var group := ids.slice(start, start + PER_SHOT)
 		var spawned: Array = []
 		for i in group.size():
-			var b := Brute.new()
-			b.kind = group[i]
-			add_child(b)
-			b.global_position = Vector3(i * 17.0, 0.5, 0)
+			var b := _make(group[i])
 			b.facing = -1.0 if i % 2 == 1 else 1.0
+			add_child(b)
+			b.global_position = Vector3(i * 17.0 + (randf_range(-2, 2) if b is Infantry else 0.0), 0.5, 0)
 			spawned.append(b)
 		cam.position = Vector3((group.size() - 1) * 8.5, 8.5, 44.0)
 		cam.look_at(Vector3((group.size() - 1) * 8.5, 3.0, 0))
@@ -69,3 +69,27 @@ func _ready() -> void:
 			b.queue_free()
 		await get_tree().process_frame
 	get_tree().quit()
+
+
+func _make(id: String) -> Node3D:
+	if id.begins_with("boss"):
+		var bb := Brute.new()
+		bb.kind = "boss"
+		bb.boss_def = Content.boss(int(id.substr(4)))
+		return bb
+	match Enemies.get_def(id)["class"]:
+		"infantry":
+			var s := Infantry.new()
+			s.kind = id
+			return s
+		"ground":
+			var v := Vehicle.new()
+			v.kind = id
+			return v
+		"air":
+			var f := Flyer.new()
+			f.kind = id
+			return f
+	var b := Brute.new()
+	b.kind = id
+	return b
