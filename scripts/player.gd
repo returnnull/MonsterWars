@@ -125,10 +125,7 @@ func _ready() -> void:
 	init_body(1.2, 6.0, Game.LAYER_PLAYER)
 	z_min = -5.2
 	z_max = 3.0
-	model = KaijuModel.new()
-	model.look = _h.get("look", {})
-	add_child(model)
-	model.build(_h["skin"], _h["belly"], _h["accent"], _h["eye"], _h["horns"])
+	model = GlbKaijuModel.for_hero(_h, self)
 	model.scale = Vector3.ONE * _h["size"]
 	hit_radius = 1.6 * _h["size"]
 	_beam = _make_beam(_h["accent"])

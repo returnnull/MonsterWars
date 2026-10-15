@@ -287,10 +287,7 @@ func _stage_hero(hero: int) -> void:
 	for c in _stage_pivot.get_children():
 		c.queue_free()
 	var h := Content.hero(hero)
-	_stage_model = KaijuModel.new()
-	_stage_model.look = h.get("look", {})
-	_stage_pivot.add_child(_stage_model)
-	_stage_model.build(h["skin"], h["belly"], h["accent"], h["eye"], h["horns"])
+	_stage_model = GlbKaijuModel.for_hero(h, _stage_pivot)
 	_stage_model.scale = Vector3.ONE * float(h["size"]) * 1.25
 	_stage_model.glow = 0.4
 
@@ -586,10 +583,7 @@ func _set_hero(slot: int, hero: int) -> void:
 	var h := Content.hero(hero)
 	for c in d["pivot"].get_children():
 		c.queue_free()
-	var m := KaijuModel.new()
-	m.look = h.get("look", {})
-	d["pivot"].add_child(m)
-	m.build(h["skin"], h["belly"], h["accent"], h["eye"], h["horns"])
+	var m := GlbKaijuModel.for_hero(h, d["pivot"])
 	m.glow = 1.0
 	m.position = Vector3(1.0, 0, 0)
 	m.scale = Vector3.ONE * float(h["size"])

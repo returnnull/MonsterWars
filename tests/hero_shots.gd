@@ -72,10 +72,7 @@ func _ready() -> void:
 
 func _make(i: int, walk: bool) -> KaijuModel:
 	var h := Content.hero(i)
-	var m := KaijuModel.new()
-	m.look = h.get("look", {})
-	add_child(m)
-	m.build(h["skin"], h["belly"], h["accent"], h["eye"], h["horns"])
+	var m := GlbKaijuModel.for_hero(h, self)
 	m.scale = Vector3.ONE * float(h["size"])
 	m.walk_amount = 1.0 if walk else 0.0
 	m.glow = 0.4
