@@ -6,7 +6,8 @@ extends Node3D
 ## style: "orb", "bullet", "shell", "bomb", "glob", "missile", "boulder".
 ## element: "", "fire" (burns), "acid"/"venom" (corrodes), "ice" (slows).
 ## splash > 0 makes it burst on impact (or on the ground) and hurt everyone
-## inside that radius.
+## inside that radius. Only bursts knock back; a direct shot without splash
+## neither pushes nor staggers (see is_plain_shot()).
 
 var velocity := Vector3.ZERO
 var color := Color(1.0, 0.45, 0.1)
@@ -115,7 +116,9 @@ func _physics_process(delta: float) -> void:
 			if splash > 0.0:
 				_burst()
 				return
-			if p.take_hit(damage, Vector3(signf(velocity.x) * 5.0, 2.0, 0), self):
+			# Plain shots only sting: no knockback, so the player can push through
+			# gunfire to reach the shooters. Splash bursts below still shove.
+			if p.take_hit(damage, Vector3.ZERO, self):
 				apply_element(p, element, damage)
 				FX.hit_spark(global_position, 8.0)
 				Game.shake(0.2)
@@ -127,6 +130,12 @@ func _physics_process(delta: float) -> void:
 			return
 		FX.hit_spark(global_position, 5.0)
 		queue_free()
+
+
+## True for a direct hit from a shot without splash: the player takes the
+## damage but isn't pushed or staggered by it.
+func is_plain_shot() -> bool:
+	return splash <= 0.0
 
 
 ## Area burst: hurts every player within `splash` (horizontal distance).

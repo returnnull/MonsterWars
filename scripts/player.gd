@@ -845,6 +845,9 @@ func _on_hurt(dmg: float, from: Node3D) -> void:
 	if _m("thorns") > 0.0 and from is Kaiju and from.is_in_group("enemies"):
 		from.take_hit(_m("thorns") * power, Vector3.ZERO, self)
 	# Rage attacks and supers can't be interrupted; rage mode shrugs off stagger.
+	# Plain gunfire never staggers either, so the player can close in on shooters.
+	if from is Projectile and from.is_plain_shot():
+		return
 	if state == S.BEAM or state == S.SUPER or raging:
 		hitstun = 0.0
 		knock *= 0.3 if raging else 0.0
