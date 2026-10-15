@@ -1,0 +1,59 @@
+# Builds the web version and publishes it on GitHub Pages, so the game can be
+# played in a browser, including Safari on iPhone and iPad.
+# One-time setup: Settings > Pages > Source: "GitHub Actions".
+name: Web build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.4.1
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Godot and web export templates
+        run: |
+          base=https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable
+          curl -sSLo godot.zip $base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip
+          unzip -q godot.zip && mv Godot_v${GODOT_VERSION}-stable_linux.x86_64 /usr/local/bin/godot
+          curl -sSLo tpl.tpz $base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz
+          dir=~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+          mkdir -p $dir
+          unzip -q -j tpl.tpz 'templates/web_nothreads_*' 'templates/version.txt' -d $dir
+          rm godot.zip tpl.tpz
+
+      - name: Export
+        run: |
+          godot --headless --path . --import || true
+          mkdir -p export/web
+          godot --headless --path . --export-release Web export/web/index.html
+          test -s export/web/index.wasm
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: export/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

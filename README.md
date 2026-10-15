@@ -254,7 +254,9 @@ Spillet kan bygges til Android og iOS. `export_presets.cfg` har færdige presets
 
 Til Google Play skal man bruge en release-nøgle i stedet for debug-nøglen og eksportere som AAB (slå *Gradle Build* til i presettet).
 
-**iOS:** kræver en Mac med Xcode og en Apple Developer-konto (99 USD/år). Udfyld *App Store Team ID* i iOS-presettet, eksporter fra Godot på Mac'en og åbn det genererede Xcode-projekt. Det kan ikke bygges fra Linux.
+**iPhone / iPad (og alle andre telefoner) i browseren:** spillet bygges automatisk som web-udgave og lægges på https://returnnull.github.io/MonsterWars/ hver gang der merges til main (`.github/workflows/web.yml`). Det skal slås til én gang: **Settings > Pages > Source: GitHub Actions** på GitHub. Åbn linket i Safari, vend telefonen på langs, og vælg **Del > Føj til hjemmeskærm**, så kører det i fuld skærm som en app. Web-udgaven bruger Compatibility-rendereren (WebGL 2), så skygger og effekter er lidt enklere end på pc. Byg den selv med `godot --headless --path . --export-release Web export/web/index.html` og test med `python3 -m http.server -d export/web`.
+
+**iOS som rigtig app:** kræver en Mac med Xcode og en Apple Developer-konto (99 USD/år). Udfyld *App Store Team ID* i iOS-presettet, eksporter fra Godot på Mac'en og åbn det genererede Xcode-projekt. Det kan ikke bygges fra Linux.
 
 **Ydelse:** kaijuerne har mange polygoner (helte ca. 200k trekanter), så på svagere telefoner kan det blive nødvendigt at sænke `KaijuModel.detail` og antallet af fjender. Det er testet på pc med Mobile-rendereren, men endnu ikke på en rigtig telefon.
 
