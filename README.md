@@ -176,6 +176,8 @@ Fjenderne bliver stærkere bane for bane, og bosserne bliver større og hårdere
 
 Knapperne er mappet efter position, så de sidder rigtigt på en Switch Pro Controller og Joy-Cons.
 
+På mobil og tablet styrer spiller 1 med touch: venstre halvdel af skærmen er en stick der dukker op, hvor tommelfingeren rammer, og til højre sidder JUMP, LIGHT, HEAVY og DODGE (samme placering som på Switch) plus RAGE, SUPER og pause. Hold RAGE med én finger og tryk LIGHT/JUMP/HEAVY med en anden for rage-angreb. Menuerne styres med samme stick og JUMP (vælg) / DODGE (tilbage). Tilslutter man en controller, forsvinder touch-knapperne og kommer igen ved næste berøring, og spiller 2-4 kan stadig hoppe ind på egne controllere.
+
 Alle gamepads som Godot kender virker (Switch Pro, Joy-Con par, Xbox, PlayStation og de fleste andre). Controller 1 er spiller 1 sammen med tastaturet, controller 2 er spiller 2 og så videre. Controllerne rumler når du bliver ramt, slår hårdt, går i rage og bruger super. Hvis en controller mister forbindelsen midt i en bane, pauses spillet.
 
 ## Hvad er med
@@ -194,6 +196,7 @@ project.godot              Indstillinger, renderer, autoload
 scenes/menu.tscn           Startscene: titel, heltevalg, verdenskort, banevalg
 scenes/main.tscn           En bane (bygges i kode ud fra Game.level)
 scripts/menu.gd            Menuerne
+scripts/autoload/touch_controls.gd  Touch-knapper til mobil (fodrer de samme input actions som en controller)
 scripts/content.gd         Alt indhold som data: helte, lande, bosser, banegenerator
 scripts/stage_builder.gd   Bygger et lands bane: lys, vejr, by, skyline, vartegn
 scripts/skills.gd          Færdighedstræer, evner, XP-kurve og super-specials
@@ -222,7 +225,38 @@ AUTOPLAY_PLAYERS=4 godot --headless --path . res://tests/autoplay.tscn
 AUTOPLAY_LEVELS=bosses godot --headless --path . res://tests/autoplay.tscn   # alle 10 bosser
 AUTOPLAY_LEVELS=all AUTOPLAY_SECONDS=0 godot --headless --path . res://tests/autoplay.tscn   # byg alle 100 baner
 AUTOPLAY_SKILLS=1 AUTOPLAY_SUPER=1 godot --headless --path . res://tests/autoplay.tscn   # alle evner og supers i brug
+KAIJU_TOUCH=1 godot --headless --path . res://tests/touch_test.tscn   # touch-knapperne
 ```
+
+## Mobil (Android / iOS)
+
+Spillet kan bygges til Android og iOS. `export_presets.cfg` har færdige presets til begge, og på telefonen kører det automatisk med Mobile-rendereren, 2048-skygger og touch-knapper.
+
+**Prøv touch-styringen på pc:** `KAIJU_TOUCH=1 godot --path .` (musen virker som en finger).
+
+**Android-build på Linux:**
+
+1. Installer Java 17 og Android SDK, f.eks. på Ubuntu/Debian:
+   ```
+   sudo apt install openjdk-17-jdk
+   mkdir -p ~/android-sdk/cmdline-tools && cd ~/android-sdk
+   wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+   unzip commandlinetools-linux-*.zip -d cmdline-tools && mv cmdline-tools/cmdline-tools cmdline-tools/latest
+   cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/android-sdk "platform-tools" "build-tools;34.0.0" "platforms;android-34"
+   ```
+2. Lav en debug-nøgle (kun én gang):
+   ```
+   keytool -keyalg RSA -genkeypair -alias androiddebugkey -keypass android -keystore ~/debug.keystore -storepass android -dname "CN=Android Debug,O=Android,C=US" -validity 9999
+   ```
+3. I Godot: **Editor > Editor Settings > Export > Android**: sæt *Android SDK Path* til `~/android-sdk`, *Java SDK Path* til `/usr/lib/jvm/java-17-openjdk-amd64` og *Debug Keystore* til `~/debug.keystore` (bruger `androiddebugkey` / `android`).
+4. **Editor > Manage Export Templates > Download and Install**.
+5. Sæt telefonen i udviklertilstand med USB-fejlfinding, sæt den i, og tryk på Android-ikonet øverst til højre i Godot for at køre spillet direkte på den. Eller byg en APK med **Project > Export > Android** (eller `godot --headless --path . --export-debug Android export/android/kaiju-dawn.apk`) og installer med `adb install export/android/kaiju-dawn.apk`.
+
+Til Google Play skal man bruge en release-nøgle i stedet for debug-nøglen og eksportere som AAB (slå *Gradle Build* til i presettet).
+
+**iOS:** kræver en Mac med Xcode og en Apple Developer-konto (99 USD/år). Udfyld *App Store Team ID* i iOS-presettet, eksporter fra Godot på Mac'en og åbn det genererede Xcode-projekt. Det kan ikke bygges fra Linux.
+
+**Ydelse:** kaijuerne har mange polygoner (helte ca. 200k trekanter), så på svagere telefoner kan det blive nødvendigt at sænke `KaijuModel.detail` og antallet af fjender. Det er testet på pc med Mobile-rendereren, men endnu ikke på en rigtig telefon.
 
 ## Nintendo Switch
 
