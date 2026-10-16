@@ -14,10 +14,11 @@ Al grafik er original og genereres i kode (primitive meshes, procedurale shaders
 ## Sådan spilles
 
 1. **Titelskærm:** tryk B / mellemrum.
+1. **Sværhedsgrad:** EASY (fjender har 70 % liv og 60 % skade), NORMAL eller HARD (140 % liv, 150 % skade, +30 % XP). Valget huskes og kan skiftes under Settings, også i pausemenuen.
 2. **Vælg kaiju:** hver spiller trykker B på sin controller for at være med, vælger kaiju med venstre/højre og trykker B igen for klar. Når alle er klar, går I videre.
 3. **Verdenskort:** vælg land. Et land låses op, når bossen i landet før er besejret.
 4. **Banevalg:** 10 baner pr. land. Bane 10 er altid bossen. Bane 5 og 8 slutter med en elite-kaiju.
-5. Efter en bane: B for næste bane (eller prøv igen), A for verdenskortet. Fremskridt og bedste score gemmes automatisk.
+5. Efter en bane: B for næste bane (eller prøv igen), A for verdenskortet. Fremskridt, XP, færdighedspoint, holdet, bedste score og indstillinger gemmes automatisk mellem spil (`user://save.json` og `user://settings.json`; i browseren i IndexedDB). XP gemmes også efter hver bølge og når spillet lægges i baggrunden, så intet går tabt, hvis telefonen lukker appen.
 
 Tryk **F9** i menuen for at låse alle baner op, hvis du vil teste.
 
@@ -178,7 +179,7 @@ Fjenderne bliver stærkere bane for bane, og bosserne bliver større og hårdere
 
 Knapperne er mappet efter position, så de sidder rigtigt på en Switch Pro Controller og Joy-Cons.
 
-På mobil og tablet styrer spiller 1 med touch: venstre halvdel af skærmen er en stick der dukker op, hvor tommelfingeren rammer, og til højre sidder JUMP, LIGHT, HEAVY og DODGE (samme placering som på Switch) plus RAGE, SUPER og pause. Hold RAGE med én finger og tryk LIGHT/JUMP/HEAVY med en anden for rage-angreb. Menuerne styres med samme stick og JUMP (vælg) / DODGE (tilbage). Tilslutter man en controller, forsvinder touch-knapperne og kommer igen ved næste berøring, og spiller 2-4 kan stadig hoppe ind på egne controllere.
+På mobil og tablet styrer spiller 1 med touch: venstre halvdel af skærmen er en stick der dukker op, hvor tommelfingeren rammer, og til højre sidder JUMP, LIGHT, HEAVY og DODGE (samme placering som på Switch) plus RAGE, SUPER og pause. Hold RAGE med én finger og tryk LIGHT/JUMP/HEAVY med en anden for rage-angreb. I menuerne skifter knapperne: kun de knapper, der gør noget på skærmen, vises, og de hedder det, de gør (grøn **OK** til at vælge, rød **BACK** til at gå tilbage, plus fx SKILLS, LEARN, RESET og PLAY). Hjælpeteksten nederst følger med. Tilslutter man en controller, forsvinder touch-knapperne og kommer igen ved næste berøring, og spiller 2-4 kan stadig hoppe ind på egne controllere.
 
 Alle gamepads som Godot kender virker (Switch Pro, Joy-Con par, Xbox, PlayStation og de fleste andre). Controller 1 er spiller 1 sammen med tastaturet, controller 2 er spiller 2 og så videre. Controllerne rumler når du bliver ramt, slår hårdt, går i rage og bruger super. Hvis en controller mister forbindelsen midt i en bane, pauses spillet.
 
@@ -231,6 +232,7 @@ AUTOPLAY_LEVELS=bosses godot --headless --path . res://tests/autoplay.tscn   # a
 AUTOPLAY_LEVELS=all AUTOPLAY_SECONDS=0 godot --headless --path . res://tests/autoplay.tscn   # byg alle 100 baner
 AUTOPLAY_SKILLS=1 AUTOPLAY_SUPER=1 godot --headless --path . res://tests/autoplay.tscn   # alle evner og supers i brug
 KAIJU_TOUCH=1 godot --headless --path . res://tests/touch_test.tscn   # touch-knapperne
+godot --headless --path . res://tests/difficulty_test.tscn   # sværhedsgraderne
 ```
 
 ## Mobil (Android / iOS)

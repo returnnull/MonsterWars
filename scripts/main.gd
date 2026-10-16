@@ -23,6 +23,7 @@ func _ready() -> void:
 	randomize()
 	Game.reset()
 	Game.world = self
+	TouchControls.game_buttons()
 	if Game.level.is_empty():
 		Game.level = Content.level(0, 0)
 	lvl = Game.level
@@ -205,8 +206,9 @@ func _spawn(kind: String, cx: float, half: float, i: int) -> void:
 ## scaled to the level and the party size.
 func make_enemy(kind: String, cx: float, side: float, half: float = 20.0) -> Node3D:
 	var def := Enemies.get_def(kind)
-	var hp_mul := float(lvl["hp_mul"]) * _player_mul()
-	var dmg_mul := float(lvl["dmg_mul"])
+	var diff := Game.difficulty()
+	var hp_mul := float(lvl["hp_mul"]) * _player_mul() * float(diff["hp"])
+	var dmg_mul := float(lvl["dmg_mul"]) * float(diff["dmg"])
 	match def.get("class", "kaiju") if kind != "boss" else "kaiju":
 		"air":
 			var f := Flyer.new()
@@ -243,7 +245,7 @@ func make_enemy(kind: String, cx: float, side: float, half: float = 20.0) -> Nod
 	if kind == "boss":
 		# Boss stats already grow per country (Content.boss).
 		b.boss_def = Content.boss(lvl["country"])
-		b.hp_mul = _player_mul()
+		b.hp_mul = _player_mul() * float(diff["hp"])
 	else:
 		b.def = def
 	b.x_min = cx - half - 2.5
@@ -264,7 +266,7 @@ func _on_enemy_died(who: Node) -> void:
 	_alive -= 1
 	var kind: String = who.kind if "kind" in who else "drone"
 	var base := Enemies.xp(kind) if kind != "boss" else int(Skills.XP_KILL.get(kind, 250))
-	var xp := int(base * (1.0 + lvl["global"] * 0.04))
+	var xp := int(base * (1.0 + lvl["global"] * 0.04) * float(Game.difficulty()["xp"]))
 	for p in Game.living_players():
 		p.on_enemy_killed()
 		_give_xp(p, xp)
@@ -277,7 +279,7 @@ func _on_enemy_died(who: Node) -> void:
 	_wave += 1
 	if _wave >= waves.size():
 		_finished = true
-		var bonus := 60 + int(lvl["global"]) * 6
+		var bonus := int((60 + int(lvl["global"]) * 6) * float(Game.difficulty()["xp"]))
 		for p in Game.players:
 			if is_instance_valid(p):
 				_give_xp(p, bonus)
@@ -285,6 +287,8 @@ func _on_enemy_died(who: Node) -> void:
 		await get_tree().create_timer(2.5, false).timeout
 		hud.show_end("STAGE CLEAR", true)
 	else:
+		# Bank the wave's XP, in case the game is closed mid-level.
+		Game.save_progress()
 		hud.show_message("GO  >>", 1.6)
 		hud.show_go(true)
 		_update_limits()

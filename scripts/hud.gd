@@ -175,8 +175,12 @@ func show_end(title: String, did_win: bool) -> void:
 			var pts := Game.free_points(pl.hero)
 			xp_lines += "%s  +%d XP   LV %d%s\n" % [pl.display_name(), int(Game.xp_gained.get(pl.hero, 0)), lv,
 				("   (%d skill points to spend)" % pts) if pts > 0 else ""]
-	_end_stats.text = "Score %d\nDestruction %d%%   Best combo %d\n\n%s\n%s: Space / B      World map: Shift / A" % [
-		Game.score, Game.destruction_percent(), Game.best_combo, xp_lines, "Next level" if won else "Retry"]
+	var keys := "%s: Space / B      World map: Shift / A" % ("Next level" if won else "Retry")
+	if TouchControls.shown:
+		keys = "%s: tap %s      World map: tap MAP" % ["Next level" if won else "Retry", "NEXT" if won else "RETRY"]
+	_end_stats.text = "Score %d\nDestruction %d%%   Best combo %d   Difficulty %s\n\n%s\n%s" % [
+		Game.score, Game.destruction_percent(), Game.best_combo, Game.difficulty()["name"], xp_lines, keys]
+	TouchControls.menu_buttons({"JUMP": "NEXT" if won else "RETRY", "DODGE": "MAP"})
 	_end_panel.visible = true
 	_end_panel.modulate.a = 0.0
 	create_tween().tween_property(_end_panel, "modulate:a", 1.0, 0.6)
@@ -237,6 +241,10 @@ func _unhandled_input(event: InputEvent) -> void:
 func _set_paused(on: bool) -> void:
 	_pause_panel.visible = on
 	_controls.visible = not on and bool(Game.settings["hints"])
+	if on:
+		TouchControls.menu_buttons({"JUMP": "OK", "DODGE": "BACK", "II": "II"})
+	else:
+		TouchControls.game_buttons()
 	if on:
 		get_tree().paused = true
 		_pause_settings = false
