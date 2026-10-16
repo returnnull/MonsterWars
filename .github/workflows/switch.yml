@@ -1,0 +1,41 @@
+# Builds the homebrew Switch version (kaiju-dawn.nro plus the files for an
+# .nsp) and uploads it as a workflow artifact. Run it from the Actions tab.
+# The engine build takes a while, so it only runs on request or when the
+# Switch port itself changes.
+name: Switch build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["switch/**", ".github/workflows/switch.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkita64:latest
+    steps:
+      - name: Install build tools
+        run: apt-get update -qq && apt-get install -y -qq scons git curl unzip
+
+      - uses: actions/checkout@v4
+
+      - name: Cache engine build
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/kaiju-dawn-switch
+          key: switch-engine-${{ hashFiles('switch/platform/**', 'switch/patches/**') }}
+          restore-keys: switch-engine-
+
+      - name: Build
+        run: switch/build.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kaiju-dawn-switch
+          path: |
+            export/switch/kaiju-dawn.nro
+            export/switch/nsp-input

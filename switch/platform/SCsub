@@ -1,0 +1,16 @@
+#!/usr/bin/env python
+from misc.utility.scons_hints import *
+
+Import("env")
+
+files = [
+    "godot_switch.cpp",
+    "os_switch.cpp",
+    "display_server_switch.cpp",
+    "joypad_switch.cpp",
+    "audio_driver_switch.cpp",
+    "posix_stubs.c",
+]
+
+# The ELF is turned into a .nro (with the game pack in RomFS) by switch/build.sh.
+prog = env.add_program("#bin/godot", files)
