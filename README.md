@@ -190,7 +190,7 @@ Med våben i hånden er let angreb et sving (2-hits combo) og tungt angreb et ka
 - **Nova Burst:** tre energieksplosioner rundt om dig.
 - **Earthquake:** jordskælv der bevæger sig fremad langs gaden.
 
-Heltenes modeller ligger i `assets/heroes/` og er 10 varianter af Quaternius' T-Rex ([Poly Pizza](https://poly.pizza/m/UYtneO5FpF), CC0) med rygplader, horn, farver og proportioner, der er lavet med `tools/make_hero_variants.py` (Blender som Python-modul: `pip install bpy`). Hver .glb har skelettet og animationerne Idle, Walk, Run, Attack, Jump og Death. Fjerner du `model` fra en helt i `scripts/content.gd`, bruger den igen den procedurale model.
+Heltenes modeller ligger i `assets/heroes/` og er 10 varianter af Quaternius' T-Rex ([Poly Pizza](https://poly.pizza/m/UYtneO5FpF), CC0) med rygplader, horn, farver og proportioner, der er lavet med `tools/make_hero_variants.py` (Blender som Python-modul: `pip install bpy`). Kroppen er underopdelt til en glat model (30-70k trekanter pr. helt) med en bagt hudtekstur: farve med skæl, pletter og skygge i fordybninger, et normal map med skæl, rynker og bugriller samt ruhed/metal (`*_color.webp`, `*_normal.webp`, `*_orm.webp`, importeret som WebP for at holde webversionen lille). `SUBDIV` og `TEX` styrer detaljegrad og teksturstørrelse. Godot laver automatisk LOD-trin, så heltene tegnes med færre trekanter på afstand. Hver .glb har skelettet og animationerne Idle, Walk, Run, Attack, Jump og Death. Fjerner du `model` fra en helt i `scripts/content.gd`, bruger den igen den procedurale model.
 
 ## Lande og bosser
 
@@ -378,7 +378,7 @@ Til Google Play skal man bruge en release-nøgle i stedet for debug-nøglen og e
 
 **iOS som rigtig app:** kræver en Mac med Xcode og en Apple Developer-konto (99 USD/år). Udfyld *App Store Team ID* i iOS-presettet, eksporter fra Godot på Mac'en og åbn det genererede Xcode-projekt. Det kan ikke bygges fra Linux.
 
-**Ydelse:** kaijuerne har mange polygoner (helte ca. 200k trekanter), så på svagere telefoner kan det blive nødvendigt at sænke `KaijuModel.detail` og antallet af fjender. Det er testet på pc med Mobile-rendereren, men endnu ikke på en rigtig telefon.
+**Ydelse:** kaijuerne har mange polygoner (heltene 30-70k trekanter med LOD; `godot --path . res://tests/hero_perf.tscn` viser hvor mange der tegnes), så på svagere telefoner kan det blive nødvendigt at sænke `KaijuModel.detail` og antallet af fjender. Det er testet på pc med Mobile-rendereren, men endnu ikke på en rigtig telefon.
 
 ## Nintendo Switch
 

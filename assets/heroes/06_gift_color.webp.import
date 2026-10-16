@@ -1,0 +1,37 @@
+[remap]
+
+importer="texture"
+type="CompressedTexture2D"
+uid="uid://dcy8ksvkiotan"
+path="res://.godot/imported/06_gift_color.webp-a4844c9176dd7c8aa49b118b8f54a048.ctex"
+metadata={
+"vram_texture": false
+}
+generator_parameters={
+"md5": "77a06c9c26a8a7bc4d8de3f4a03891a8"
+}
+
+[deps]
+
+source_file="res://assets/heroes/06_gift_color.webp"
+dest_files=["res://.godot/imported/06_gift_color.webp-a4844c9176dd7c8aa49b118b8f54a048.ctex"]
+
+[params]
+
+compress/mode=1
+compress/high_quality=false
+compress/lossy_quality=0.85
+compress/hdr_compression=1
+compress/normal_map=0
+compress/channel_pack=0
+mipmaps/generate=true
+mipmaps/limit=-1
+roughness/mode=0
+roughness/src_normal=""
+process/fix_alpha_border=true
+process/premult_alpha=false
+process/normal_map_invert_y=false
+process/hdr_as_srgb=false
+process/hdr_clamp_exposure=false
+process/size_limit=0
+detect_3d/compress_to=0
