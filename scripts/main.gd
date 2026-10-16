@@ -51,7 +51,9 @@ func _ready() -> void:
 	hud.show_message(lvl["title"], 2.6, lvl.get("subtitle", ""))
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
+	if not _finished:
+		Game.run["time"] = float(Game.run.get("time", 0.0)) + delta
 	_check_joins()
 	_leash_players()
 	if _finished or _wave_active or _wave >= waves.size():
@@ -265,6 +267,7 @@ func add_enemy(e: Node) -> void:
 func _on_enemy_died(who: Node) -> void:
 	_alive -= 1
 	var kind: String = who.kind if "kind" in who else "drone"
+	Game.count_kill(kind)
 	var base := Enemies.xp(kind) if kind != "boss" else int(Skills.XP_KILL.get(kind, 250))
 	var xp := int(base * (1.0 + lvl["global"] * 0.04) * float(Game.difficulty()["xp"]))
 	for p in Game.living_players():
@@ -283,6 +286,7 @@ func _on_enemy_died(who: Node) -> void:
 		for p in Game.players:
 			if is_instance_valid(p):
 				_give_xp(p, bonus)
+		Game.level_won(lvl)
 		Game.complete_level(lvl, Game.score)
 		await get_tree().create_timer(2.5, false).timeout
 		hud.show_end("STAGE CLEAR", true)

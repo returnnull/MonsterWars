@@ -152,6 +152,7 @@ func _ready() -> void:
 	z_max = 3.0
 	model = GlbKaijuModel.for_hero(_h, self)
 	model.scale = Vector3.ONE * _h["size"]
+	Cosmetics.dress(model, Game.outfit(hero))
 	hit_radius = 1.6 * _h["size"]
 	_beam = _make_beam(_h["accent"])
 	add_child(_beam)
@@ -303,6 +304,7 @@ func _use_rage_skill(skill: String) -> bool:
 	if skill != "mode" and not is_on_floor():
 		return false
 	rage_uses[skill] = int(rage_uses.get(skill, 0)) + 1
+	Game.run["rage"] = true
 	match skill:
 		"strike", "roar":
 			_spend_rage(rage_cost(skill))
@@ -328,6 +330,7 @@ func _no_rage() -> void:
 
 ## War Roar: other players nearby get rage too.
 func _roar() -> void:
+	Game.track("roars")
 	FX.shockwave(global_position, 9.0, color())
 	FX.shockwave(global_position, 5.0, Color(1.0, 0.9, 0.6))
 	Game.shake(0.4)
@@ -343,6 +346,7 @@ func _roar() -> void:
 ## when the bar is empty or special is tapped again.
 func _enter_rage_mode() -> void:
 	raging = true
+	Game.track("rage_modes")
 	rumble(0.6, 0.8, 0.4)
 	_rage_announced = false
 	Game.shake(0.5)
@@ -474,6 +478,7 @@ func _state_free(input: Vector2) -> Vector3:
 			_consume()
 			if is_on_floor():
 				velocity.y = JUMP_VEL
+				Game.track("jumps")
 		"light", "heavy":
 			var b := _consume()
 			if not is_on_floor():
@@ -494,6 +499,7 @@ func _state_free(input: Vector2) -> Vector3:
 				if _dodge_dir == Vector3.ZERO:
 					_dodge_dir = Vector3(-facing, 0, 0)
 				invuln = 0.4
+				Game.track("dodges")
 				_dodge_cd = 0.6 * (1.0 - minf(_m("swift"), 40.0) / 100.0)
 				FX.dust(global_position, 0.6)
 				if _m("afterimage") > 0.0:
@@ -572,6 +578,7 @@ func _grab_weapon() -> bool:
 		return false
 	_set_weapon(best.kind)
 	best.queue_free()
+	Game.track("grabs")
 	FX.dust(best.global_position, 0.8)
 	Game.shake(0.15)
 	return true
@@ -627,6 +634,7 @@ func _throw_weapon() -> void:
 	w.global_position = global_position + Vector3(facing * 2.5, 4.5, 0)
 	_set_weapon("")
 	Game.shake(0.2)
+	Game.track("throws")
 
 
 func _do_hit() -> void:
@@ -711,6 +719,7 @@ func _spit_fireball(size: float, dmg: float) -> void:
 	get_parent().add_child(fb)
 	fb.global_position = mouth
 	FX.fire_muzzle(mouth, Vector3(facing, 0, 0), size)
+	Game.track("fireballs")
 	rumble(0.25, 0.1 * size, 0.08)
 	if size > 1.2:
 		Game.shake(0.15)
@@ -988,6 +997,7 @@ func _on_strike_hit(target: Node, dmg: float) -> void:
 
 
 func _on_hurt(dmg: float, from: Node3D) -> void:
+	Game.run["hurt"] = true
 	rumble(0.4, clampf(dmg / 30.0, 0.2, 1.0), 0.18)
 	add_rage(dmg * 0.35 * (1.0 + _m("bloodrage") / 100.0))
 	Game.combo = 0
@@ -1007,6 +1017,7 @@ func _on_hurt(dmg: float, from: Node3D) -> void:
 
 func _on_death() -> void:
 	_set_state(S.DEAD)
+	Game.track("knockouts")
 	_beam.visible = false
 	_set_weapon("")
 	if raging:
@@ -1220,6 +1231,7 @@ func _start_super() -> void:
 		_exit_rage_mode()
 	super_meter = 0.0
 	super_changed.emit(super_meter, SUPER_MAX)
+	Game.track("supers")
 	_super_tick = 0.0
 	_super_step = 0
 	_super_targets = []

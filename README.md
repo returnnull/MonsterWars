@@ -63,6 +63,71 @@ Tryk **F9** i menuen for at låse alle baner op, hvis du vil teste.
 | Solar Rex | Supernova: tre enorme solflammer |
 | Rustfang | Scrap Barrage: regn af skrot |
 
+## Trofæer og kosmetik
+
+Særlige bedrifter giver trofæer, og hvert trofæ låser en kosmetisk ting op, som kaijuen kan have på: én ting på hovedet, i ansigtet, om halsen, på ryggen og på halen. Gennemfører man spillet (slår slutbossen i Japan) på en sværhedsgrad, får man en kongekrone: bronze for Easy, sølv for Normal og guld for Hard. En sejr på en sværere grad giver også de lettere kroner. Derudover er der 50 andre trofæer.
+
+- **TROPHIES** i titelmenuen viser alle 53 trofæer, hvor langt man er, og hvad de låser op.
+- **Garderobe:** tryk **Y / J** (touch: STYLE) på sin kaiju i heltevalget. Op/ned vælger plads, venstre/højre skifter ting. Låste ting kan prøves på, men gemmes ikke.
+- Trofæer, statistik og hvad hver kaiju har på gemmes i `user://save.json`. Gamle gemte spil får bosserne, man allerede har slået, med det samme.
+- Tingene er bygget af simple former i kode (`scripts/cosmetics.gd`) og sidder fast på heltenes knogler, så de følger med, når kaijuen bevæger sig.
+
+| Trofæ | Sådan | Kosmetik |
+|---|---|---|
+| Bronze Monarch | Beat the final boss on Easy (or harder) | Bronze Crown (hoved) |
+| Silver Sovereign | Beat the final boss on Normal (or Hard) | Silver Crown (hoved) |
+| Golden Emperor | Beat the final boss on Hard | Gold Crown (hoved) |
+| Troll Toppler | Defeat HAVTROLD in Denmark | Viking Helmet (hoved) |
+| Gargoyle Grinder | Defeat GARGOUILLE in France | Beret (hoved) |
+| Steel Breaker | Defeat IRONCLAW in the USA | Cowboy Hat (hoved) |
+| Jungle Party | Defeat JAGUARON in Brazil | Carnival Feathers (hoved) |
+| Riddle Solved | Defeat SPHINXAR in Egypt | Fez (hoved) |
+| Snake Charmer | Defeat NAGARAJ in India | Jewelled Turban (hoved) |
+| Croc Wrangler | Defeat CROCODON in Australia | Cork Hat (hoved) |
+| Mammoth Melter | Defeat MAMMOTHRAX in Russia | Ushanka (hoved) |
+| Fire and Ice | Defeat SURTUR in Iceland | Wool Scarf (hals) |
+| Dragon Slayer | Defeat RYUJIN PRIME in Japan | Hachimaki (hoved) |
+| Pest Control | Defeat 100 enemies | Party Hat (hoved) |
+| Exterminator | Defeat 1,000 enemies | Sunglasses (ansigt) |
+| Extinction Event | Defeat 5,000 enemies | Gold Chain (hals) |
+| Stomp Stomp | Defeat 500 infantry squads | Rubber Duck (hoved) |
+| Flyswatter | Shoot down 200 aircraft | Propeller Cap (hoved) |
+| Scrap Collector | Wreck 200 vehicles | Traffic Cone (hoved) |
+| Monster Mash | Defeat 300 enemy monsters | Bone Necklace (hals) |
+| Bomb Squad | Defeat 40 Boomticks | Lit Dynamite (hale) |
+| Chopper Chopper | Shoot down 60 gunships | Toy Chopper (ryg) |
+| Close Encounters | Shoot down 25 saucers | Tinfoil Hat (hoved) |
+| Urban Renewal | Destroy 100 buildings | Hard Hat (hoved) |
+| Wrecking Crew | Destroy 1,000 buildings | Wrecking Ball (hale) |
+| Nothing Left Standing | Clear a level with 100% destruction | TNT Backpack (ryg) |
+| Just Visiting | Clear a level with every building still standing | Tourist Camera (hals) |
+| Warming Up | Reach a 25-hit combo | Sweatband (hoved) |
+| Combo Star | Reach a 50-hit combo | Star Shades (ansigt) |
+| Unstoppable | Reach a 100-hit combo | Flame Tip (hale) |
+| Short Fuse | Go into rage mode 50 times | Devil Horns (hoved) |
+| Loudmouth | War roar 100 times | Opera Ruff (hals) |
+| Super Star | Unleash 25 super specials | Hero Cape (ryg) |
+| Hot Breath | Spit 500 fireballs in rage mode | Firefighter Helmet (hoved) |
+| Quarterback | Throw 100 pieces of wreckage | Coach's Whistle (hals) |
+| Hoarder | Pick up 250 pieces of wreckage | Hiking Pack (ryg) |
+| Can't Touch This | Dodge 500 times | Ninja Mask (ansigt) |
+| Frequent Flyer | Jump 1,000 times | Jetpack (ryg) |
+| Growing Up | Get a kaiju to level 10 | Graduation Cap (hoved) |
+| Distinguished | Get a kaiju to level 25 | Monocle (ansigt) |
+| Proud Parent | Get all 10 kaiju to level 10 | Gold Medal (hals) |
+| Team Spirit | Clear a level with each of the 10 kaiju | Rainbow Scarf (hals) |
+| Specialist | Learn a skill at the end of a skill tree branch | Wizard Hat (hoved) |
+| Untouchable | Clear a level without taking any damage | Halo (hoved) |
+| Close Call | Clear a level with less than 10% health left | Eyepatch (ansigt) |
+| Inner Peace | Defeat a boss without using any rage skill or rage mode | Prayer Beads (hals) |
+| Speed Demon | Clear a level in under 75 seconds | Racing Goggles (ansigt) |
+| Buddy System | Clear a level with 2 or more players | Bow Tie (hals) |
+| Full House | Clear a level with 4 players | Party Balloon (hale) |
+| Comeback Kid | Get knocked out 25 times | Clown Nose (ansigt) |
+| Snack Time | Pick up 100 healing orbs | Lollipop (hale) |
+| Millionaire | Score 1,000,000 points in total | Top Hat (hoved) |
+| Hardcore | Defeat any boss on Hard | Spiked Collar (hals) |
+
 ## Bygninger som våben
 
 Når en bygning vælter, ligger der ofte et stykke tilbage i ruinerne med en gylden ring om. Stil dig ved det og tryk **tungt angreb** for at samle det op.
@@ -203,6 +268,8 @@ scripts/autoload/touch_controls.gd  Touch-knapper til mobil (fodrer de samme inp
 scripts/content.gd         Alt indhold som data: helte, lande, bosser, banegenerator
 scripts/stage_builder.gd   Bygger et lands bane: lys, vejr, by, skyline, vartegn
 scripts/skills.gd          Færdighedstræer, evner, XP-kurve og super-specials
+scripts/trophies.gd        Trofæerne, og hvordan de tælles
+scripts/cosmetics.gd       De kosmetiske ting og hvor de sidder på kaijuen
 scripts/weapon.gd          Bygningsstykker der kan samles op og kastes
 scripts/main.gd            Bølger, spillere, XP og win/lose for en bane
 scripts/autoload/game.gd   Global tilstand, point, hitstop, input-mapping
@@ -233,6 +300,9 @@ AUTOPLAY_LEVELS=all AUTOPLAY_SECONDS=0 godot --headless --path . res://tests/aut
 AUTOPLAY_SKILLS=1 AUTOPLAY_SUPER=1 godot --headless --path . res://tests/autoplay.tscn   # alle evner og supers i brug
 KAIJU_TOUCH=1 godot --headless --path . res://tests/touch_test.tscn   # touch-knapperne
 godot --headless --path . res://tests/difficulty_test.tscn   # sværhedsgraderne
+godot --headless --path . res://tests/trophy_test.tscn   # trofæer, kroner og kosmetik
+COSMETIC_IDS=gold_crown,halo godot --path . res://tests/cosmetic_shots.tscn   # billeder af tingene på kaijuerne
+AUTOPLAY_COSMETICS=1 godot --headless --path . res://tests/autoplay.tscn   # spil med alle ting på
 ```
 
 ## Mobil (Android / iOS)

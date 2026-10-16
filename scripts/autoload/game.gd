@@ -10,6 +10,7 @@ extends Node
 signal score_changed(score: int)
 signal destruction_changed(destroyed: int, total: int)
 signal combo_changed(hits: int)
+signal trophy_unlocked(id: String)
 
 const LAYER_WORLD := 1
 const LAYER_PLAYER := 2
@@ -73,9 +74,22 @@ var hero_skills: Array = []
 var xp_gained := {}
 ## Player options, saved separately from progress so a reset keeps them.
 var settings := DEFAULT_SETTINGS.duplicate()
+## Lifetime counters that trophies are earned from (see Trophies), the
+## trophies earned ({id: true}) and what each hero wears: {"hero index":
+## {slot: cosmetic id}} (see Cosmetics).
+var stats := {}
+var trophies := {}
+var outfits := {}
+## The level being played, for the trophies checked when it is cleared:
+## time played, whether anyone got hurt or used rage. Trophies earned in it
+## are listed on the end screen.
+var run := {}
+var new_trophies: Array = []
 
 var _combo_timer := 0.0
 var _hitstop_active := false
+var _toasts: Array = []
+var _toast_layer: CanvasLayer
 
 
 func _ready() -> void:
@@ -85,6 +99,9 @@ func _ready() -> void:
 	load_progress()
 	load_settings()
 	_keep_web_storage()
+	_toast_layer = CanvasLayer.new()
+	_toast_layer.layer = 90
+	add_child(_toast_layer)
 
 
 ## Saves on the way out: closing the window, or a phone/browser putting the
@@ -130,6 +147,8 @@ func add_xp(hero: int, amount: int) -> int:
 	var before := hero_level(hero)
 	hero_xp[hero] += amount
 	xp_gained[hero] = int(xp_gained.get(hero, 0)) + amount
+	if hero_level(hero) != before:
+		check_trophies()
 	return hero_level(hero) - before
 
 
@@ -137,6 +156,8 @@ func buy_skill(hero: int, idx: int) -> bool:
 	if Skills.buy_block(hero_xp[hero], hero_skills[hero], idx) != "":
 		return false
 	hero_skills[hero][idx] += 1
+	if Skills.node(hero, idx)[3] == 3:
+		track("branch_ends")
 	save_progress()
 	return true
 
@@ -162,6 +183,8 @@ func reset() -> void:
 	best_combo = 0
 	players.clear()
 	xp_gained = {}
+	run = {"time": 0.0, "hurt": false, "rage": false}
+	new_trophies = []
 	Engine.time_scale = 1.0
 	_hitstop_active = false
 
@@ -174,12 +197,16 @@ func add_score(value: int) -> void:
 func register_hit() -> void:
 	combo += 1
 	best_combo = maxi(best_combo, combo)
+	if combo > int(stats.get("best_combo", 0)):
+		stats["best_combo"] = combo
+		check_trophies("best_combo")
 	_combo_timer = 1.6
 	combo_changed.emit(combo)
 
 
 func on_building_destroyed(building: Node3D, height: float) -> void:
 	buildings_destroyed += 1
+	track("buildings")
 	add_score(int(height * 60.0))
 	for p in living_players():
 		p.add_rage(12.0)
@@ -233,6 +260,164 @@ func complete_level(lvl: Dictionary, final_score: int) -> void:
 	save_progress()
 
 
+# --- trophies and cosmetics -------------------------------------------------
+
+## Adds to a lifetime stat and awards any trophy it completes.
+func track(stat: String, amount: int = 1) -> void:
+	stats[stat] = int(stats.get(stat, 0)) + amount
+	check_trophies(stat)
+
+
+## Counts a defeated enemy by its kind and class (see Trophies).
+func count_kill(kind: String) -> void:
+	var cls: String = "boss" if kind == "boss" else String(Enemies.get_def(kind).get("class", "kaiju"))
+	track("kills")
+	track("kills_" + cls)
+	track("kills_" + kind)
+
+
+## Stats for a cleared level: bosses, the final boss per difficulty and the
+## special clears (see Trophies).
+func level_won(lvl: Dictionary) -> void:
+	var g: int = lvl["global"]
+	var diff := int(settings["difficulty"])
+	track("clears")
+	track("score", score)
+	if g % Content.LEVELS_PER_COUNTRY == Content.LEVELS_PER_COUNTRY - 1:
+		track("boss_%d" % int(lvl["country"]))
+		if diff == 2:
+			track("clears_hard_boss")
+		if not run.get("rage", false):
+			track("clears_zen")
+	if g == Content.COUNTRIES.size() * Content.LEVELS_PER_COUNTRY - 1:
+		track("final_%d" % diff)
+	if not run.get("hurt", false):
+		track("clears_flawless")
+	for p in living_players():
+		if p.hp < p.max_hp * 0.1:
+			track("clears_close")
+			break
+	if buildings_total > 0 and buildings_destroyed >= buildings_total:
+		track("clears_wrecked")
+	if buildings_total > 0 and buildings_destroyed == 0:
+		track("clears_tourist")
+	if float(run.get("time", 999.0)) < Trophies.FAST_CLEAR:
+		track("clears_fast")
+	if players.size() >= 2:
+		track("clears_coop")
+	if players.size() >= 4:
+		track("clears_coop4")
+	for p in players:
+		if is_instance_valid(p):
+			track("clear_hero_%d" % p.hero)
+
+
+## Awards every trophy whose goal is reached (only those counting `stat`,
+## if given). Quiet ones (from loading a save) show no banner.
+func check_trophies(stat: String = "", quiet: bool = false) -> void:
+	for t: Dictionary in Trophies.LIST:
+		if trophies.has(t["id"]):
+			continue
+		var counts: Array = t["stat"] if t["stat"] is Array else [t["stat"]]
+		if stat != "" and not stat in counts:
+			continue
+		var p: Vector2i = Trophies.progress(t)
+		if p.x >= p.y:
+			trophies[t["id"]] = true
+			if not quiet:
+				new_trophies.append(t["id"])
+				trophy_unlocked.emit(t["id"])
+				_toast(t)
+				save_progress()
+
+
+func has_trophy(id: String) -> bool:
+	return trophies.has(id)
+
+
+func item_unlocked(item_id: String) -> bool:
+	var t := Trophies.for_item(item_id)
+	return not t.is_empty() and trophies.has(t["id"])
+
+
+## What a hero wears: {slot: cosmetic id}, unlocked items only.
+func outfit(hero: int) -> Dictionary:
+	var o: Dictionary = outfits.get(str(hero), {})
+	var out := {}
+	for slot in o:
+		if item_unlocked(String(o[slot])):
+			out[slot] = String(o[slot])
+	return out
+
+
+## Puts an unlocked item on a hero ("" takes the slot off).
+func wear(hero: int, slot: String, item_id: String) -> void:
+	var o: Dictionary = outfit(hero).duplicate()
+	if item_id == "":
+		o.erase(slot)
+	elif item_unlocked(item_id) and Cosmetics.item(item_id).get("slot", "") == slot:
+		o[slot] = item_id
+	else:
+		return
+	outfits[str(hero)] = o
+	save_progress()
+
+
+## A banner at the top of the screen for a new trophy. Several in a row wait
+## their turn.
+func _toast(t: Dictionary) -> void:
+	_toasts.append(t)
+	if _toasts.size() == 1:
+		_show_toast()
+
+
+func _show_toast() -> void:
+	if _toasts.is_empty() or _toast_layer == null:
+		return
+	var t: Dictionary = _toasts[0]
+	var panel := Panel.new()
+	panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	panel.size = Vector2(760, 112)
+	panel.position = Vector2((1920 - 760) * 0.5, -130)
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color(0.08, 0.06, 0.12, 0.92)
+	st.border_color = Color(1.0, 0.8, 0.35)
+	st.set_border_width_all(3)
+	st.set_corner_radius_all(12)
+	st.shadow_color = Color(1.0, 0.6, 0.2, 0.4)
+	st.shadow_size = 16
+	panel.add_theme_stylebox_override("panel", st)
+	_toast_layer.add_child(panel)
+	var head := _toast_label(panel, "TROPHY:  " + String(t["name"]).to_upper(), 12, 36, Color(1.0, 0.85, 0.4))
+	head.size.x = panel.size.x
+	var item: Dictionary = Cosmetics.item(t["item"])
+	var sub := _toast_label(panel, "New %s item: %s" % [String(item.get("slot", "")), item.get("name", "")], 62, 26, Color(1, 1, 1, 0.9))
+	sub.size.x = panel.size.x
+	var tw := panel.create_tween()
+	tw.tween_property(panel, "position:y", 24.0, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_interval(3.0)
+	tw.tween_property(panel, "position:y", -130.0, 0.3)
+	tw.tween_callback(func() -> void:
+		panel.queue_free()
+		_toasts.pop_front()
+		_show_toast())
+
+
+func _toast_label(parent: Control, text: String, y: float, font_size: int, color: Color) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.position = Vector2(0, y)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var ls := LabelSettings.new()
+	ls.font_size = font_size
+	ls.font_color = color
+	ls.outline_size = 5
+	ls.outline_color = Color(0, 0, 0, 0.85)
+	l.label_settings = ls
+	parent.add_child(l)
+	return l
+
+
 func save_progress() -> void:
 	# Dev tests (tests/*.tscn) set this so they never touch the player's save.
 	if has_meta("no_save"):
@@ -240,7 +425,8 @@ func save_progress() -> void:
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify({"unlocked": unlocked, "best": best_scores, "party": party,
-			"hero_xp": hero_xp, "hero_skills": hero_skills}))
+			"hero_xp": hero_xp, "hero_skills": hero_skills, "stats": stats, "trophies": trophies.keys(),
+			"outfits": outfits}))
 		# Closing flushes the file (and on the web syncs it to IndexedDB).
 		f.close()
 
@@ -265,6 +451,24 @@ func load_progress() -> void:
 		for i in mini(sk.size(), hero_skills.size()):
 			for j in mini(sk[i].size(), Skills.NODE_COUNT):
 				hero_skills[i][j] = clampi(int(sk[i][j]), 0, Skills.max_rank(j))
+		var st = data.get("stats", {})
+		if st is Dictionary:
+			for k in st:
+				stats[k] = int(st[k])
+		var tr = data.get("trophies", [])
+		if tr is Array:
+			for id in tr:
+				trophies[String(id)] = true
+		var of = data.get("outfits", {})
+		if of is Dictionary:
+			for h in of:
+				if of[h] is Dictionary:
+					outfits[str(h)] = of[h]
+	# Saves from before trophies: bosses already beaten count.
+	for c in Content.COUNTRIES.size():
+		if unlocked >= (c + 1) * Content.LEVELS_PER_COUNTRY and int(stats.get("boss_%d" % c, 0)) == 0:
+			stats["boss_%d" % c] = 1
+	check_trophies("", true)
 
 
 ## Settings shown in the options lists, in order.

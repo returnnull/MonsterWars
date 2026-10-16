@@ -344,6 +344,23 @@ func mouth_global() -> Vector3:
 	return parts["jaw"].to_global(Vector3(1.1, 0.1, 0)) if parts.has("jaw") else global_position + Vector3(0, 5, 0)
 
 
+## A node to hang a cosmetic item on (see Cosmetics): it rides on the body
+## part for the slot ("head", "face", "neck", "back" or "tail") and its axes
+## follow the slot's frame described in Cosmetics. Null if there is no such
+## part. These offsets are rough; the heroes use GlbKaijuModel's.
+func cosmetic_anchor(slot: String) -> Node3D:
+	var spot: Array = {"head": ["head", Vector3(0.3, 0.75, 0), 0.0], "face": ["head", Vector3(0.8, 0.3, 0), 0.0],
+		"neck": ["neck", Vector3(0.2, 0.4, 0), -60.0], "back": ["torso", Vector3(0.4, 2.9, 0), 0.0],
+		"tail": ["tail%d" % (TAIL_SEGMENTS - 1), Vector3.ZERO, 0.0]}.get(slot, [])
+	if spot.is_empty() or not parts.has(spot[0]):
+		return null
+	var n := Node3D.new()
+	n.position = spot[1]
+	n.rotation.z = deg_to_rad(spot[2])
+	parts[spot[0]].add_child(n)
+	return n
+
+
 func spike_color() -> Color:
 	return _spike_color
 
