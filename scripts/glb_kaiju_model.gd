@@ -20,6 +20,21 @@ var _glow_base: Array[float] = []
 var _skin_mats: Array[StandardMaterial3D] = []
 var _eyes: Array[StandardMaterial3D] = []
 var _playing := ""
+var _skel: Skeleton3D
+var _body_bone := -1
+var _body_rest := 0.0
+## Landing: time into the Jump animation's touchdown part (< 0 when not landing).
+var _land_t := -1.0
+var _jump_t := 0.0
+
+## Parts of the Jump animation (seconds): crouch, push off, tucked in the
+## air at the apex, legs reaching down, and the landing crouch and recovery.
+const JUMP_CROUCH := 0.25
+const JUMP_RISE := 0.375
+const JUMP_APEX := 0.5
+const JUMP_FALL := 0.625
+const JUMP_LAND := 0.75
+const JUMP_END := 1.2
 
 
 ## Builds a hero from h (a Content hero): its "model" .glb when it has one,
@@ -54,6 +69,11 @@ func build_glb(path: String, spike: Color) -> void:
 			if _anim.has_animation(n):
 				_anim.get_animation(n).loop_mode = Animation.LOOP_LINEAR
 	var skel := _find(_inst, "Skeleton3D") as Skeleton3D
+	_skel = skel
+	if skel:
+		_body_bone = skel.find_bone("Body")
+		if _body_bone >= 0:
+			_body_rest = _body_y(skel.get_bone_global_rest(_body_bone).origin)
 	_collect_materials(_inst)
 	# Pivots the player uses: the right hand holds weapons, the snout fires beams.
 	var hand := _attach(skel, "FrontFoot.R")
@@ -75,15 +95,23 @@ func _process(delta: float) -> void:
 	if _inst == null:
 		return
 	_pose(delta)
-	_lean.rotation.z = -float(_cur["lean"]) * 0.45
+	# Squash on landings and the takeoff crouch, stretch while flying, and
+	# the nose tips up on the way up and down on the way down.
+	var sq: float = _cur["squash"]
+	var stretch := clampf(absf(_vy) * 0.004, 0.0, 0.07) if airborne else 0.0
+	_lean.scale = Vector3(1.0 + sq * 0.06 - stretch * 0.5, 1.0 - sq * 0.12 + stretch, 1.0 + sq * 0.06 - stretch * 0.5)
+	var tilt := clampf(_vy * 0.012, -0.22, 0.22) if airborne else 0.0
+	_lean.rotation.z = -float(_cur["lean"]) * 0.45 + tilt
+	_inst.position.y = 0.0
 	if _anim:
-		_pick_animation()
+		_pick_animation(delta)
 	_update_glb_glow(delta)
 
 
-func _pick_animation() -> void:
+func _pick_animation(delta: float) -> void:
 	var striking: bool = arm_r > 1.3 or arm_l > 1.3 or jaw > 0.5
 	if striking:
+		_land_t = -1.0
 		if _playing != "Attack":
 			_play("Attack", 0.08)
 			_anim.speed_scale = 1.4
@@ -92,13 +120,23 @@ func _pick_animation() -> void:
 		elif not _anim.is_playing():
 			_play("Attack", 0.0)
 		return
-	if _vy > 4.0:
-		if _playing != "Jump":
-			_play("Jump", 0.08)
-			_anim.speed_scale = 1.3
+	# Jumps are posed by hand from the Jump animation: crouch, push off,
+	# tuck at the top, reach down while falling, then crouch on touchdown.
+	if airborne or crouch > 0.01:
+		var t := JUMP_CROUCH * crouch
+		if airborne:
+			t = JUMP_APEX - clampf(_vy / 17.0, -1.0, 1.0) * (JUMP_APEX - JUMP_RISE)
+		_jump_t = lerpf(_jump_t, t, 1.0 - exp(-18.0 * delta)) if _playing == "Jump" else t
+		_hold_jump(_jump_t)
+		_land_t = -1.0
 		return
-	if _playing == "Jump" and _anim.is_playing() and _vy < -1.0:
-		return
+	if _land_t >= 0.0:
+		_land_t += delta * 1.5
+		# Walking off cuts the recovery short.
+		if _land_t < JUMP_END and not (_walk > 0.3 and _land_t > JUMP_LAND + 0.15):
+			_hold_jump(_land_t)
+			return
+		_land_t = -1.0
 	if _walk > 0.08:
 		var fast := walk_amount * walk_speed > 0.8
 		_play("Run" if fast else "Walk")
@@ -106,6 +144,32 @@ func _pick_animation() -> void:
 	else:
 		_play("Idle")
 		_anim.speed_scale = 1.0
+
+
+func land(hard: float) -> void:
+	super.land(hard)
+	if _playing == "Jump":
+		_land_t = JUMP_LAND
+
+
+## Shows the Jump animation frozen at `t`. Its own upward root motion is
+## taken out, since the body already flies through the air.
+func _hold_jump(t: float) -> void:
+	if not _anim.has_animation("Jump"):
+		return
+	if _playing != "Jump":
+		_playing = "Jump"
+		_anim.play("Jump", 0.06)
+	_anim.speed_scale = 0.0
+	_anim.seek(t, true)
+	if _body_bone >= 0:
+		var lift := _body_y(_skel.get_bone_global_pose(_body_bone).origin) - _body_rest
+		_inst.position.y = -maxf(lift, 0.0)
+
+
+## Height of a skeleton-space point in the space _inst sits in.
+func _body_y(p: Vector3) -> float:
+	return _lean.to_local(_skel.to_global(p)).y
 
 
 func _play(n: String, blend: float = BLEND) -> void:

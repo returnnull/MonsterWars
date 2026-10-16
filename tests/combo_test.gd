@@ -111,6 +111,9 @@ func _press(a: String) -> void:
 
 ## Presses the buttons `gap` seconds apart and waits until the kaiju is done.
 func _combo(buttons: Array, gap: float) -> void:
+	# A new combo can only start once the last one's recovery is over.
+	while p._attack_cd > 0.0:
+		await get_tree().physics_frame
 	seen.clear()
 	for btn in buttons:
 		_press(btn)
