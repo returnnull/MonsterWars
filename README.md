@@ -43,23 +43,23 @@ Tryk **F9** i menuen for at låse alle baner op, hvis du vil teste.
 |---|---|---|---|
 | Rage Strike | R + Y / L + J | 25 | Kaster sig frem med et hårdt slag |
 | War Roar | R + B / L + mellemrum | 35 | Brøl der slår fjender tilbage og giver medspillere tæt på 15 rage |
-| Rage-angreb | R + X / L + K | 50 | Heltens Atomic Beam, Nova Burst eller Earthquake |
+| Rage-angreb | R + X / L + K | 50 | Heltens eget rage-angreb i dens element (se tabellen nedenfor) |
 | Rage-tilstand | Tryk kort på R / L | 30+ | Kaijuen gløder, slår 30 % hårdere, er 20 % hurtigere, tager mindre skade og kan ikke slås ud af balance. Angrebene bliver til heltens eget element (se tabellen nedenfor), også med et våben i hånden: hold let angreb inde for at blive ved med at skyde heltens skud langt frem (tredje i comboen er et stort et, der sætter mærker i gaden), og hold tungt angreb inde for at lade op med glødende gab og så stå stille og puste heltens ånde frem, så længe knappen holdes (op til 4 sekunder, koster 8 ekstra rage i sekundet). Ånden gør mest skade. Bruger 10 rage i sekundet og slukkes med et nyt tryk eller når baren er tom |
 
   Hver helt har sine egne rage-angreb i rage-tilstand:
 
-  | Helt | Let (skud) | Tung (ånde) | Effekt |
-  |---|---|---|---|
-  | Gorrax | Atom Orb: blå kugle med elektronringe | Atomic Breath: blå atomstråle med ringe | Brænder |
-  | Voltra | Ball Lightning: knitrende kuglelyn | Thunder Breath: forgrenede lyn | Lynet springer videre til to fjender |
-  | Magmos | Lava Glob: lavaklump i en bue | Magma Breath: flammekaster | Brænder, efterlader glødende lava |
-  | Sylvara | Venom Orb: giftkugle | Toxic Mist: giftsky der bliver hængende | Gift (lang brand) og langsommere fjender |
-  | Terraxa | Boulder: kampesten med krystaller | Crystal Spikes: krystalspyd skyder op af gaden | Kaster fjender op, river bygninger ned |
-  | Glacior | Ice Shard: tre isspyd | Frost Breath: isnende ånde med iskrystaller | Gør langsom, ånden fryser fjender fast |
-  | Noctyr | Shadow Blade: skyggesegl der skærer gennem en hel række | Soul Drain: mørk ånde der suger liv | Heler Noctyr |
-  | Coralis | Bubble Blast: boble der springer | Hydro Jet: vandkanon | Skyller fjender langt tilbage |
-  | Solar Rex | Solar Flare: lille sol | Sun Ray: gylden solstråle | Brænder |
-  | Rustfang | Rivet Spray: tre glødende møtrikker | Plasma Cutter: skærebrænder i en regn af gnister | River bygninger ned, gnister brænder |
+  | Helt | Rage-angreb (R + X) | Let (skud) | Tung (ånde) | Effekt |
+  |---|---|---|---|---|
+  | Gorrax | Atomic Beam: atomstråle | Atom Orb: blå kugle med elektronringe | Atomic Breath: blå atomstråle med ringe | Brænder |
+  | Voltra | Lightning Storm: lyn springer fra gabet ind i fjenderne og slår ned fra himlen | Ball Lightning: knitrende kuglelyn | Thunder Breath: forgrenede lyn | Lynet springer videre til to fjender |
+  | Magmos | Eruption: lavagejsere marcherer frem ad gaden | Lava Glob: lavaklump i en bue | Magma Breath: flammekaster | Brænder, efterlader glødende lava |
+  | Sylvara | Venom Nova: giftbølger med giftskyer | Venom Orb: giftkugle | Toxic Mist: giftsky der bliver hængende | Gift (lang brand) og langsommere fjender |
+  | Terraxa | Earthquake: krystalspyd skyder op hen ad gaden | Boulder: kampesten med krystaller | Crystal Spikes: krystalspyd skyder op af gaden | Kaster fjender op, river bygninger ned |
+  | Glacior | Ice Beam: isstråle der fryser | Ice Shard: tre isspyd | Frost Breath: isnende ånde med iskrystaller | Gør langsom, ånden fryser fjender fast |
+  | Noctyr | Blood Nova: bølger der suger liv | Shadow Blade: skyggesegl der skærer gennem en hel række | Soul Drain: mørk ånde der suger liv | Heler Noctyr |
+  | Coralis | Torrent: vandkanon der skyller fjender væk | Bubble Blast: boble der springer | Hydro Jet: vandkanon | Skyller fjender langt tilbage |
+  | Solar Rex | Sun Burst: solildsbølger | Solar Flare: lille sol | Sun Ray: gylden solstråle | Brænder |
+  | Rustfang | Scrap Quake: udbrud af glødende skrot hen ad gaden | Rivet Spray: tre glødende møtrikker | Plasma Cutter: skærebrænder i en regn af gnister | River bygninger ned, gnister brænder |
 
   Har du ikke nok rage, blinker baren rødt. De hvide streger i baren viser, hvornår du har råd til hver evne. I rage-tilstand får du kun halvt så meget rage.
 - **Rage i skilltræet.** Alle helte har evner, der ændrer hvor meget rage de får, eller hvordan de får den: mere rage fra alt, mere rage når man bliver ramt, rage for hver besejret fjende, billigere rage-evner og rage-tilstand, en større rage-bar, og grene-ender som Overdrive (rage fylder sig selv), Blood Pact (Noctyr: betal manglende rage med liv) og Tidal Fury (Coralis: halvdelen af den brugte rage fylder super-måleren).

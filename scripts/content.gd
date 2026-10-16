@@ -5,7 +5,9 @@ extends RefCounted
 
 const LEVELS_PER_COUNTRY := 10
 
-# special: "beam" (straight breath beam), "nova" (radial blasts), "quake" (travelling ground shockwaves)
+# special: how the hero's rage attack works (named and coloured by RageStyle "attack"):
+# "beam" (straight breath beam), "lightning" (forked bolts into enemies ahead and from the sky),
+# "nova" (radial blasts), "quake" (travelling ground shockwaves)
 # look: body shape overrides for KaijuModel (spike_shape, rows, neck_len, head_size, snout, bulk,
 # arm_size, tail_len, tail_thick, posture, crest, gem, seams, arm_spikes, spike_size).
 # model: rigged .glb used instead of the procedural KaijuModel (see GlbKaijuModel); look is then unused.
@@ -15,7 +17,7 @@ const HEROES := [
 		"hp": 260.0, "speed": 1.0, "power": 1.0, "special": "beam", "look": {"spike_shape": 3, "rows": 3, "neck_len": 1.0, "posture": 0.14, "snout": 1.0}},
 	{"name": "VOLTRA", "model": "res://assets/heroes/07_storm.glb", "title": "Storm Runner", "skin": Color(0.36, 0.33, 0.18), "belly": Color(0.75, 0.68, 0.45),
 		"accent": Color(1.0, 0.9, 0.25), "eye": Color(1.0, 0.95, 0.5), "horns": true, "size": 0.92,
-		"hp": 210.0, "speed": 1.25, "power": 0.9, "special": "beam", "look": {"spike_shape": 2, "rows": 2, "neck_len": 1.25, "bulk": 0.9, "arm_size": 0.9, "head_size": 0.92, "snout": 1.15, "tail_len": 1.25, "tail_thick": 0.88}},
+		"hp": 210.0, "speed": 1.25, "power": 0.9, "special": "lightning", "look": {"spike_shape": 2, "rows": 2, "neck_len": 1.25, "bulk": 0.9, "arm_size": 0.9, "head_size": 0.92, "snout": 1.15, "tail_len": 1.25, "tail_thick": 0.88}},
 	{"name": "MAGMOS", "model": "res://assets/heroes/02_magma.glb", "title": "Molten Heart", "skin": Color(0.32, 0.16, 0.13), "belly": Color(0.7, 0.5, 0.36),
 		"accent": Color(1.0, 0.4, 0.15), "eye": Color(1.0, 0.6, 0.25), "horns": true, "size": 1.12,
 		"hp": 300.0, "speed": 0.85, "power": 1.3, "special": "quake", "look": {"spike_shape": 4, "rows": 3, "neck_len": 0.85, "bulk": 1.1, "head_size": 1.05, "seams": true, "tail_thick": 1.08}},
@@ -42,7 +44,9 @@ const HEROES := [
 		"hp": 320.0, "speed": 0.9, "power": 1.2, "special": "quake", "look": {"spike_shape": 1, "rows": 2, "neck_len": 0.9, "bulk": 1.1, "arm_size": 1.15, "arm_spikes": true, "gem": false, "tail_thick": 1.05}},
 ]
 
-const SPECIAL_NAMES := {"beam": "Atomic Beam", "nova": "Nova Burst", "quake": "Earthquake"}
+## Name of a hero's rage attack (special + heavy), e.g. "Lightning Storm".
+static func attack_name(hero_index: int) -> String:
+	return String(RageStyle.for_hero(hero_index)["attack"]).capitalize()
 
 # Boss keys: moves (any Brute move plus its signature move, see Brute.SIGNATURES),
 # body (CreatureModel plan; never the heroes' kaiju model), extras, horns, element, summon.

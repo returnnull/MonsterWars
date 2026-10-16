@@ -11,6 +11,13 @@ var p: Player
 
 func _ready() -> void:
 	Game.set_meta("no_save", true)
+	var attacks := {}
+	var specials := {}
+	for h in Content.HEROES.size():
+		attacks[RageStyle.for_hero(h)["attack"]] = true
+		specials[Content.HEROES[h]["special"]] = true
+	_check("every hero has its own rage attack", attacks.size() == Content.HEROES.size() and specials.size() == 4,
+		"%d names, %d kinds" % [attacks.size(), specials.size()])
 	var lights := {}
 	var shots := {}
 	for st in RageStyle.STYLES:
@@ -96,6 +103,24 @@ func _hero(h: int) -> void:
 	_check("%s breath beats a shot" % p.display_name(), breath > shot_dmg * 2.0, "breath %.0f vs shot %.0f" % [breath, shot_dmg])
 	near.queue_free()
 	p._exit_rage_mode()
+	await _wait(0.5)
+
+	# Rage attack (special + heavy): the hero's own attack hurts enemies
+	# ahead with its effect and ends cleanly.
+	var ahead := [_enemy(7.0), _enemy(14.0)]
+	var ahead0: float = ahead[0].hp + ahead[1].hp
+	p.rage = 100.0
+	p._rage_cd = 0.0
+	p._use_rage_skill("attack")
+	var ta := 0.0
+	while p.state == Player.S.BEAM and ta < 6.0:
+		await get_tree().physics_frame
+		ta += get_physics_process_delta_time()
+	_check("%s rage attack %s" % [p.display_name(), st["attack"]], ahead[0].hp + ahead[1].hp < ahead0
+		and p.state == Player.S.FREE and not p._beam.visible and p._flame_fx == null,
+		"%s, dmg %.0f in %.1fs" % [p._special, ahead0 - ahead[0].hp - ahead[1].hp, ta])
+	for e in ahead:
+		e.queue_free()
 	await _wait(0.5)
 
 	# Super: hurts enemies around and ends cleanly.
