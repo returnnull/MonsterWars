@@ -25,27 +25,28 @@ var _t := 0.0
 
 
 func _ready() -> void:
+	# A small white-hot core inside a hard orange shell, wrapped in a ragged
+	# red flame skin that spins, so each ball reads as a solid shot.
 	var core_mat := StandardMaterial3D.new()
 	core_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	core_mat.albedo_color = Color(1.0, 0.95, 0.75)
-	_core = _ball(0.45 * size, core_mat)
-	var glow_mat := StandardMaterial3D.new()
-	glow_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	glow_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	glow_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	glow_mat.albedo_color = Color(1.0, 0.7, 0.2, 0.7)
-	_ball(0.7 * size, glow_mat)
+	core_mat.albedo_color = Color(1.0, 0.9, 0.55)
+	_core = _ball(0.55 * size, core_mat)
+	var mid_mat := StandardMaterial3D.new()
+	mid_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mid_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mid_mat.albedo_color = Color(1.0, 0.55, 0.08, 0.85)
+	_ball(0.9 * size, mid_mat)
 	# Outer shell is blended, not added, so it stays orange on a bright sky.
-	var shell_mat := glow_mat.duplicate() as StandardMaterial3D
-	shell_mat.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
-	shell_mat.albedo_color = Color(1.0, 0.38, 0.04, 0.5)
-	_glow = _ball(1.05 * size, shell_mat)
+	var shell_mat := mid_mat.duplicate() as StandardMaterial3D
+	shell_mat.albedo_color = Color(0.9, 0.22, 0.02, 0.45)
+	_glow = _ball(1.35 * size, shell_mat)
 	_light = OmniLight3D.new()
 	_light.light_color = Color(1.0, 0.5, 0.15)
-	_light.light_energy = 5.0 * size
-	_light.omni_range = 8.0 * size
+	_light.light_energy = 3.0 * size
+	_light.omni_range = 7.0 * size
 	add_child(_light)
-	_trail = FX.fire_stream(Vector3(-dir, 0.25, 0), 3.0, 25.0, 2.0 * size, 0.4, int(90 * size), true)
+	# The flame skin licks back along the flight path like a comet's tail.
+	_trail = FX.fire_stream(Vector3(-dir, 0.15, 0), 6.0, 18.0, 2.0 * size, 0.38, int(120 * size))
 	if _trail:
 		_trail.global_position = global_position
 
@@ -71,8 +72,8 @@ func _physics_process(delta: float) -> void:
 	global_position.x += dir * step
 	global_position.y = move_toward(global_position.y, CRUISE_Y + size * 0.4, 9.0 * delta)
 	var flicker := 1.0 + sin(_t * 47.0) * 0.1 + sin(_t * 23.0) * 0.06
-	_glow.scale = Vector3(1.25, 1.0, 1.0) * flicker
-	_light.light_energy = 5.0 * size * flicker
+	_glow.scale = Vector3(1.3, 0.9, 0.9) * flicker
+	_light.light_energy = 3.0 * size * flicker
 	if _trail and is_instance_valid(_trail):
 		_trail.global_position = global_position
 	for e in get_tree().get_nodes_in_group("enemies"):
@@ -101,12 +102,17 @@ func _burst() -> void:
 		hits = shooter.strike(pos, r, damage, Vector3(dir * 7.0, 5.0, 0), "enemies", damage * shooter._bdmg())
 		for t in get_tree().get_nodes_in_group("enemies"):
 			if not t.dead and t.hit_center().distance_to(pos) <= r + t.hit_radius:
-				t.apply_burn(damage * 0.25, 2.5)
+				if t.has_method("apply_burn"):
+					t.apply_burn(damage * 0.25, 2.5)
 		if hits > 0:
 			shooter.rumble(0.2, 0.25 * size, 0.08)
 	for i in hits:
 		Game.register_hit()
-	FX.fire_burst(pos, r)
-	Game.shake(0.12 * size + (0.1 if hits > 0 else 0.0))
+	FX.fireball_pop(pos, size)
+	if size > 1.2:
+		# The big third fireball bursts into a fire ball and sets the street alight.
+		FX.fire_burst(pos, r)
+		FX.ground_fire(pos, 1.2, 1.0)
+	Game.shake(0.1 * size + (0.1 if hits > 0 else 0.0))
 	FX.stop_stream(_trail)
 	queue_free()

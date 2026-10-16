@@ -45,6 +45,10 @@ var arm_l := 0.25
 var jaw := 0.0
 var lean := 0.0
 var spin := 0.0
+## Jumping: crouch (0-1) is the takeoff squat, airborne is set while off
+## the ground. land() is called on touchdown with how hard it was (0-1.6).
+var crouch := 0.0
+var airborne := false
 var glow := 0.0
 var eye_glow := 0.0
 
@@ -369,6 +373,11 @@ func flash() -> void:
 	_flash = 1.0
 
 
+## Touchdown after a jump or fall; `hard` (0-1.6) scales the landing squash.
+func land(hard: float) -> void:
+	_vel["squash"] = maxf(_vel.get("squash", 0.0), 2.0 + hard * 3.5)
+
+
 func _process(delta: float) -> void:
 	if parts.is_empty():
 		return
@@ -445,7 +454,7 @@ func _pose(delta: float, gait: float = 8.5) -> void:
 	_t += delta
 	_walk = lerpf(_walk, walk_amount, 1.0 - exp(-8.0 * delta))
 	_phase += delta * gait * walk_speed * maxf(_walk, 0.05)
-	var targets := {"arm_r": arm_r, "arm_l": arm_l, "jaw": jaw, "lean": lean, "squash": 0.0, "turn": 0.0}
+	var targets := {"arm_r": arm_r, "arm_l": arm_l, "jaw": jaw, "lean": lean, "squash": crouch * 0.6, "turn": 0.0}
 	var pos := global_position
 	var yaw := rotation.y
 	if _moved and delta > 0.0:

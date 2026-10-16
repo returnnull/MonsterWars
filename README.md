@@ -44,7 +44,7 @@ Tryk **F9** i menuen for at låse alle baner op, hvis du vil teste.
 | Rage Strike | R + Y / L + J | 25 | Kaster sig frem med et hårdt slag |
 | War Roar | R + B / L + mellemrum | 35 | Brøl der slår fjender tilbage og giver medspillere tæt på 15 rage |
 | Rage-angreb | R + X / L + K | 50 | Heltens Atomic Beam, Nova Burst eller Earthquake |
-| Rage-tilstand | Tryk kort på R / L | 30+ | Kaijuen gløder, slår 30 % hårdere, er 20 % hurtigere, tager mindre skade og kan ikke slås ud af balance. Angrebene bliver til ild: let angreb spytter ildkugler langt frem (tredje i comboen er en stor en), og tungt angreb får kaijuen til at stå stille og sprøjte en flammestråle frem, der gør mest skade. Bruger 10 rage i sekundet og slukkes med et nyt tryk eller når baren er tom |
+| Rage-tilstand | Tryk kort på R / L | 30+ | Kaijuen gløder, slår 30 % hårdere, er 20 % hurtigere, tager mindre skade og kan ikke slås ud af balance. Angrebene bliver til ild, også med et våben i hånden: hold let angreb inde for at blive ved med at spytte hurtige ildkugler langt frem, der popper med gnister (tredje i comboen er en stor en, der sætter gaden i brand), og hold tungt angreb inde for at lade op med glødende gab og så stå stille og sprøjte en lang flammekaster frem, så længe knappen holdes (op til 4 sekunder, koster 8 ekstra rage i sekundet) med sort røg, der sætter ild til gaden og gør mest skade. Bruger 10 rage i sekundet og slukkes med et nyt tryk eller når baren er tom |
 
   Har du ikke nok rage, blinker baren rødt. De hvide streger i baren viser, hvornår du har råd til hver evne. I rage-tilstand får du kun halvt så meget rage.
 - **Rage i skilltræet.** Alle helte har evner, der ændrer hvor meget rage de får, eller hvordan de får den: mere rage fra alt, mere rage når man bliver ramt, rage for hver besejret fjende, billigere rage-evner og rage-tilstand, en større rage-bar, og grene-ender som Overdrive (rage fylder sig selv), Blood Pact (Noctyr: betal manglende rage med liv) og Tidal Fury (Coralis: halvdelen af den brugte rage fylder super-måleren).
@@ -62,6 +62,24 @@ Tryk **F9** i menuen for at låse alle baner op, hvis du vil teste.
 | Coralis | Tidal Wave: en flodbølge skyller hen over gaden |
 | Solar Rex | Supernova: tre enorme solflammer |
 | Rustfang | Scrap Barrage: regn af skrot |
+
+## Combos
+
+Tryk knapperne i rytme, så kæder angrebene sammen. Combo-specials viser deres navn over kaijuen.
+
+| Combo | Knapper | Hvad den gør |
+|---|---|---|
+| Tail Spin | let, let, let | Snurrer rundt og slår alt omkring sig væk med en chokbølge |
+| Kaiju Rush | let, let, tung | Stormer frem med skulderen og ramler ind i alt på vejen, som skubbes med og får et sidste stød |
+| Titan Crush | tung, tung, tung | Kæmpe dobbelt-næveslag i jorden med chokbølger, der vandrer langt frem ad gaden |
+| Ground Pound | hop + tung | Styrter ned i gaden og rammer alt rundt om sig, også en svagere ring længere ude |
+| Sky Claw | hop + let | Kløer opad og sender en klo-bølge skråt op, der søger mod nærmeste helikopter, drone eller fly og gør 2,5 gange skade på dem (to gange pr. hop) |
+
+I rage-tilstand er let og tung stadig ildkugler og flammestråle.
+
+Angreb kan ikke spammes: når en combo (eller et enkelt slag) er slut, skal kaijuen lige komme sig, før næste angreb går i gang. Efter afslutninger som Tail Spin, Titan Crush, den store ildkugle og flammestrålen er pausen længst. Et tryk i pausen venter kort i bufferen, så rytmen holder. Rage strike, brøl og rage-angrebet har deres egen nedkøling.
+
+Hop: kaijuen sætter af med et lille knæk i knæene, trækker benene op i toppen, strækker dem ned på vej ned og lander med et tungt dunk, støv og en chokring, der bliver større jo højere faldet er.
 
 ## Trofæer og kosmetik
 
@@ -277,6 +295,7 @@ scripts/kaiju.gd           Fælles krop for kaijuer: liv, knockback, strike()
 scripts/player.gd          Spillerens kaiju og angreb
 scripts/brute.gd           Fjende-kaijuer (crawler, brute, elite) og bosser
 scripts/flyer.gd           Drone-fjende
+scripts/sky_wave.gd        Klo-bølgen fra Sky Claw (hop + let)
 scripts/projectile.gd      Plasma-skud
 scripts/building.gd        Destruerbare bygninger
 scripts/kaiju_model.gd     Procedural kaiju-model og animation
@@ -303,6 +322,9 @@ godot --headless --path . res://tests/difficulty_test.tscn   # sværhedsgraderne
 godot --headless --path . res://tests/trophy_test.tscn   # trofæer, kroner og kosmetik
 COSMETIC_IDS=gold_crown,halo godot --path . res://tests/cosmetic_shots.tscn   # billeder af tingene på kaijuerne
 AUTOPLAY_COSMETICS=1 godot --headless --path . res://tests/autoplay.tscn   # spil med alle ting på
+godot --headless --path . res://tests/combo_test.tscn   # alle combos
+godot --headless --path . res://tests/spam_test.tscn   # anti-spam og hop
+xvfb-run -a godot --path . res://tests/rage_shots.tscn   # billeder af ildkugler, flammestråle og hop (SHOTS=light,heavy,jump)
 ```
 
 ## Mobil (Android / iOS)

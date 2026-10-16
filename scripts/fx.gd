@@ -135,6 +135,151 @@ static func fire_muzzle(pos: Vector3, dir: Vector3, size: float = 1.0) -> void:
 	light_flash(pos, Color(1.0, 0.5, 0.12), 6.0 * size, 9.0 * size, 0.18)
 
 
+## Deep flamethrower colours for the heavy rage attack: yellow at the mouth,
+## then saturated orange and red, ending in dark smoke, so the stream reads
+## as a long orange cone instead of a white blob.
+static func _jet_ramp() -> GradientTexture1D:
+	if not _cache.has("jet_ramp"):
+		_cache["jet_ramp"] = _ramp([Color(1.0, 0.82, 0.35, 0.95), Color(1.0, 0.5, 0.06, 1.0), Color(0.95, 0.25, 0.02, 0.95),
+			Color(0.6, 0.1, 0.02, 0.8), Color(0.18, 0.08, 0.06, 0.55), Color(0.1, 0.08, 0.08, 0.0)])
+	return _cache["jet_ramp"]
+
+
+## The heavy rage attack's flamethrower: a wide, roaring cone of flame with
+## a yellow inner jet, sparks, and black smoke boiling up off its far end.
+## Moved and stopped like fire_stream (see stop_stream).
+static func flame_jet(dir: Vector3, speed: float, size: float, lifetime: float) -> GPUParticles3D:
+	var w := _world()
+	if w == null:
+		return null
+	var aabb := AABB(Vector3(-30, -10, -30), Vector3(60, 40, 60))
+	var pm := _pm(dir, 8.0, speed * 0.8, speed, 3.0, size * 0.6, size * 1.2, 1.2, 0.2 * size)
+	pm.color_ramp = _jet_ramp()
+	pm.scale_curve = _grow_curve()
+	pm.angular_velocity_min = -90.0
+	pm.angular_velocity_max = 90.0
+	var p := _stream_part(220, lifetime, pm, _billboard("flame", 1.0, false, Color.WHITE), aabb)
+	w.add_child(p)
+	# Yellow inner jet: thin and short, so the cone is hottest at the mouth.
+	var cm := _pm(dir, 4.0, speed * 0.9, speed * 1.05, 0.0, size * 0.35, size * 0.55, 1.0, 0.1 * size)
+	cm.color_ramp = _ramp([Color(1.0, 0.95, 0.7, 1.0), Color(1.0, 0.75, 0.25, 0.9), Color(1.0, 0.45, 0.05, 0.0)])
+	cm.scale_curve = _grow_curve()
+	p.add_child(_stream_part(90, lifetime * 0.45, cm, _billboard("flame", 1.0, false, Color.WHITE), aabb))
+	# Smoke rides the flames out and only shows up near the end of the cone.
+	var sm := _pm(dir, 14.0, speed * 0.55, speed * 0.75, 5.0, size * 1.0, size * 1.7, 1.6, 0.4 * size)
+	sm.color_ramp = _ramp([Color(0.1, 0.08, 0.07, 0.0), Color(0.1, 0.08, 0.07, 0.0), Color(0.16, 0.13, 0.12, 0.55), Color(0.22, 0.2, 0.19, 0.0)])
+	sm.scale_curve = _grow_curve()
+	p.add_child(_stream_part(60, lifetime * 2.6, sm, _billboard("smoke", 1.0, false, Color.WHITE), aabb))
+	var em := _pm(dir, 16.0, speed * 0.6, speed * 1.2, -12.0, 0.3, 0.6, 0.5, 0.4 * size)
+	em.particle_flag_align_y = true
+	em.scale_curve = _shrink_curve()
+	p.add_child(_stream_part(60, lifetime * 1.5, em, _spark_mesh(), aabb))
+	return p
+
+
+static func _stream_part(amount: int, lifetime: float, pm: ParticleProcessMaterial, mesh: Mesh, aabb: AABB) -> GPUParticles3D:
+	var p := GPUParticles3D.new()
+	p.amount = amount
+	p.lifetime = lifetime
+	p.local_coords = false
+	p.fixed_fps = 60
+	p.process_material = pm
+	p.draw_pass_1 = mesh
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	p.visibility_aabb = aabb
+	return p
+
+
+## Wind-up for the flamethrower: sparks get sucked into the mouth while it
+## glows brighter and brighter.
+static func mouth_charge(pos: Vector3, duration: float) -> void:
+	var pm := _pm(Vector3.UP, 180.0, 0.0, 0.0, 0.0, 0.5, 1.0, 0.0, 3.2)
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE_SURFACE
+	pm.radial_accel_min = -40.0
+	pm.radial_accel_max = -30.0
+	pm.color_ramp = _ramp([Color(1.0, 0.5, 0.1, 0.0), Color(1.0, 0.6, 0.15, 1.0), Color(1.0, 0.9, 0.5, 1.0)])
+	pm.scale_curve = _shrink_curve()
+	var w := _world()
+	if w == null:
+		return
+	var p := GPUParticles3D.new()
+	p.amount = 40
+	p.lifetime = 0.35
+	p.one_shot = true
+	p.explosiveness = 0.0
+	p.process_material = pm
+	p.draw_pass_1 = _billboard("flame", 1.0, false, Color.WHITE)
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	w.add_child(p)
+	p.global_position = pos
+	p.emitting = true
+	var l := OmniLight3D.new()
+	l.light_color = Color(1.0, 0.55, 0.15)
+	l.omni_range = 7.0
+	l.light_energy = 0.0
+	p.add_child(l)
+	var tw := l.create_tween()
+	tw.tween_property(l, "light_energy", 7.0, duration).set_ease(Tween.EASE_IN)
+	tw.tween_property(l, "light_energy", 0.0, 0.1)
+	w.get_tree().create_timer(duration + 0.6, false).timeout.connect(p.queue_free)
+
+
+## Flames left burning on the street, with a black scorch mark under them
+## that fades out afterwards.
+static func ground_fire(pos: Vector3, size: float, duration: float) -> void:
+	var w := _world()
+	if w == null:
+		return
+	var ground := Vector3(pos.x, 0.08, pos.z)
+	var scorch := MeshInstance3D.new()
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(3.4, 2.6) * size
+	scorch.mesh = plane
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_texture = _soft_texture()
+	mat.albedo_color = Color(0.05, 0.04, 0.035, 0.8)
+	scorch.material_override = mat
+	scorch.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	w.add_child(scorch)
+	scorch.global_position = ground + Vector3(0, randf() * 0.02, 0)
+	scorch.rotation.y = randf() * TAU
+	var tw := scorch.create_tween()
+	tw.tween_interval(duration + 1.0)
+	tw.tween_property(mat, "albedo_color:a", 0.0, 1.5)
+	tw.tween_callback(scorch.queue_free)
+	var pm := _pm(Vector3.UP, 15.0, 2.0, 4.5, 2.0, 0.8 * size, 1.6 * size, 1.0, 1.0 * size)
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	pm.emission_box_extents = Vector3(1.4, 0.1, 1.0) * size
+	pm.color_ramp = _jet_ramp()
+	pm.scale_curve = _shrink_curve()
+	var p := _stream_part(int(18 * size) + 6, 0.55, pm, _billboard("flame", 1.0, false, Color.WHITE), AABB(Vector3(-6, -2, -6), Vector3(12, 10, 12)))
+	p.fixed_fps = 0
+	w.add_child(p)
+	p.global_position = ground
+	w.get_tree().create_timer(duration, false).timeout.connect(stop_stream.bind(p))
+
+
+## Where a fireball hits: a quick, sharp pop of flame and sparks with a ring
+## on the ground. `size` grows everything (the third, big fireball).
+static func fireball_pop(pos: Vector3, size: float) -> void:
+	var fire := _pm(Vector3.UP, 180.0, 6.0 * size, 14.0 * size, 2.0, 1.6 * size, 2.8 * size, 5.0, 0.4 * size)
+	fire.color_ramp = _flame_ramp()
+	fire.scale_curve = _grow_curve()
+	_emit(pos, int(26 * size), 0.45, _billboard("flame", 1.0, false, Color.WHITE), fire)
+	var sparks := _pm(Vector3.UP, 180.0, 12.0 * size, 24.0 * size, -20.0, 0.6, 1.2, 0.5, 0.3)
+	sparks.particle_flag_align_y = true
+	sparks.scale_curve = _shrink_curve()
+	_emit(pos, int(22 * size), 0.5, _spark_mesh(), sparks)
+	var flash := _pm(Vector3.UP, 0.0, 0.0, 0.0, 0.0, 3.0 * size, 4.0 * size, 0.0)
+	flash.scale_curve = _shrink_curve()
+	_emit(pos, 1, 0.1, _billboard("fire_core", 1.0, true, Color(1.0, 0.75, 0.35)), flash)
+	shockwave(Vector3(pos.x, 0.2, pos.z), 2.5 * size, Color(1.4, 0.45, 0.06))
+	smoke(pos + Vector3(0, 1.0, 0), 0.5 * size, Color(0.16, 0.11, 0.09))
+	light_flash(pos, Color(1.0, 0.5, 0.12), 5.0 * size, 9.0 * size, 0.25)
+
+
 static func smoke(pos: Vector3, size: float = 1.0, color: Color = Color(0.55, 0.5, 0.45)) -> void:
 	var c0 := Color(color, 0.0)
 	var ramp := _ramp([c0, Color(color, 0.75), Color(color.darkened(0.3), 0.0)])
@@ -190,6 +335,32 @@ static func shockwave(pos: Vector3, radius: float, color: Color = Color(0.6, 0.9
 	tw.tween_property(mi, "scale", Vector3(radius, 0.6, radius), 0.4).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
 	tw.tween_property(mat, "albedo_color:a", 0.0, 0.4)
 	tw.chain().tween_callback(mi.queue_free)
+
+
+## The name of a combo special popping up over the kaiju that used it.
+static func callout(pos: Vector3, text: String, color: Color) -> void:
+	var w := _world()
+	if w == null:
+		return
+	var l := Label3D.new()
+	l.text = text
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.no_depth_test = true
+	l.render_priority = 10
+	l.pixel_size = 0.012
+	l.font_size = 72
+	l.outline_size = 20
+	l.modulate = color.lerp(Color.WHITE, 0.45)
+	l.outline_modulate = Color(0.05, 0.03, 0.02, 0.9)
+	w.add_child(l)
+	l.global_position = pos
+	l.scale = Vector3.ONE * 1.5
+	var tw := l.create_tween().set_parallel(true)
+	tw.tween_property(l, "scale", Vector3.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(l, "position:y", pos.y + 2.0, 1.0).set_ease(Tween.EASE_OUT)
+	tw.tween_property(l, "modulate:a", 0.0, 0.35).set_delay(0.65)
+	tw.tween_property(l, "outline_modulate:a", 0.0, 0.35).set_delay(0.65)
+	tw.chain().tween_callback(l.queue_free)
 
 
 static func light_flash(pos: Vector3, color: Color, energy_amount: float, light_range: float, duration: float) -> void:

@@ -1,6 +1,7 @@
 class_name Player
 extends Kaiju
-## A playable kaiju: 3-hit light combo, heavy slam, jump stomp, dodge,
+## A playable kaiju: light and heavy combos (see ATTACKS), jump attacks,
+## dodge,
 ## rage skills paid for with rage (see RAGE_SKILLS) and a super special
 ## unique to each hero. Learned skill tree abilities
 ## (Skills.mods) change stats and add effects to the attacks.
@@ -40,23 +41,61 @@ const FIRE_DMG := 0.6
 const FLAME_LEN := 12.0
 const FLAME_WIDTH := 2.4
 const FLAME_TICK := 0.1
+## Holding heavy keeps the flame pouring past its normal length (the
+## "stream" of the flame attack) up to FLAME_MAX seconds, burning
+## FLAME_DRAIN extra rage per second on top of the rage mode drain.
+const FLAME_MAX := 4.0
+const FLAME_DRAIN := 8.0
 ## A special press held longer than this without a combo does nothing.
 const SPECIAL_TAP := 0.45
+## Combos. "next" is the attack a light press chains into, "next_h" the one
+## a heavy press chains into, and "combo" names a combo special (shown over
+## the kaiju when it starts):
+##   light light light  TAIL SPIN    spins round and knocks back all around
+##   light light heavy  KAIJU RUSH   charges forward, ramming what's in the way
+##   heavy heavy heavy  TITAN CRUSH  huge slam with shockwaves marching ahead
+##   jump + heavy       GROUND POUND drops onto the street, hurts all around
+##   jump + light       SKY CLAW     slashes up and sends a claw wave that homes
+##                                   in on aircraft (does AIR_BONUS to them)
+const AIR_MOVES := 2
+const AIR_BONUS := 2.5
+## Anti-spam: after an attack (or a whole combo) ends, light and heavy do
+## nothing for this many seconds; a press in that time waits in the buffer.
+## Chaining into the next hit of a combo is not slowed down, but finishers
+## leave the kaiju open for longer. Rage skills have their own cooldown
+## (rage strike, roar and the rage attack beam/nova/quake).
+const ATTACK_RECOVERY := {
+	"light1": 0.25, "light2": 0.25, "light3": 0.6, "heavy": 0.4, "heavy2": 0.45, "heavy3": 1.0,
+	"rush": 0.8, "sky_claw": 0.0, "swing1": 0.3, "swing2": 0.5, "throw": 0.4,
+	"fire1": 0.35, "fire2": 0.35, "fire3": 0.8, "flame": 1.0,
+	"rage_strike": 0.6, "roar": 0.8, "stomp": 0.45, "rage_attack": 1.0,
+}
+## Takeoff crouch before the kaiju leaves the ground.
+const JUMP_SQUAT := 0.07
 
 const ATTACKS := {
 	"light1": {"dur": 0.30, "active": 0.11, "dmg": 7.0, "kb": Vector3(4, 0, 0), "reach": 2.6, "radius": 2.3,
-		"pose": "jab_r", "shake": 0.12, "bdmg": 10.0, "next": "light2"},
+		"pose": "jab_r", "shake": 0.12, "bdmg": 10.0, "next": "light2", "next_h": "heavy"},
 	"light2": {"dur": 0.30, "active": 0.11, "dmg": 7.0, "kb": Vector3(4, 0, 0), "reach": 2.6, "radius": 2.3,
-		"pose": "jab_l", "shake": 0.12, "bdmg": 10.0, "next": "light3"},
-	"light3": {"dur": 0.55, "active": 0.24, "dmg": 13.0, "kb": Vector3(15, 8, 0), "reach": 0.0, "radius": 4.8,
-		"pose": "spin", "shake": 0.35, "bdmg": 18.0, "next": ""},
-	"heavy": {"dur": 0.72, "active": 0.38, "dmg": 22.0, "kb": Vector3(20, 10, 0), "reach": 3.0, "radius": 3.0,
-		"pose": "slam", "shake": 0.55, "bdmg": 45.0, "next": ""},
+		"pose": "jab_l", "shake": 0.12, "bdmg": 10.0, "next": "light3", "next_h": "rush"},
+	"light3": {"dur": 0.55, "active": 0.24, "dmg": 15.0, "kb": Vector3(15, 8, 0), "reach": 0.0, "radius": 5.2,
+		"pose": "spin", "shake": 0.35, "bdmg": 18.0, "next": "", "next_h": "heavy", "combo": "TAIL SPIN"},
+	"heavy": {"dur": 0.72, "active": 0.38, "dmg": 22.0, "kb": Vector3(14, 10, 0), "reach": 3.0, "radius": 3.0,
+		"pose": "slam", "shake": 0.55, "bdmg": 45.0, "next": "", "next_h": "heavy2"},
+	"heavy2": {"dur": 0.66, "active": 0.32, "dmg": 24.0, "kb": Vector3(10, 9, 0), "reach": 3.2, "radius": 3.2,
+		"pose": "slam", "shake": 0.55, "bdmg": 45.0, "next": "", "next_h": "heavy3"},
+	# Combo specials. "rush" lunges and rams everything it runs into on the way.
+	"rush": {"dur": 0.62, "active": 0.32, "dmg": 26.0, "kb": Vector3(24, 10, 0), "reach": 2.6, "radius": 3.2,
+		"pose": "rush", "shake": 0.55, "bdmg": 60.0, "next": "", "lunge": 26.0, "rush": true, "combo": "KAIJU RUSH"},
+	"heavy3": {"dur": 1.0, "active": 0.5, "dmg": 38.0, "kb": Vector3(18, 18, 0), "reach": 3.4, "radius": 4.4,
+		"pose": "crush", "shake": 0.9, "bdmg": 90.0, "next": "", "lunge": 2.0, "combo": "TITAN CRUSH"},
+	"sky_claw": {"dur": 0.42, "active": 0.12, "dmg": 14.0, "kb": Vector3(6, 12, 0), "reach": 1.8, "radius": 4.2,
+		"pose": "claw_up", "shake": 0.25, "bdmg": 15.0, "next": "", "lunge": 2.0, "combo": "SKY CLAW"},
 	# With a building piece in hand (damage is multiplied by the weapon).
 	"swing1": {"dur": 0.42, "active": 0.16, "dmg": 9.0, "kb": Vector3(10, 4, 0), "reach": 3.4, "radius": 2.9,
-		"pose": "swing", "shake": 0.25, "bdmg": 30.0, "next": "swing2"},
+		"pose": "swing", "shake": 0.25, "bdmg": 30.0, "next": "swing2", "next_h": "heavy"},
 	"swing2": {"dur": 0.5, "active": 0.18, "dmg": 11.0, "kb": Vector3(18, 9, 0), "reach": 3.4, "radius": 3.1,
-		"pose": "swing", "shake": 0.35, "bdmg": 30.0, "next": ""},
+		"pose": "swing", "shake": 0.35, "bdmg": 30.0, "next": "", "next_h": "heavy"},
 	"throw": {"dur": 0.45, "active": 0.2, "dmg": 0.0, "kb": Vector3.ZERO, "reach": 0.0, "radius": 0.0,
 		"pose": "throw", "shake": 0.0, "bdmg": 0.0, "next": ""},
 	# Rage skills ("rage": true): boosted by Focus, don't refill rage themselves.
@@ -67,11 +106,11 @@ const ATTACKS := {
 	# Rage mode fire. "shot" spits a Fireball of that size for "dmg"; "stream"
 	# sprays flame for that long, hurting for "dmg" every FLAME_TICK.
 	"fire1": {"dur": 0.34, "active": 0.12, "dmg": 10.0, "kb": Vector3.ZERO, "reach": 0.0, "radius": 0.0,
-		"pose": "spit_r", "shake": 0.0, "bdmg": 0.0, "next": "fire2", "lunge": 1.0, "shot": 1.0},
+		"pose": "spit_r", "shake": 0.0, "bdmg": 0.0, "next": "fire2", "next_h": "flame", "lunge": 1.0, "shot": 1.0},
 	"fire2": {"dur": 0.34, "active": 0.12, "dmg": 10.0, "kb": Vector3.ZERO, "reach": 0.0, "radius": 0.0,
-		"pose": "spit_l", "shake": 0.0, "bdmg": 0.0, "next": "fire3", "lunge": 1.0, "shot": 1.0},
+		"pose": "spit_l", "shake": 0.0, "bdmg": 0.0, "next": "fire3", "next_h": "flame", "lunge": 1.0, "shot": 1.0},
 	"fire3": {"dur": 0.55, "active": 0.2, "dmg": 18.0, "kb": Vector3.ZERO, "reach": 0.0, "radius": 0.0,
-		"pose": "spit", "shake": 0.0, "bdmg": 0.0, "next": "", "lunge": 0.0, "shot": 1.7},
+		"pose": "spit", "shake": 0.0, "bdmg": 0.0, "next": "", "next_h": "flame", "lunge": 0.0, "shot": 1.7},
 	"flame": {"dur": 1.5, "active": 0.28, "dmg": 5.5, "kb": Vector3.ZERO, "reach": 0.0, "radius": 0.0,
 		"pose": "flame", "shake": 0.0, "bdmg": 0.0, "next": "", "lunge": 0.0, "stream": 1.0},
 }
@@ -90,8 +129,18 @@ var rage := 0.0
 var rage_max := RAGE_MAX
 ## How often each rage skill was used this stage (for tests and stats).
 var rage_uses := {}
+## How often each combo special (ATTACKS with "combo") was used this stage.
+var combo_uses := {}
 var atk: Dictionary = {}
+var _atk_name := ""
 var _atk_done := false
+## Time left before light/heavy (and before rage skills) work again.
+var _attack_cd := 0.0
+var _rage_cd := 0.0
+## Takeoff crouch time left (> 0 while crouching to jump), and how fast the
+## kaiju was falling just before it landed.
+var _jump_squat := 0.0
+var _fall_speed := 0.0
 var _buffered := ""
 var _buffer_t := 0.0
 var _dodge_cd := 0.0
@@ -131,6 +180,11 @@ var _held: Node3D
 var _flame_fx: GPUParticles3D
 var _flame_light: OmniLight3D
 var _flame_ticks := 0
+## How long the current flame pours (grows while heavy is held).
+var _stream_len := 0.0
+## Jump attacks used since leaving the ground, and who a rush already rammed.
+var _air_moves := 0
+var _rush_hit: Array = []
 
 
 func _ready() -> void:
@@ -367,6 +421,10 @@ func _physics_process(delta: float) -> void:
 	state_t += delta * (RAGE_ATTACK_SPEED if raging and state == S.ATTACK and not atk.get("rage", false) else 1.0)
 	invuln = maxf(invuln - delta, 0.0)
 	_dodge_cd = maxf(_dodge_cd - delta, 0.0)
+	_attack_cd = maxf(_attack_cd - delta, 0.0)
+	_rage_cd = maxf(_rage_cd - delta, 0.0)
+	if not is_on_floor():
+		_fall_speed = maxf(-velocity.y, 0.0)
 	_passives(delta)
 	_read_buffer(delta)
 	var input := Vector2(Input.get_axis(_act("move_left"), _act("move_right")), Input.get_axis(_act("move_up"), _act("move_down")))
@@ -433,6 +491,17 @@ func _passives(delta: float) -> void:
 func _set_state(s: S) -> void:
 	if _flame_fx:
 		_stop_flame()
+	_jump_squat = 0.0
+	# Leaving an attack (not chaining into the next one) starts its recovery.
+	if state == S.ATTACK and s != S.ATTACK:
+		if atk.get("rage", false):
+			_rage_cd = ATTACK_RECOVERY.get(_atk_name, 0.5)
+		else:
+			_attack_cd = ATTACK_RECOVERY.get(_atk_name, 0.2)
+	elif state == S.BEAM and s != S.BEAM:
+		_rage_cd = ATTACK_RECOVERY["rage_attack"]
+	elif state == S.STOMP and s != S.STOMP:
+		_attack_cd = ATTACK_RECOVERY["stomp"]
 	state = s
 	state_t = 0.0
 
@@ -463,6 +532,11 @@ func _read_buffer(delta: float) -> void:
 			else:
 				_buffered = a
 				_buffer_t = 0.25
+	# In rage mode, holding light keeps spitting fireballs (each one still
+	# waits for the attack before it and its recovery).
+	if raging and _buffered == "" and _special_held < 0.0 and Input.is_action_pressed(_act("light")):
+		_buffered = "light"
+		_buffer_t = 0.05
 
 
 func _consume() -> String:
@@ -473,25 +547,43 @@ func _consume() -> String:
 
 func _state_free(input: Vector2) -> Vector3:
 	face_toward(input.x)
+	if _jump_squat > 0.0:
+		_jump_squat -= get_physics_process_delta_time()
+		if _jump_squat <= 0.0 and is_on_floor():
+			velocity.y = JUMP_VEL
+			FX.dust(global_position, 0.9)
+			rumble(0.15, 0.1, 0.08)
 	match _buffered:
 		"jump":
-			_consume()
-			if is_on_floor():
-				velocity.y = JUMP_VEL
+			if is_on_floor() and _jump_squat <= 0.0:
+				_consume()
+				_jump_squat = JUMP_SQUAT
+				FX.dust(global_position, 0.5)
 				Game.track("jumps")
 		"light", "heavy":
-			var b := _consume()
-			if not is_on_floor():
-				_start_stomp()
-			elif b == "heavy" and weapon == "" and _grab_weapon():
+			# While recovering from an attack (or crouching to jump) the press
+			# waits in the buffer instead of starting another attack.
+			if _jump_squat > 0.0 or (_attack_cd > 0.0 and is_on_floor()):
 				pass
-			elif weapon != "":
-				_start_attack("swing1" if b == "light" else "throw")
-			elif raging:
-				_start_attack("fire1" if b == "light" else "flame")
 			else:
-				_start_attack("light1" if b == "light" else "heavy")
-			return Vector3.ZERO
+				var b := _consume()
+				if not is_on_floor():
+					if b == "heavy":
+						_start_stomp()
+					elif _air_moves < AIR_MOVES:
+						_air_moves += 1
+						velocity.y = maxf(velocity.y, 7.0)
+						_start_attack("sky_claw")
+				elif raging:
+					# Rage mode always breathes fire, even with a weapon in hand.
+					_start_attack("fire1" if b == "light" else "flame")
+				elif b == "heavy" and weapon == "" and _grab_weapon():
+					pass
+				elif weapon != "":
+					_start_attack("swing1" if b == "light" else "throw")
+				else:
+					_start_attack("light1" if b == "light" else "heavy")
+				return Vector3.ZERO
 		"dodge":
 			if _dodge_cd <= 0.0:
 				_consume()
@@ -509,8 +601,10 @@ func _state_free(input: Vector2) -> Vector3:
 					add_rage(3.0 * hits)
 				_set_state(S.DODGE)
 		"rage_strike", "rage_roar", "rage_attack":
-			var skill: String = _consume().trim_prefix("rage_")
-			if _use_rage_skill(skill) and state != S.FREE:
+			# Rage skills wait out their own cooldown in the buffer too.
+			if _rage_cd > 0.0:
+				pass
+			elif _use_rage_skill(_consume().trim_prefix("rage_")) and state != S.FREE:
 				return Vector3.ZERO
 		"rage_mode":
 			_consume()
@@ -529,8 +623,17 @@ func _state_free(input: Vector2) -> Vector3:
 
 func _start_attack(attack_name: String) -> void:
 	atk = ATTACKS[attack_name]
+	_atk_name = attack_name
 	_atk_done = false
+	_stream_len = float(atk.get("stream", 0.0))
+	if atk.has("stream"):
+		# Wind-up: the mouth glows and sucks in sparks before the flames come.
+		FX.mouth_charge(to_global(_mouth_pos()) + Vector3(facing * 0.6, 0, 0), float(atk["active"]) / RAGE_ATTACK_SPEED)
+	_rush_hit.clear()
 	_set_state(S.ATTACK)
+	if atk.has("combo"):
+		combo_uses[attack_name] = int(combo_uses.get(attack_name, 0)) + 1
+		FX.callout(global_position + Vector3(0, 7.5, 0), atk["combo"], color())
 
 
 func _state_attack() -> Vector3:
@@ -539,24 +642,33 @@ func _state_attack() -> Vector3:
 		_atk_done = true
 		_do_hit()
 	# The flame stream holds the kaiju in place until it has burnt out.
-	var streaming: bool = atk.has("stream") and state_t < active + float(atk["stream"])
+	if atk.has("rush") and state_t < active:
+		_rush_tick()
+	var streaming: bool = atk.has("stream") and state_t < active + _stream_len
 	if streaming and state_t >= active:
+		# Held heavy keeps the flame going while there is rage to burn.
+		if Input.is_action_pressed(_act("heavy")) and raging and _stream_len < FLAME_MAX \
+				and state_t + FLAME_TICK > active + _stream_len:
+			_stream_len = minf(_stream_len + FLAME_TICK, FLAME_MAX)
+		if state_t > active + float(atk["stream"]):
+			rage = maxf(rage - FLAME_DRAIN * get_physics_process_delta_time(), 0.0)
+			rage_changed.emit(rage, rage_max)
 		_flame_update()
 	elif _flame_fx:
 		_stop_flame()
 	if state_t >= active and not streaming:
 		var next: String = atk["next"]
-		var armed := weapon != ""
+		var armed := weapon != "" and not raging
 		if _buffered == "light" and next != "" and (armed or atk["pose"] != "swing"):
 			_consume()
 			_start_attack(next)
-		elif _buffered == "heavy" and not atk["pose"] in ["slam", "throw", "flame"] and not atk.get("rage", false):
+		elif _buffered == "heavy" and atk.get("next_h", "") != "":
 			_consume()
-			_start_attack("throw" if armed else ("flame" if raging else "heavy"))
+			_start_attack("throw" if armed else ("flame" if raging else String(atk["next_h"])))
 		elif _buffered.begins_with("rage_") and not atk.get("rage", false):
 			# Rage skills cut the recovery of a normal attack short.
 			_set_state(S.FREE)
-		elif state_t >= atk["dur"]:
+		elif state_t >= float(atk["dur"]) + _stream_len - float(atk.get("stream", 0.0)):
 			_set_state(S.FREE)
 	if state_t < active:
 		return Vector3(float(atk.get("lunge", 3.5)) * facing, 0, 0)
@@ -652,17 +764,34 @@ func _do_hit() -> void:
 	if atk.has("stream"):
 		_start_flame()
 		return
+	if atk["pose"] == "claw_up":
+		_sky_claw()
+		return
 	var reach: float = atk["reach"]
 	var center := global_position + Vector3(facing * reach, 3.2, 0)
 	if atk["pose"] == "spin" or atk["pose"] == "roar":
 		center = global_position + Vector3(0, 2.6, 0)
 	var rage_skill: bool = atk.get("rage", false)
 	var dmg: float = atk["dmg"] * (_special_power() if rage_skill else power * _boost())
-	var finisher: bool = atk["pose"] == "spin" or atk["pose"] == "slam"
+	var finisher: bool = atk["pose"] in ["spin", "slam", "crush", "rush"]
 	# Fire goes first so the punch's own knockback wins. Fire hits count as
 	# hits but give no rage, so rage mode can't feed itself.
 	var fire_hits := _fire_burst(center, atk["radius"], dmg, finisher) if raging and not rage_skill else 0
 	var hits := strike(center, atk["radius"], dmg, atk["kb"], "enemies", atk["bdmg"] * power * _bdmg())
+	if atk["pose"] == "spin":
+		FX.shockwave(global_position, atk["radius"] + 1.0, color())
+	if atk["pose"] == "rush":
+		FX.shockwave(center - Vector3(0, 3.0, 0), 4.5, color())
+		FX.dust(center - Vector3(0, 3.0, 0), 1.2)
+		FX.debris_burst(center, 0.8)
+	if atk["pose"] == "crush":
+		var ground := global_position + Vector3(facing * 3.4, 0, 0)
+		FX.shockwave(ground, 8.0, color())
+		FX.shockwave(ground, 5.0, Color(1.0, 0.8, 0.5))
+		FX.dust(ground, 2.0)
+		FX.debris_burst(ground + Vector3(0, 1, 0), 1.4)
+		rumble(0.6, 0.9, 0.3)
+		_eruption_line(global_position.x, facing, 5, 16.0 * power * _boost())
 	if atk["pose"] == "slam":
 		FX.shockwave(global_position + Vector3(facing * 3.0, 0, 0), 5.0, Color(1.0, 0.8, 0.5))
 		FX.dust(global_position + Vector3(facing * 3.0, 0, 0), 1.2)
@@ -700,7 +829,8 @@ func _fire_burst(center: Vector3, radius: float, dmg: float, finisher: bool) -> 
 	var hits := strike(c, r, dmg * FIRE_DMG, Vector3(6, 6, 0), "enemies", dmg * FIRE_DMG * _bdmg())
 	for t in get_tree().get_nodes_in_group("enemies"):
 		if not t.dead and t.hit_center().distance_to(c) <= r + t.hit_radius:
-			t.apply_burn(dmg * FIRE_DMG * 0.25, 2.0)
+			if t.has_method("apply_burn"):
+				t.apply_burn(dmg * FIRE_DMG * 0.25, 2.0)
 	FX.fire_burst(c, r)
 	if finisher:
 		Game.shake(0.25)
@@ -728,14 +858,16 @@ func _spit_fireball(size: float, dmg: float) -> void:
 ## Heavy attack in rage mode: the kaiju plants its feet and sprays flame.
 func _start_flame() -> void:
 	_flame_ticks = 0
-	_flame_fx = FX.fire_stream(Vector3(facing, -0.22, 0).normalized(), 30.0, 7.0, 3.2, 0.42, 220, true)
+	_flame_fx = FX.flame_jet(Vector3(facing, -0.2, 0).normalized(), 32.0, 3.4, 0.42)
 	if _flame_fx:
 		_flame_light = OmniLight3D.new()
-		_flame_light.light_color = Color(1.0, 0.5, 0.15)
-		_flame_light.omni_range = 16.0
+		_flame_light.light_color = Color(1.0, 0.42, 0.1)
+		_flame_light.omni_range = 15.0
 		_flame_fx.add_child(_flame_light)
 	FX.fire_muzzle(to_global(_mouth_pos()), Vector3(facing, 0, 0), 1.6)
-	Game.shake(0.25)
+	FX.shockwave(global_position + Vector3(facing * 1.5, 0, 0), 4.0, Color(1.4, 0.45, 0.06))
+	Game.shake(0.35)
+	rumble(0.5, 0.6, 0.15)
 
 
 ## Keeps the flame at the mouth and hurts what it touches every FLAME_TICK.
@@ -744,8 +876,8 @@ func _flame_update() -> void:
 	if _flame_fx and is_instance_valid(_flame_fx):
 		_flame_fx.global_position = mouth
 		_flame_light.position = Vector3(facing * FLAME_LEN * 0.45, -1.0, 0)
-		_flame_light.light_energy = 9.0 + sin(state_t * 53.0) * 2.0 + sin(state_t * 31.0) * 1.5
-	var ticks := int(float(atk["stream"]) / FLAME_TICK)
+		_flame_light.light_energy = 6.0 + sin(state_t * 53.0) * 1.5 + sin(state_t * 31.0) * 1.0
+	var ticks := int(_stream_len / FLAME_TICK + 0.001)
 	while _flame_ticks < ticks and state_t >= float(atk["active"]) + _flame_ticks * FLAME_TICK:
 		_flame_ticks += 1
 		_flame_tick(mouth)
@@ -769,26 +901,84 @@ func _flame_tick(mouth: Vector3) -> void:
 				and absf(tc.y - flame_y) < 2.2 + FLAME_WIDTH * k + r:
 			if deal(t, dmg, Vector3(facing * 1.5, 0.4, 0)):
 				hits += 1
-				t.apply_burn(dmg * 0.4, 2.5)
+				if t.has_method("apply_burn"):
+					t.apply_burn(dmg * 0.4, 2.5)
 				if _flame_ticks % 3 == 1:
 					FX.fire_muzzle(Vector3(tc.x - facing * r, tc.y, tc.z), Vector3(0, 1, 0), 0.7)
 	if _flame_ticks % 2 == 1:
 		for b in get_tree().get_nodes_in_group("buildings"):
 			b.try_beam(Vector3(mouth.x, mouth.y - 2.0, mouth.z), facing, FLAME_LEN, dmg * 2.0 * _bdmg())
 	if _flame_ticks % 3 == 0:
-		var end := Vector3(mouth.x + facing * FLAME_LEN * 0.85, 0.6, mouth.z)
-		FX.fire_muzzle(end, Vector3(facing * 0.3, 1, 0), 1.0)
+		# The street catches fire where the flames lick it.
+		var end := Vector3(mouth.x + facing * FLAME_LEN * randf_range(0.55, 0.9), 0.6, mouth.z + randf_range(-0.8, 0.8))
+		FX.ground_fire(end, 1.0, 1.4)
 	# Fire hits count for the combo but, like all rage fire, give no rage.
 	for i in hits:
 		Game.register_hit()
-	if hits > 0:
-		Game.shake(0.08)
+	Game.shake(0.1 if hits > 0 else 0.05)
 
 
 func _stop_flame() -> void:
 	FX.stop_stream(_flame_fx)
 	_flame_fx = null
 	_flame_light = null
+
+
+## KAIJU RUSH: rams every enemy the charge runs into once on the way and
+## carries it along, so the final blow hits them all.
+func _rush_tick() -> void:
+	var c := global_position + Vector3(facing * 2.2, 3.0, 0)
+	var dmg: float = atk["dmg"] * 0.4 * power * _boost()
+	for t in get_tree().get_nodes_in_group("enemies"):
+		if t.dead or t in _rush_hit or t.hit_center().distance_to(c) > 2.8 + t.hit_radius:
+			continue
+		_rush_hit.append(t)
+		if deal(t, dmg, Vector3(facing * 24.0, 3.0, 0)):
+			FX.hit_spark(t.hit_center(), dmg)
+			Game.register_hit()
+			Game.shake(0.15)
+			add_rage(dmg * 0.45)
+
+
+## SKY CLAW: slashes overhead and sends a claw wave flying up and ahead that
+## homes in on aircraft (see SkyWave).
+func _sky_claw() -> void:
+	var c := global_position + Vector3(facing * atk["reach"], 4.6, 0)
+	var dmg: float = atk["dmg"] * power * _boost()
+	var hits := 0
+	for t in get_tree().get_nodes_in_group("enemies"):
+		if not t.dead and t.hit_center().distance_to(c) <= atk["radius"] + t.hit_radius:
+			if deal(t, dmg * (AIR_BONUS if t is Flyer else 1.0), Vector3(facing * 6.0, 12.0, 0)):
+				hits += 1
+				FX.hit_spark(t.hit_center(), dmg)
+	var wave := SkyWave.new()
+	wave.shooter = self
+	wave.dir = facing
+	wave.damage = dmg * 1.2
+	wave.tint = color()
+	get_parent().add_child(wave)
+	wave.global_position = c + Vector3(facing * 1.0, 0.5, 0)
+	FX.energy(c, color())
+	if hits > 0:
+		Game.shake(atk["shake"])
+		Game.hitstop(0.05)
+		for i in hits:
+			Game.register_hit()
+		add_rage(dmg * 0.45 * hits)
+
+
+func _on_land() -> void:
+	super._on_land()
+	_air_moves = 0
+	# The harder the fall, the bigger the thud (the ground pound has its own).
+	var k := clampf(_fall_speed / JUMP_VEL, 0.0, 1.6)
+	if state != S.STOMP and k > 0.5:
+		FX.dust(global_position, 0.5 + 0.6 * k)
+		FX.shockwave(global_position, 2.0 + 2.5 * k, Color(0.9, 0.85, 0.75))
+		Game.shake(0.1 * k)
+		rumble(0.2 * k, 0.35 * k, 0.12)
+	model.land(k)
+	_fall_speed = 0.0
 
 
 func _bdmg() -> float:
@@ -822,15 +1012,29 @@ func _chain_lightning(from_pos: Vector3, dmg: float) -> void:
 		src = e.hit_center()
 
 
+## Jump + heavy: GROUND POUND. Dives down and hits everything around the
+## landing spot, with a weaker outer ring.
 func _start_stomp() -> void:
-	velocity.y = -42.0
+	velocity.y = -46.0
 	_set_state(S.STOMP)
 
 
 func _stomp_land() -> void:
 	var st := 1.0 + _m("stomp") / 100.0
-	var hits := strike(global_position + Vector3(0, 1.2, 0), 5.5 * st, 16.0 * power * _boost() * st, Vector3(10, 12, 0), "enemies", 30.0 * power * _bdmg())
-	FX.shockwave(global_position, 7.0 * st)
+	var c := global_position + Vector3(0, 1.2, 0)
+	var dmg := 30.0 * power * _boost() * st
+	var hits := strike(c, 7.0 * st, dmg, Vector3(10, 14, 0), "enemies", 55.0 * power * _bdmg())
+	for t in get_tree().get_nodes_in_group("enemies"):
+		var d: float = t.hit_center().distance_to(c) - t.hit_radius
+		if not t.dead and d > 7.0 * st and d <= 11.0 * st and absf(t.hit_center().y - c.y) < 5.0:
+			if deal(t, dmg * 0.35, Vector3(signf(t.global_position.x - global_position.x) * 6.0, 6.0, 0)):
+				hits += 1
+	combo_uses["pound"] = int(combo_uses.get("pound", 0)) + 1
+	FX.callout(global_position + Vector3(0, 7.5, 0), "GROUND POUND", color())
+	FX.shockwave(global_position, 7.0 * st, color())
+	FX.shockwave(global_position, 11.0 * st)
+	FX.debris_burst(global_position + Vector3(0, 0.8, 0), 1.3)
+	rumble(0.5, 0.8, 0.25)
 	if _has("meteor"):
 		for i in 3:
 			_drop_meteor(global_position + Vector3(facing * (4.0 + i * 4.0), 0, randf_range(-2.0, 2.0)), 0.5 + i * 0.18, 18.0 * power * _boost())
@@ -1038,6 +1242,8 @@ func _animate(delta: float) -> void:
 	model.walk_amount = clampf(spd / SPEED, 0.0, 1.0) if (on_floor and state == S.FREE) else 0.0
 	model.glow = 1.0 if raging else rage / rage_max * 0.7
 	model.eye_glow = 1.0 if (state == S.BEAM or state == S.SUPER or raging) else 0.0
+	model.airborne = not on_floor
+	model.crouch = 1.0 - _jump_squat / JUMP_SQUAT if _jump_squat > 0.0 else 0.0
 	var ar := 0.25
 	var al := 0.25
 	var jaw := 0.0
@@ -1089,8 +1295,8 @@ func _animate(delta: float) -> void:
 					lean = lerpf(-0.35, 0.4, p * p) if after == 0.0 else lerpf(0.4, 0.0, after)
 				"flame":
 					# Rears back, then braces and pours fire out with a shudder.
-					var pour := state_t >= active and state_t < active + float(atk["stream"])
-					jaw = p if after == 0.0 else (1.0 if pour else lerpf(1.0, 0.0, minf((state_t - active - float(atk["stream"])) * 4.0, 1.0)))
+					var pour := state_t >= active and state_t < active + _stream_len
+					jaw = p if after == 0.0 else (1.0 if pour else lerpf(1.0, 0.0, minf((state_t - active - _stream_len) * 4.0, 1.0)))
 					lean = lerpf(0.0, -0.4, p) if after == 0.0 else (0.25 + sin(state_t * 40.0) * 0.04 if pour else lerpf(0.25, 0.0, after))
 					ar = 1.1 if pour else 0.6
 					al = ar
@@ -1099,6 +1305,27 @@ func _animate(delta: float) -> void:
 					ar = 2.2
 					al = 2.2
 					lean = -0.35 if after == 0.0 else lerpf(-0.35, 0.0, after)
+				"rush":
+					# Head down, shoulders first.
+					ar = 0.9
+					al = 0.9
+					jaw = 0.6
+					lean = 0.55 if after == 0.0 else lerpf(0.55, 0.0, after)
+				"claw_up":
+					ar = lerpf(-0.4, 3.0, p) if after == 0.0 else lerpf(3.0, 1.2, after)
+					al = lerpf(-0.2, 2.6, p * p) if after == 0.0 else lerpf(2.6, 1.0, after)
+					lean = lerpf(0.1, -0.45, p) if after == 0.0 else lerpf(-0.45, 0.0, after)
+					jaw = p
+				"crush":
+					if after == 0.0:
+						ar = lerpf(0.3, 3.3, minf(p * 1.5, 1.0))
+						al = ar
+						lean = -0.4 * p
+						jaw = p
+					else:
+						ar = lerpf(0.9, 0.4, after)
+						al = ar
+						lean = lerpf(0.7, 0.0, after)
 				"slam":
 					if after == 0.0:
 						ar = lerpf(0.3, 3.0, p)

@@ -76,9 +76,10 @@ func _ready() -> void:
 	_controls = _label(root, "Players 2-4: press B on another controller to join\n" +
 		"Move: WASD / stick    Jump: Space / B    Light: J / Y    Heavy: K / X\n" +
 		"Dodge: Shift / A    Super: U key / ZL    Pause: Esc / +\n" +
-		"Rage skills: hold L / R and press J / Y (strike), Space / B (roar) or K / X (rage attack). Tap L / R for rage mode (fire attacks)\n" +
+		"Rage skills: hold L / R and press J / Y (strike), Space / B (roar) or K / X (rage attack)\n" +
+		"Rage mode: tap L / R, then hold J / Y to spit fireballs or hold K / X to spray fire\n" +
 		"Knock down buildings, then press heavy (K / X) on the wreckage to pick up a weapon",
-		Vector2(48, 895), 22, Color(1, 1, 1, 0.85))
+		Vector2(48, 870), 22, Color(1, 1, 1, 0.85))
 	_controls.visible = bool(Game.settings["hints"])
 
 	_pause_panel = _make_pause(root)
