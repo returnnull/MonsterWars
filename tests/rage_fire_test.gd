@@ -62,6 +62,46 @@ func _ready() -> void:
 	near.queue_free()
 	await _wait(0.3)
 
+	# Holding heavy keeps the flame pouring; letting go ends it.
+	_rage()
+	await _wait(0.5)
+	var held_len := await _flame_held(2.5)
+	_rage()
+	await _wait(1.3)
+	var tap_len := await _flame_held(0.05)
+	_check("holding heavy keeps spraying", held_len > 2.0 and tap_len < 1.2,
+		"held %.1fs vs tap %.1fs" % [held_len, tap_len])
+
+	# Holding light keeps spitting fireballs.
+	_rage()
+	await _wait(1.3)
+	var balls := 0
+	Input.action_press("p0_light")
+	var t := 0.0
+	var last := {}
+	while t < 2.0:
+		await get_tree().physics_frame
+		t += get_physics_process_delta_time()
+		if p.state == Player.S.ATTACK and p.atk != last and p.atk.has("shot"):
+			balls += 1
+		last = p.atk if p.state == Player.S.ATTACK else {}
+	Input.action_release("p0_light")
+	_check("holding light spits fireballs", balls >= 3, "%d fireballs in 2s" % balls)
+
+	# A building piece in hand doesn't stop the fire.
+	await _wait(1.3)
+	p._set_weapon("girder")
+	_rage()
+	p._buffered = "heavy"
+	p._buffer_t = 0.3
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	_check("rage fire even with a weapon", p.state == Player.S.ATTACK and p.atk.has("stream"), "%s" % p._atk_name)
+	while p.state == Player.S.ATTACK:
+		await get_tree().physics_frame
+	p._set_weapon("")
+	await _wait(1.3)
+
 	# Rage attacks play faster (count frames for the same attack).
 	var frames := []
 	for raging in [false, true]:
@@ -85,6 +125,24 @@ func _rage() -> void:
 	p.rage = 100.0
 	if not p.raging:
 		p._enter_rage_mode()
+
+
+## Presses heavy in rage mode, holds it `hold` seconds, and returns how long
+## the flame poured.
+func _flame_held(hold: float) -> float:
+	Input.action_press("p0_heavy")
+	var t := 0.0
+	var poured := 0.0
+	while t < hold or p.state == Player.S.ATTACK:
+		await get_tree().physics_frame
+		var dt := get_physics_process_delta_time()
+		t += dt
+		if t >= hold:
+			Input.action_release("p0_heavy")
+		if p._flame_fx != null:
+			poured += dt
+	Input.action_release("p0_heavy")
+	return poured
 
 
 func _attack(attack_name: String) -> void:

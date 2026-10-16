@@ -41,6 +41,11 @@ const FIRE_DMG := 0.6
 const FLAME_LEN := 12.0
 const FLAME_WIDTH := 2.4
 const FLAME_TICK := 0.1
+## Holding heavy keeps the flame pouring past its normal length (the
+## "stream" of the flame attack) up to FLAME_MAX seconds, burning
+## FLAME_DRAIN extra rage per second on top of the rage mode drain.
+const FLAME_MAX := 4.0
+const FLAME_DRAIN := 8.0
 ## A special press held longer than this without a combo does nothing.
 const SPECIAL_TAP := 0.45
 ## Combos. "next" is the attack a light press chains into, "next_h" the one
@@ -175,6 +180,8 @@ var _held: Node3D
 var _flame_fx: GPUParticles3D
 var _flame_light: OmniLight3D
 var _flame_ticks := 0
+## How long the current flame pours (grows while heavy is held).
+var _stream_len := 0.0
 ## Jump attacks used since leaving the ground, and who a rush already rammed.
 var _air_moves := 0
 var _rush_hit: Array = []
@@ -521,6 +528,11 @@ func _read_buffer(delta: float) -> void:
 			else:
 				_buffered = a
 				_buffer_t = 0.25
+	# In rage mode, holding light keeps spitting fireballs (each one still
+	# waits for the attack before it and its recovery).
+	if raging and _buffered == "" and _special_held < 0.0 and Input.is_action_pressed(_act("light")):
+		_buffered = "light"
+		_buffer_t = 0.05
 
 
 func _consume() -> String:
@@ -557,12 +569,13 @@ func _state_free(input: Vector2) -> Vector3:
 						_air_moves += 1
 						velocity.y = maxf(velocity.y, 7.0)
 						_start_attack("sky_claw")
+				elif raging:
+					# Rage mode always breathes fire, even with a weapon in hand.
+					_start_attack("fire1" if b == "light" else "flame")
 				elif b == "heavy" and weapon == "" and _grab_weapon():
 					pass
 				elif weapon != "":
 					_start_attack("swing1" if b == "light" else "throw")
-				elif raging:
-					_start_attack("fire1" if b == "light" else "flame")
 				else:
 					_start_attack("light1" if b == "light" else "heavy")
 				return Vector3.ZERO
@@ -606,6 +619,7 @@ func _start_attack(attack_name: String) -> void:
 	atk = ATTACKS[attack_name]
 	_atk_name = attack_name
 	_atk_done = false
+	_stream_len = float(atk.get("stream", 0.0))
 	if atk.has("stream"):
 		# Wind-up: the mouth glows and sucks in sparks before the flames come.
 		FX.mouth_charge(to_global(_mouth_pos()) + Vector3(facing * 0.6, 0, 0), float(atk["active"]) / RAGE_ATTACK_SPEED)
@@ -624,14 +638,21 @@ func _state_attack() -> Vector3:
 	# The flame stream holds the kaiju in place until it has burnt out.
 	if atk.has("rush") and state_t < active:
 		_rush_tick()
-	var streaming: bool = atk.has("stream") and state_t < active + float(atk["stream"])
+	var streaming: bool = atk.has("stream") and state_t < active + _stream_len
 	if streaming and state_t >= active:
+		# Held heavy keeps the flame going while there is rage to burn.
+		if Input.is_action_pressed(_act("heavy")) and raging and _stream_len < FLAME_MAX \
+				and state_t + FLAME_TICK > active + _stream_len:
+			_stream_len = minf(_stream_len + FLAME_TICK, FLAME_MAX)
+		if state_t > active + float(atk["stream"]):
+			rage = maxf(rage - FLAME_DRAIN * get_physics_process_delta_time(), 0.0)
+			rage_changed.emit(rage, rage_max)
 		_flame_update()
 	elif _flame_fx:
 		_stop_flame()
 	if state_t >= active and not streaming:
 		var next: String = atk["next"]
-		var armed := weapon != ""
+		var armed := weapon != "" and not raging
 		if _buffered == "light" and next != "" and (armed or atk["pose"] != "swing"):
 			_consume()
 			_start_attack(next)
@@ -641,7 +662,7 @@ func _state_attack() -> Vector3:
 		elif _buffered.begins_with("rage_") and not atk.get("rage", false):
 			# Rage skills cut the recovery of a normal attack short.
 			_set_state(S.FREE)
-		elif state_t >= atk["dur"]:
+		elif state_t >= float(atk["dur"]) + _stream_len - float(atk.get("stream", 0.0)):
 			_set_state(S.FREE)
 	if state_t < active:
 		return Vector3(float(atk.get("lunge", 3.5)) * facing, 0, 0)
@@ -847,7 +868,7 @@ func _flame_update() -> void:
 		_flame_fx.global_position = mouth
 		_flame_light.position = Vector3(facing * FLAME_LEN * 0.45, -1.0, 0)
 		_flame_light.light_energy = 6.0 + sin(state_t * 53.0) * 1.5 + sin(state_t * 31.0) * 1.0
-	var ticks := int(float(atk["stream"]) / FLAME_TICK)
+	var ticks := int(_stream_len / FLAME_TICK + 0.001)
 	while _flame_ticks < ticks and state_t >= float(atk["active"]) + _flame_ticks * FLAME_TICK:
 		_flame_ticks += 1
 		_flame_tick(mouth)
@@ -1263,8 +1284,8 @@ func _animate(delta: float) -> void:
 					lean = lerpf(-0.35, 0.4, p * p) if after == 0.0 else lerpf(0.4, 0.0, after)
 				"flame":
 					# Rears back, then braces and pours fire out with a shudder.
-					var pour := state_t >= active and state_t < active + float(atk["stream"])
-					jaw = p if after == 0.0 else (1.0 if pour else lerpf(1.0, 0.0, minf((state_t - active - float(atk["stream"])) * 4.0, 1.0)))
+					var pour := state_t >= active and state_t < active + _stream_len
+					jaw = p if after == 0.0 else (1.0 if pour else lerpf(1.0, 0.0, minf((state_t - active - _stream_len) * 4.0, 1.0)))
 					lean = lerpf(0.0, -0.4, p) if after == 0.0 else (0.25 + sin(state_t * 40.0) * 0.04 if pour else lerpf(0.25, 0.0, after))
 					ar = 1.1 if pour else 0.6
 					al = ar
