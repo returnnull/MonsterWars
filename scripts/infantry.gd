@@ -13,8 +13,6 @@ var hp_mul := 1.0
 var dmg_mul := 1.0
 var speed := 5.5
 var dmg := 3.0
-## Allowed x range for its own movement (set by main to the wave arena).
-var arena := Vector2(-INF, INF)
 
 var _vis: Node3D
 var _legs: Array[Node3D] = []
@@ -106,7 +104,7 @@ func _think(delta: float, p: Kaiju) -> Vector3:
 		if absf(dz) > 0.5:
 			mv.z = signf(dz) * speed * 0.6
 		_cd -= delta
-		if _cd <= 0.0 and adx < _band.y + 4.0:
+		if _cd <= 0.0 and adx < _band.y + 4.0 and in_arena():
 			_act_t = 0.0
 			_shots = 0
 	# Soldiers come in over the arena gates; inside they stay in the arena.

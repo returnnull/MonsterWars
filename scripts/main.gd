@@ -216,6 +216,7 @@ func make_enemy(kind: String, cx: float, side: float, half: float = 20.0) -> Nod
 			f.def = def
 			f.hp_mul = hp_mul
 			f.dmg_mul = dmg_mul
+			f.arena = Vector2(cx - half, cx + half)
 			f.position = Vector3(cx + side * (half + 6.0), 14.0 if kind != "bomber" else 9.0, -2.0)
 			return f
 		"infantry":
@@ -248,6 +249,7 @@ func make_enemy(kind: String, cx: float, side: float, half: float = 20.0) -> Nod
 		b.hp_mul = _player_mul() * float(diff["hp"])
 	else:
 		b.def = def
+	b.arena = Vector2(cx - half, cx + half)
 	b.x_min = cx - half - 2.5
 	b.x_max = cx + half + 2.5
 	b.position = Vector3(cx + side * (half + 2.0), 0.2, randf_range(-3.0, 2.0))
