@@ -1,7 +1,8 @@
 extends Node
-## Dev check: in rage mode player 1's normal attacks also burst into flames,
-## hurting and burning an enemy the punch itself can't reach, play faster,
-## and the fire gives no rage back. Prints PASS/FAIL per step.
+## Dev check for rage mode fire. Light spits a fireball that flies far out
+## of punch reach and burns what it hits; heavy stops the kaiju and sprays
+## flame ahead, doing more damage than a fireball; fire gives no rage back
+## and rage attacks play faster. Prints PASS/FAIL per step.
 
 var main: Node
 var p: Player
@@ -20,48 +21,89 @@ func _ready() -> void:
 	for e in get_tree().get_nodes_in_group("enemies"):
 		e.queue_free()
 	await _wait(0.3)
-	var frames_by_mode := []
+	p.facing = 1.0
+
+	# Normal light punch can't reach an enemy 14 units away.
+	var far := _enemy(14.0)
+	var hp0: float = far.hp
+	await _attack("light1")
+	await _wait(1.0)
+	_check("normal light misses far enemy", far.hp == hp0, "hp %.0f -> %.0f" % [hp0, far.hp])
+
+	_rage()
+	hp0 = far.hp
+	await _attack("fire1")
+	await _wait(1.0)
+	var fireball_dmg: float = hp0 - far.hp
+	_check("rage light fireball hits far enemy", fireball_dmg > 0.0 and far.burn_t > 0.0,
+		"dmg %.0f, burning %s" % [fireball_dmg, far.burn_t > 0.0])
+	_check("fire gives no rage", p.rage <= 100.0, "rage %.0f" % p.rage)
+	far.queue_free()
+
+	# Heavy flame: the kaiju stays put and burns an enemy in front of it.
+	var near := _enemy(7.0)
+	_rage()
+	hp0 = near.hp
+	var x0 := p.global_position.x
+	var moved := 0.0
+	p._start_attack("flame")
+	var saw_fx := false
+	while p.state == Player.S.ATTACK:
+		await get_tree().physics_frame
+		moved = maxf(moved, absf(p.global_position.x - x0))
+		saw_fx = saw_fx or p._flame_fx != null
+	var flame_dmg: float = hp0 - near.hp
+	_check("rage heavy sprays flame", saw_fx and p._flame_fx == null, "")
+	_check("flame hurts enemy ahead", flame_dmg > 0.0 and near.burn_t > 0.0, "dmg %.0f" % flame_dmg)
+	_check("heavy does more damage than light", flame_dmg > fireball_dmg * 2.0,
+		"flame %.0f vs fireball %.0f" % [flame_dmg, fireball_dmg])
+	_check("kaiju stands still while spraying", moved < 0.3, "moved %.2f" % moved)
+	_check("flame gives no rage", p.rage <= 100.0, "rage %.0f" % p.rage)
+	near.queue_free()
+	await _wait(0.3)
+
+	# Rage attacks play faster (count frames for the same attack).
+	var frames := []
 	for raging in [false, true]:
-		var far := _enemy()
-		# Just beyond the punch (reach 2.6, radius 2.3), inside the fire.
-		far.global_position.x = p.global_position.x + 2.6 + 2.3 + far.hit_radius + 1.2
-		await _wait(0.1)
-		p.facing = 1.0
-		p.rage = 100.0 if raging else 0.0
 		if raging:
-			p._enter_rage_mode()
-		var hp0: float = far.hp
-		p._start_attack("light1")
-		while p.state == Player.S.ATTACK:
-			await get_tree().physics_frame
-		var rage_after := p.rage
-		var hurt: bool = far.hp < hp0
-		var ok: bool = (hurt and far.burn_t > 0.0 and rage_after <= 100.0) if raging else not hurt
-		print("%s light punch just out of reach: %s (hp %.0f -> %.0f, burning %s, rage %.0f)" % [
-			"rage" if raging else "normal", "PASS" if ok else "FAIL", hp0, far.hp, far.burn_t > 0.0, rage_after])
-		far.queue_free()
-		await _wait(0.5)
-		# With nobody to hit (no hitstop), count frames for a heavy attack.
-		var frames := 0
-		p._start_attack("heavy")
-		while p.state == Player.S.ATTACK:
-			frames += 1
-			await get_tree().physics_frame
-		frames_by_mode.append(frames)
-		if raging:
+			_rage()
+		else:
 			p._exit_rage_mode()
-	var faster: bool = frames_by_mode[1] < frames_by_mode[0]
-	print("rage attacks faster: %s (heavy %d -> %d frames)" % ["PASS" if faster else "FAIL", frames_by_mode[0], frames_by_mode[1]])
+		# Let the hitstop from entering rage mode pass first.
+		await _wait(0.4)
+		var n := 0
+		p._start_attack("fire3")
+		while p.state == Player.S.ATTACK:
+			n += 1
+			await get_tree().physics_frame
+		frames.append(n)
+	_check("rage attacks faster", frames[1] < frames[0], "%d -> %d frames" % [frames[0], frames[1]])
 	get_tree().quit()
 
 
-func _enemy() -> Node3D:
+func _rage() -> void:
+	p.rage = 100.0
+	if not p.raging:
+		p._enter_rage_mode()
+
+
+func _attack(attack_name: String) -> void:
+	p._start_attack(attack_name)
+	while p.state == Player.S.ATTACK:
+		await get_tree().physics_frame
+
+
+func _check(what: String, ok: bool, info: String) -> void:
+	print("%s: %s (%s)" % [what, "PASS" if ok else "FAIL", info])
+
+
+func _enemy(dx: float) -> Node3D:
 	var e: Node3D = main.make_enemy("tank", p.global_position.x, 1.0)
 	main.add_child(e)
 	e.hp = 99999.0
 	e.max_hp = 99999.0
 	e.set_physics_process(false)
-	e.global_position = Vector3(p.global_position.x, 0.5, p.global_position.z)
+	e.global_position = Vector3(p.global_position.x + dx, 0.5, p.global_position.z)
 	return e
 
 
