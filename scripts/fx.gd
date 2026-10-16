@@ -192,6 +192,32 @@ static func shockwave(pos: Vector3, radius: float, color: Color = Color(0.6, 0.9
 	tw.chain().tween_callback(mi.queue_free)
 
 
+## The name of a combo special popping up over the kaiju that used it.
+static func callout(pos: Vector3, text: String, color: Color) -> void:
+	var w := _world()
+	if w == null:
+		return
+	var l := Label3D.new()
+	l.text = text
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.no_depth_test = true
+	l.render_priority = 10
+	l.pixel_size = 0.012
+	l.font_size = 72
+	l.outline_size = 20
+	l.modulate = color.lerp(Color.WHITE, 0.45)
+	l.outline_modulate = Color(0.05, 0.03, 0.02, 0.9)
+	w.add_child(l)
+	l.global_position = pos
+	l.scale = Vector3.ONE * 1.5
+	var tw := l.create_tween().set_parallel(true)
+	tw.tween_property(l, "scale", Vector3.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(l, "position:y", pos.y + 2.0, 1.0).set_ease(Tween.EASE_OUT)
+	tw.tween_property(l, "modulate:a", 0.0, 0.35).set_delay(0.65)
+	tw.tween_property(l, "outline_modulate:a", 0.0, 0.35).set_delay(0.65)
+	tw.chain().tween_callback(l.queue_free)
+
+
 static func light_flash(pos: Vector3, color: Color, energy_amount: float, light_range: float, duration: float) -> void:
 	var w := _world()
 	if w == null:
