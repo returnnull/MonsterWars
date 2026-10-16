@@ -586,6 +586,21 @@ static func pop(pos: Vector3, st: Dictionary, size: float) -> void:
 			FX.smoke(pos, 0.5 * size, st["smoke"])
 
 
+## A geyser of the element shooting straight up out of the street (MAGMOS'
+## Eruption): a column of flame and glowing sparks raining back down.
+static func trail_burst(pos: Vector3, st: Dictionary) -> void:
+	var col := FX._pm(Vector3.UP, 10.0, 14.0, 24.0, -14.0, 1.6, 3.0, 0.8, 0.8)
+	col.color_ramp = ramp(st)
+	col.scale_curve = FX._grow_curve()
+	FX._emit(pos, 40, 0.9, _soft(false), col)
+	var sp := FX._pm(Vector3.UP, 25.0, 14.0, 26.0, -30.0, 0.4, 0.9, 0.2, 0.6)
+	sp.particle_flag_align_y = true
+	sp.scale_curve = FX._shrink_curve()
+	FX._emit(pos, 24, 1.3, spark_mesh(st["spark"]), sp)
+	FX.light_flash(pos + Vector3(0, 4, 0), st["glow"], 8.0, 14.0, 0.4)
+	FX.smoke(pos + Vector3(0, 6, 0), 0.8, Color(0.16, 0.11, 0.09))
+
+
 ## Weapon swings in rage mode burst into the element (see Player._fire_burst).
 static func burst(pos: Vector3, radius: float, st: Dictionary) -> void:
 	var s := radius / 4.0

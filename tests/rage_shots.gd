@@ -26,6 +26,8 @@ func _ready() -> void:
 		await _light()
 	if what == "" or "heavy" in what:
 		await _heavy()
+	if "attack" in what:
+		await _attack()
 	if what == "" or "jump" in what:
 		await _jump()
 	get_tree().quit()
@@ -58,6 +60,22 @@ func _heavy() -> void:
 		await get_tree().physics_frame
 	await _wait(1.0)
 	e.queue_free()
+
+
+## The hero's rage attack (special + heavy).
+func _attack() -> void:
+	var e := _enemy(9.0)
+	var e2 := _enemy(16.0)
+	p._exit_rage_mode()
+	p.rage = 100.0
+	p._use_rage_skill("attack")
+	for f in 8:
+		await _wait(0.3)
+		_shot("attack", f)
+	while p.state == Player.S.BEAM:
+		await get_tree().physics_frame
+	e.queue_free()
+	e2.queue_free()
 
 
 func _jump() -> void:

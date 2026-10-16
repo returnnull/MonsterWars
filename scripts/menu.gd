@@ -681,8 +681,9 @@ func _set_hero(slot: int, hero: int) -> void:
 	d["bars"][0].value = 100.0 * float(h["hp"]) / 360.0
 	d["bars"][1].value = 100.0 * float(h["speed"]) / 1.3
 	d["bars"][2].value = 100.0 * float(h["power"]) / 1.3
-	d["special"].text = "Rage attack: %s\nSuper: %s" % [Content.SPECIAL_NAMES[h["special"]],
-		String(Skills.super_def(hero)["name"]).capitalize()]
+	var rs := RageStyle.for_hero(hero)
+	d["special"].text = "Rage attack: %s\nRage mode: %s / %s\nSuper: %s" % [Content.attack_name(hero),
+		String(rs["light"]).capitalize(), String(rs["heavy"]).capitalize(), String(Skills.super_def(hero)["name"]).capitalize()]
 	var pts := Game.free_points(hero)
 	d["lvl"].text = "LV %d%s" % [Game.hero_level(hero), ("   -   %d skill points  [X]" % pts) if pts > 0 else ""]
 
@@ -918,7 +919,7 @@ func _build_skills() -> void:
 		return int(round(Player.RAGE_SKILLS[skill] * (1.0 - minf(float(m.get("frugal", 0.0)), 50.0) / 100.0)))
 	_label(_root, "Rage %d:  Strike %d   Roar %d   %s %d   Rage mode %d+     Super special: %s" % [
 		int(Player.RAGE_MAX + float(m.get("deep_rage", 0.0))), price.call("strike"), price.call("roar"),
-		Content.SPECIAL_NAMES[h["special"]], price.call("attack"), price.call("mode"), super_def["name"]],
+		Content.attack_name(_sk_hero), price.call("attack"), price.call("mode"), super_def["name"]],
 		Vector2(150, 890), 26, Color(1.0, 0.8, 0.4))
 	var sel_block := Skills.buy_block(xp, ranks, _sk_sel)
 	var hint := _label(_root, "" if sel_block == "" else sel_block, Vector2(150, 935), 26, Color(1.0, 0.5, 0.4))

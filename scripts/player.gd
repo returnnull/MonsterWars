@@ -392,7 +392,8 @@ func _no_rage() -> void:
 func _roar() -> void:
 	Game.track("roars")
 	FX.shockwave(global_position, 9.0, color())
-	FX.shockwave(global_position, 5.0, Color(1.0, 0.9, 0.6))
+	FX.shockwave(global_position, 5.0, rage_style["glow"])
+	RageFX.burst(global_position + Vector3(0, 2.5, 0), 6.0, rage_style)
 	Game.shake(0.4)
 	for p in Game.living_players():
 		if p != self and p.global_position.distance_to(global_position) < 16.0:
@@ -509,6 +510,7 @@ func _set_state(s: S) -> void:
 			_attack_cd = ATTACK_RECOVERY.get(_atk_name, 0.2)
 	elif state == S.BEAM and s != S.BEAM:
 		_rage_cd = ATTACK_RECOVERY["rage_attack"]
+		_beam.visible = false
 	elif state == S.STOMP and s != S.STOMP:
 		_attack_cd = ATTACK_RECOVERY["stomp"]
 	state = s
@@ -815,8 +817,11 @@ func _do_hit() -> void:
 	if finisher and hits > 0 and _m("shock") > 0.0:
 		_chain_lightning(center, _m("shock") * power * _boost())
 	if atk["pose"] == "jab_r" and rage_skill:
+		# Rage strike: the blow bursts into the hero's element.
 		FX.shockwave(center - Vector3(0, 3.2, 0), 4.0, color())
-		FX.energy(center, color())
+		RageFX.burst(center, atk["radius"], rage_style)
+		for t in _targets_near(center, atk["radius"]):
+			_rage_effect(t, dmg, false)
 		FX.dust(global_position, 1.0)
 	if hits + fire_hits > 0:
 		rumble(0.3, 0.15 if dmg < 15.0 else 0.5, 0.1)
@@ -1120,19 +1125,28 @@ func _start_beam() -> void:
 	_set_state(S.BEAM)
 	_beam_tick = 0.0
 	_special_step = 0
+	_flame_ticks = 0
 	invuln = 0.0
 	Game.shake(0.3)
 	FX.energy(global_position + Vector3(facing * 2.0, 5.0, 0), color())
+	RageFX.charge(to_global(_mouth_pos()) + Vector3(facing * 0.6, 0, 0), rage_style, BEAM_CHARGE)
+	FX.callout(global_position + Vector3(0, 7.5, 0), rage_style["attack"], rage_style["glow"])
 
 
 ## Runs the hero's rage attack (paid for up front, see _use_rage_skill).
+## How it works comes from Content "special", how it looks and what it
+## does to enemies from the hero's RageStyle.
 func _state_beam(delta: float) -> void:
-	if _special == "nova":
-		_state_nova()
-		return
-	if _special == "quake":
-		_state_quake()
-		return
+	match _special:
+		"nova":
+			_state_nova()
+			return
+		"quake":
+			_state_quake()
+			return
+		"lightning":
+			_state_lightning(delta)
+			return
 	if state_t < BEAM_CHARGE:
 		return
 	_beam.visible = true
@@ -1141,6 +1155,10 @@ func _state_beam(delta: float) -> void:
 	var flicker := 1.0 + sin(state_t * 60.0) * 0.12
 	_beam.scale = Vector3(1, flicker, flicker)
 	_beam_light.light_energy = 6.0 * flicker
+	# The hero's own breath swirls round the beam (atomic fire, frost, water).
+	if _flame_fx == null:
+		_flame_fx = RageFX.jet(rage_style, Vector3(facing, 0, 0))
+	RageFX.jet_update(_flame_fx, rage_style, to_global(_mouth_pos()), facing, state_t)
 	_beam_tick -= delta
 	if _beam_tick <= 0.0:
 		_beam_tick = 0.1
@@ -1155,16 +1173,76 @@ func _end_special() -> void:
 	_set_state(S.FREE)
 
 
-## Three expanding energy blasts centred on the hero.
+## VOLTRA's LIGHTNING STORM: forked bolts leap from the mouth into the
+## enemies ahead and chain on, while lightning strikes down from the sky.
+func _state_lightning(delta: float) -> void:
+	if state_t < BEAM_CHARGE:
+		return
+	_beam_tick -= delta
+	if _beam_tick > 0.0:
+		if state_t >= _special_time:
+			_end_special()
+		return
+	_beam_tick = 0.15
+	_special_step += 1
+	var mouth := to_global(_mouth_pos())
+	var dmg := 7.0 * _special_power()
+	var foes: Array = get_tree().get_nodes_in_group("enemies").filter(func(e) -> bool:
+		var dx: float = (e.global_position.x - global_position.x) * facing
+		return not e.dead and dx > -2.0 and dx < 26.0)
+	foes.sort_custom(func(a, b) -> bool:
+		return absf(a.global_position.x - global_position.x) < absf(b.global_position.x - global_position.x))
+	if foes.is_empty():
+		var tip := mouth + Vector3(facing * randf_range(8.0, 20.0), randf_range(-4.0, -1.0), randf_range(-1.5, 1.5))
+		RageFX.bolt(mouth, tip, rage_style, 1.6)
+		RageFX.ground(Vector3(tip.x, 0, tip.z), rage_style, 1.0, 1.2)
+	else:
+		var first: Node3D = foes[_special_step % mini(foes.size(), 3)]
+		RageFX.bolt(mouth, first.hit_center(), rage_style, 1.8)
+		if deal(first, dmg, Vector3(facing * 3.0, 2.0, 0)):
+			Game.register_hit()
+			FX.hit_spark(first.hit_center(), dmg)
+			_rage_effect(first, dmg, true)
+		_chain_shock(first, dmg * 0.6, [first])
+	if _special_step % 3 == 0:
+		var target := global_position + Vector3(facing * randf_range(5.0, 22.0), 0, randf_range(-3.0, 1.5))
+		if not foes.is_empty():
+			var e: Node3D = foes[randi() % foes.size()]
+			target = Vector3(e.global_position.x, 0, e.global_position.z)
+		SuperFX.lightning_strike(target, rage_style)
+		var hits := strike(target + Vector3(0, 2.0, 0), 3.5, dmg * 1.5, Vector3(4, 10, 0), "enemies", 30.0 * _bdmg())
+		for i in hits:
+			Game.register_hit()
+	Game.shake(0.15)
+	rumble(0.3, 0.4, 0.1)
+	if state_t >= _special_time:
+		_end_special()
+
+
+## Expanding blasts centred on the hero, in the hero's element.
 func _state_nova() -> void:
 	var pulse_t := BEAM_CHARGE + 0.15 + _special_step * 0.6
 	var pulses := 5 if _has("long_special") else 3
 	if _special_step < pulses and state_t >= pulse_t:
 		_special_step += 1
 		var c := global_position + Vector3(0, 3.0, 0)
-		var hits := strike(c, 9.0, 18.0 * _special_power(), Vector3(14, 10, 0), "enemies", 45.0 * power * _bdmg())
+		var dmg := 18.0 * _special_power()
+		var targets := _targets_near(c, 9.0)
+		var hits := strike(c, 9.0, dmg, Vector3(14, 10, 0), "enemies", 45.0 * power * _bdmg())
+		for t in targets:
+			_rage_effect(t, dmg, false)
 		FX.shockwave(global_position, 10.0, color())
-		FX.energy(c, color())
+		SuperFX.nova_blast(global_position, 9.0, rage_style)
+		RageFX.burst(c, 6.0, rage_style)
+		match String(rage_style["effect"]):
+			"poison":
+				for i in 4:
+					RageFX.cloud(global_position + Vector3(randf_range(-7, 7), 1.8, randf_range(-2, 2)), rage_style, 1.2)
+			"leech":
+				RageFX.jet_tick(rage_style, c, facing, 9.0, 1, targets)
+				RageFX.ground(global_position, rage_style, 2.4, 1.5)
+			_:
+				RageFX.ground(global_position, rage_style, 2.4, 1.5)
 		Game.shake(0.5)
 		for i in hits:
 			Game.register_hit()
@@ -1172,7 +1250,8 @@ func _state_nova() -> void:
 		_end_special()
 
 
-## Stomps that send eruptions marching forward along the street.
+## Stomps that send eruptions of the hero's element marching forward along
+## the street: lava geysers, crystal spikes, bursts of red-hot scrap.
 func _state_quake() -> void:
 	var step_t := BEAM_CHARGE + _special_step * 0.2
 	var steps := 14 if _has("long_special") else 9
@@ -1180,12 +1259,25 @@ func _state_quake() -> void:
 		var x := global_position.x + facing * (3.0 + (_special_step % 9) * 4.5)
 		var c := Vector3(x, 1.5, global_position.z)
 		_special_step += 1
-		var hits := strike(c, 3.8, 14.0 * _special_power(), Vector3(6, 16, 0), "enemies", 0.0)
+		var dmg := 14.0 * _special_power()
+		var targets := _targets_near(c, 3.8)
+		var hits := strike(c, 3.8, dmg, Vector3(6, 16, 0), "enemies", 0.0)
+		for t in targets:
+			_rage_effect(t, dmg, false)
 		for b in get_tree().get_nodes_in_group("buildings"):
 			b.try_hit(Vector3(x, 1.5, clampf(global_position.z - 3.0, -7.6, 5.0)), 3.5, 40.0 * power * _bdmg())
 		FX.dust(c, 1.4)
 		FX.debris_burst(c, 1.2)
 		FX.shockwave(Vector3(x, 0, c.z), 4.0, color())
+		RageFX.ground(Vector3(x, 0, c.z), rage_style, 1.5, 1.8)
+		match String(rage_style["jet"]):
+			"spikes":
+				RageFX.spike(Vector3(x, 0, c.z + randf_range(-0.8, 0.8)), rage_style, 1.4)
+			"flame":
+				# A lava geyser shoots up out of the crack.
+				RageFX.trail_burst(Vector3(x, 0.5, c.z), rage_style)
+			_:
+				RageFX.pop(c + Vector3(0, 1.0, 0), rage_style, 1.4)
 		Game.shake(0.35)
 		for i in hits:
 			Game.register_hit()
@@ -1193,8 +1285,16 @@ func _state_quake() -> void:
 		_end_special()
 
 
+func _targets_near(c: Vector3, r: float) -> Array:
+	return get_tree().get_nodes_in_group("enemies").filter(func(t) -> bool:
+		return not t.dead and t.hit_center().distance_to(c) <= r + t.hit_radius)
+
+
 func _beam_damage() -> void:
 	var origin := global_position + Vector3(facing * 2.2, 4.85, 0)
+	_flame_ticks += 1
+	var dmg := 5.0 * _special_power()
+	var hit: Array = []
 	for t in get_tree().get_nodes_in_group("enemies"):
 		if t.dead:
 			continue
@@ -1202,9 +1302,16 @@ func _beam_damage() -> void:
 		var along := (tc.x - origin.x) * facing
 		var r: float = t.hit_radius
 		if along > -1.0 and along < BEAM_LEN and absf(tc.z - origin.z) < 2.5 + r and absf(tc.y - origin.y) < 3.0 + r:
-			if deal(t, 5.0 * _special_power(), Vector3(facing * 4.0, 1.0, 0)):
+			var kb := Vector3(facing * (9.0 if rage_style["effect"] == "push" else 4.0), 1.0, 0)
+			if deal(t, dmg, kb):
 				Game.register_hit()
+				hit.append(t)
+				_rage_effect(t, dmg, true)
 				FX.hit_spark(Vector3(tc.x - facing * r, origin.y, tc.z), 6.0)
+				if _flame_ticks % 3 == 0:
+					RageFX.pop(Vector3(tc.x - facing * r, origin.y, tc.z), rage_style, 1.0)
+	if _flame_ticks % 3 == 0:
+		RageFX.ground(Vector3(origin.x + facing * randf_range(6.0, BEAM_LEN * 0.8), 0, origin.z), rage_style, 1.3, 1.6)
 	for b in get_tree().get_nodes_in_group("buildings"):
 		b.try_beam(origin, facing, BEAM_LEN, 14.0 * _bdmg())
 
