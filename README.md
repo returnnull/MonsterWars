@@ -223,7 +223,7 @@ shaders/building.gdshader  Vinduer, lys og skade på bygninger
 tests/autoplay.tscn        Udvikler-test der spiller banen automatisk
 ```
 
-Kør den automatiske test (spiller hele banen og afslutter):
+Kør den automatiske test (spiller bane 1-10 med bossen og afslutter):
 
 ```
 godot --headless --path . res://tests/autoplay.tscn

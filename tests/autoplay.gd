@@ -2,7 +2,7 @@ extends Node
 ## Dev smoke test: bots play levels by pressing each player's actions.
 ##   godot --headless --path . res://tests/autoplay.tscn
 ## Env:
-##   AUTOPLAY_LEVELS  "c-l,c-l,..." (1-based, e.g. "1-1,1-10"), "bosses", or "all". Default "1-1".
+##   AUTOPLAY_LEVELS  "c-l,c-l,..." (1-based, e.g. "1-1,1-10"), "bosses", or "all". Default "1-10" (one level with a boss).
 ##   AUTOPLAY_PLAYERS 1-4 (heroes are picked in order, or AUTOPLAY_HEROES "0,5,9")
 ##   AUTOPLAY_SECONDS max game seconds per level (0 = just build the level and run 3 s)
 ##   AUTOPLAY_SPEED   time scale; AUTOPLAY_SHOTS "t1,t2" screenshot times;
@@ -27,7 +27,7 @@ func _env(key: String, fallback: String) -> String:
 
 func _ready() -> void:
 	Game.set_meta("no_save", true)
-	var spec := _env("AUTOPLAY_LEVELS", "1-1")
+	var spec := _env("AUTOPLAY_LEVELS", "1-10")
 	if spec == "all":
 		for c in 10:
 			for l in 10:
