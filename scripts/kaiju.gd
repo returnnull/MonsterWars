@@ -61,8 +61,11 @@ func take_hit(dmg: float, kb: Vector3, from: Node3D = null) -> bool:
 		return false
 	hp = maxf(hp - dmg, 0.0)
 	health_changed.emit(hp, max_hp)
-	knock = kb
-	hitstun = 0.22 + kb.length() * 0.012
+	# Plain gunfire only stings: it leaves any knockback/stagger already
+	# running alone instead of starting a new one.
+	if not (from is Projectile and from.is_plain_shot()):
+		knock = kb
+		hitstun = 0.22 + kb.length() * 0.012
 	if model:
 		model.flash()
 	_on_hurt(dmg, from)
