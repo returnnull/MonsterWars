@@ -1,0 +1,37 @@
+[remap]
+
+importer="texture"
+type="CompressedTexture2D"
+uid="uid://dbp0n5ogy26rj"
+path="res://.godot/imported/01_atom_normal.webp-85238b837a4a7d4031a905360d571be2.ctex"
+metadata={
+"vram_texture": false
+}
+generator_parameters={
+"md5": "5abfc978e70d2a499bb12e8dde527b28"
+}
+
+[deps]
+
+source_file="res://assets/heroes/01_atom_normal.webp"
+dest_files=["res://.godot/imported/01_atom_normal.webp-85238b837a4a7d4031a905360d571be2.ctex"]
+
+[params]
+
+compress/mode=1
+compress/high_quality=false
+compress/lossy_quality=0.85
+compress/hdr_compression=1
+compress/normal_map=1
+compress/channel_pack=0
+mipmaps/generate=true
+mipmaps/limit=-1
+roughness/mode=0
+roughness/src_normal=""
+process/fix_alpha_border=true
+process/premult_alpha=false
+process/normal_map_invert_y=false
+process/hdr_as_srgb=false
+process/hdr_clamp_exposure=false
+process/size_limit=0
+detect_3d/compress_to=0

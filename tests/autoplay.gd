@@ -150,7 +150,8 @@ func _physics_process(delta: float) -> void:
 	if log_t > 10.0:
 		log_t = 0.0
 		var held := Game.players.filter(func(q) -> bool: return is_instance_valid(q) and q.weapon != "").size()
-		print("%s t=%.0f wave=%d/%d enemies=%d score=%d armed=%d" % [current, t, main._wave, main.waves.size(), _enemies().size(), Game.score, held])
+		print("%s t=%.0f wave=%d/%d enemies=%d score=%d armed=%d fps=%.0f tris=%dk" % [current, t, main._wave, main.waves.size(), _enemies().size(), Game.score, held,
+			Engine.get_frames_per_second(), Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME) / 1000])
 	var limit := float(_env("AUTOPLAY_SECONDS", "400"))
 	if limit == 0.0 and t > 3.0:
 		results.append("%s:built" % current)
