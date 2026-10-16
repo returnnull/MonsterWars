@@ -92,6 +92,23 @@ Tryk knapperne i rytme, så kæder angrebene sammen. Combo-specials viser deres 
 | Ground Pound | hop + tung | Styrter ned i gaden og rammer alt rundt om sig, også en svagere ring længere ude |
 | Sky Claw | hop + let | Kløer opad og sender en klo-bølge skråt op, der søger mod nærmeste helikopter, drone eller fly og gør 2,5 gange skade på dem (to gange pr. hop) |
 
+Hver helt har sin egen udgave af combo'erne i sit element. Spin, Titan Crush, Kaiju Rush og Ground Pound får heltens element til at bryde op af gaden: lyn slår ned hos Voltra, krystalspyd skyder op hos Terraxa, lavagejsere hos Magmos, giftskyer hos Sylvara, is hos Glacior, vandsprøjt hos Coralis, skygge hos Noctyr, solglimt hos Solar Rex og gnister og skrot hos Rustfang. Afslutningerne og stompet giver også fjenderne heltens effekt (brand, stød, gift, frost, livssug osv.).
+
+Heltene slås også forskelligt. Nogle er hurtige med lette slag, andre er langsomme men slår hårdere, og nogle har længere rækkevidde:
+
+| Helt | Kampstil | Spin | Rush | Crush | Sky Claw | Ground Pound |
+|---|---|---|---|---|---|---|
+| Gorrax | Afbalanceret slagsbror | Atomic Spin | Reactor Rush | Meltdown Crush | Ion Claw | Atom Stomp |
+| Voltra | Lynhurtige slag (hurtigst) | Static Spin | Bolt Rush | Thunder Crush | Sky Bolt | Thunder Stomp |
+| Magmos | Langsomme, brændende slag | Magma Spin | Lava Rush | Volcano Crush | Cinder Claw | Magma Stomp |
+| Sylvara | Hurtige ranker med lang rækkevidde | Thorn Spin | Venom Rush | Blight Crush | Spore Claw | Toxic Stomp |
+| Terraxa | Langsomste og hårdeste slag, kaster langt | Boulder Spin | Avalanche Rush | Tectonic Crush | Crystal Claw | Crystal Stomp |
+| Glacior | Rolige, frysende slag | Blizzard Spin | Glacier Slide | Glacier Crush | Frost Claw | Frost Stomp |
+| Noctyr | Hurtige kløer med lang rækkevidde | Shadow Spin | Blood Rush | Nightfall Crush | Bat Claw | Eclipse Stomp |
+| Coralis | Bølger der skyller fjender langt væk | Whirlpool Spin | Tidal Rush | Tsunami Crush | Spray Claw | Splash Stomp |
+| Solar Rex | Store, flammende slag | Solar Spin | Comet Rush | Supernova Crush | Flare Claw | Sunquake |
+| Rustfang | Maskine der river bygninger ned | Saw Spin | Piston Rush | Scrap Crush | Rivet Claw | Hammer Stomp |
+
 I rage-tilstand er let og tung heltens eget skud og ånde (se Rage og super).
 
 Angreb kan ikke spammes: når en combo (eller et enkelt slag) er slut, skal kaijuen lige komme sig, før næste angreb går i gang. Efter afslutninger som Tail Spin, Titan Crush, det store rage-skud og ånden er pausen længst. Et tryk i pausen venter kort i bufferen, så rytmen holder. Rage strike, brøl og rage-angrebet har deres egen nedkøling.
@@ -305,6 +322,7 @@ scripts/stage_builder.gd   Bygger et lands bane: lys, vejr, by, skyline, vartegn
 scripts/skills.gd          Færdighedstræer, evner, XP-kurve og super-specials
 scripts/rage_style.gd      Hver helts rage-angreb som data (skud, ånde, effekt, farver)
 scripts/rage_fx.gd         Hvordan rage-skud, ånder og mærker i gaden ser ud
+scripts/hero_moves.gd      Hver helts kampstil (tempo, rækkevidde, kraft) og navne på combos
 scripts/super_fx.gd        Effekterne til super-specials
 scripts/fireball.gd        Rage-skuddet (flyver lige, i bue, gennem fjender eller tre ad gangen)
 scripts/trophies.gd        Trofæerne, og hvordan de tælles
@@ -345,11 +363,12 @@ godot --headless --path . res://tests/skill_tree_test.tscn   # alle færdighedst
 xvfb-run godot --path . --write-movie /tmp/lab.avi --fixed-fps 30 res://tests/anim_lab.tscn   # optag heltens animationer (gang, løb, vending, hop, angreb)
 COSMETIC_IDS=gold_crown,halo godot --path . res://tests/cosmetic_shots.tscn   # billeder af tingene på kaijuerne
 godot --headless --path . res://tests/hero_rage_test.tscn   # hver helts rage-angreb og super
+godot --headless --path . res://tests/hero_moves_test.tscn  # hver helts combos og ground stomp
 HERO=3 godot --path . res://tests/super_shots.tscn   # billeder af en helts super (HERO=3 SHOTS=light,heavy til rage_shots.tscn)
 AUTOPLAY_COSMETICS=1 godot --headless --path . res://tests/autoplay.tscn   # spil med alle ting på
 godot --headless --path . res://tests/combo_test.tscn   # alle combos
 godot --headless --path . res://tests/spam_test.tscn   # anti-spam og hop
-xvfb-run -a godot --path . res://tests/rage_shots.tscn   # billeder af ildkugler, flammestråle og hop (SHOTS=light,heavy,jump)
+xvfb-run -a godot --path . res://tests/rage_shots.tscn   # billeder af ildkugler, flammestråle og hop (SHOTS=light,heavy,jump, attack eller moves)
 ```
 
 ## Mobil (Android / iOS)

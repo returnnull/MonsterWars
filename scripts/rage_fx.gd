@@ -601,6 +601,43 @@ static func trail_burst(pos: Vector3, st: Dictionary) -> void:
 	FX.smoke(pos + Vector3(0, 6, 0), 0.8, Color(0.16, 0.11, 0.09))
 
 
+## The element bursting out of the street at `pos` (the hero's combos and
+## ground stomp, see Player._erupt): a lightning strike, a crystal spike, a
+## lava geyser, a poison cloud, ice, a splash, a pool of shadow, a solar
+## flare, a shower of scrap or an atomic flash.
+static func erupt(pos: Vector3, st: Dictionary, size: float) -> void:
+	var g := Vector3(pos.x, 0.0, pos.z)
+	match String(st["jet"]):
+		"lightning":
+			var top := g + Vector3(randf_range(-2, 2), 16.0, -2.0)
+			bolt(top, g + Vector3(0, 0.3, 0), st, 1.6 * size)
+			pop(g + Vector3(0, 0.6, 0), st, 0.8 * size)
+			FX.light_flash(g + Vector3(0, 6, 0), st["glow"], 10.0, 22.0, 0.15)
+		"spikes":
+			spike(g, st, 0.75 * size)
+		"flame":
+			trail_burst(g, st)
+		"mist":
+			cloud(g + Vector3(0, 1.2, 0), st, 0.9 * size)
+			pop(g + Vector3(0, 0.8, 0), st, 0.5 * size)
+		"frost":
+			ice(g, st, 1.1 * size)
+			pop(g + Vector3(0, 0.8, 0), st, 0.5 * size)
+		"water":
+			splash(g + Vector3(0, 0.3, 0), st, 1.1 * size)
+		"shadow":
+			pop(g + Vector3(0, 1.0, 0), st, 0.8 * size)
+			FX.smoke(g + Vector3(0, 0.6, 0), 0.9 * size, st["smoke"])
+		"sparks":
+			pop(g + Vector3(0, 0.8, 0), st, 0.8 * size)
+			FX.debris_burst(g + Vector3(0, 0.8, 0), 0.9 * size)
+		_:
+			# Atomic and solar heroes: a flash of light out of the street.
+			pop(g + Vector3(0, 1.0, 0), st, 0.9 * size)
+			_flare(g + Vector3(0, 1.4, 0), st, 0.9 * size)
+	ground(g, st, 0.9 * size, 2.0)
+
+
 ## Weapon swings in rage mode burst into the element (see Player._fire_burst).
 static func burst(pos: Vector3, radius: float, st: Dictionary) -> void:
 	var s := radius / 4.0

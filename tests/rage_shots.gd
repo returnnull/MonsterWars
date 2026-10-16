@@ -1,6 +1,8 @@
 extends Node
 ## Dev helper: screenshots of rage mode fire and the jump, to judge how they
-## look. SHOTS picks "light", "heavy", "jump" (default all), HERO the hero
+## look. SHOTS picks "light", "heavy", "jump" (default all), "attack" (the
+## rage attack) or "moves" (the hero's tail spin, titan crush and ground
+## stomp, outside rage mode), HERO the hero
 ## (default 0). Shots go to user://rage_<hero>_<what>_N.png.
 
 var main: Node
@@ -28,6 +30,8 @@ func _ready() -> void:
 		await _heavy()
 	if "attack" in what:
 		await _attack()
+	if "moves" in what:
+		await _moves()
 	if what == "" or "jump" in what:
 		await _jump()
 	get_tree().quit()
@@ -74,6 +78,38 @@ func _attack() -> void:
 		_shot("attack", f)
 	while p.state == Player.S.BEAM:
 		await get_tree().physics_frame
+	e.queue_free()
+	e2.queue_free()
+
+
+## The hero's own combos: light x3 spin, heavy x3 crush, and the ground stomp.
+func _moves() -> void:
+	p._exit_rage_mode()
+	var e := _enemy(4.0)
+	var e2 := _enemy(-4.0)
+	var n := 0
+	for a in ["light3", "heavy3"]:
+		await _wait(0.6)
+		p._start_attack(a)
+		var active: float = p.atk["active"]
+		await _wait(active)
+		for f in 3:
+			await _wait(0.12)
+			_shot("moves", n)
+			n += 1
+		while p.state == Player.S.ATTACK:
+			await get_tree().physics_frame
+	await _wait(0.8)
+	p._buffered = "jump"
+	p._buffer_t = 0.3
+	await _wait(0.3)
+	p._start_stomp()
+	while p.state == Player.S.STOMP:
+		await get_tree().physics_frame
+	for f in 3:
+		await _wait(0.1)
+		_shot("moves", n)
+		n += 1
 	e.queue_free()
 	e2.queue_free()
 

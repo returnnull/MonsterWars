@@ -582,25 +582,25 @@ func _show_heroes(restore: Array = []) -> void:
 		env.environment.glow_enabled = true
 		vp.add_child(env)
 		d["pivot"] = pivot
-		d["name"] = _label(box, "", Vector2(0, 460), 44, Color.WHITE)
+		d["name"] = _label(box, "", Vector2(0, 430), 44, Color.WHITE)
 		d["name"].size.x = SLOT_W - 20
 		d["name"].horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		d["title"] = _label(box, "", Vector2(0, 515), 26, Color(1, 1, 1, 0.7))
+		d["title"] = _label(box, "", Vector2(0, 482), 26, Color(1, 1, 1, 0.7))
 		d["title"].size.x = SLOT_W - 20
 		d["title"].horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		d["bars"] = []
 		d["stat_labels"] = []
 		for i in 3:
-			d["stat_labels"].append(_label(box, ["HEALTH", "SPEED", "POWER"][i], Vector2(30, 570 + i * 46), 24, Color(1, 1, 1, 0.8)))
+			d["stat_labels"].append(_label(box, ["HEALTH", "SPEED", "POWER"][i], Vector2(30, 530 + i * 40), 24, Color(1, 1, 1, 0.8)))
 			var bar := ProgressBar.new()
-			bar.position = Vector2(170, 576 + i * 46)
+			bar.position = Vector2(170, 536 + i * 40)
 			bar.size = Vector2(240, 20)
 			bar.show_percentage = false
 			bar.add_theme_stylebox_override("background", _card_style(Color(0, 0, 0, 0.6), Color(0, 0, 0, 0)))
 			bar.add_theme_stylebox_override("fill", _card_style(Color(1.0, 0.6, 0.2), Color(0, 0, 0, 0)))
 			box.add_child(bar)
 			d["bars"].append(bar)
-		d["special"] = _label(box, "", Vector2(30, 700), 22, Color(1.0, 0.8, 0.4))
+		d["special"] = _label(box, "", Vector2(30, 652), 18, Color(1.0, 0.8, 0.4))
 		d["lvl"] = _label(box, "", Vector2(30, 758), 24, Color(1.0, 0.95, 0.6))
 		d["status"] = _label(box, "", Vector2(0, 800), 32, Color.WHITE)
 		d["status"].size.x = SLOT_W - 20
@@ -682,7 +682,9 @@ func _set_hero(slot: int, hero: int) -> void:
 	d["bars"][1].value = 100.0 * float(h["speed"]) / 1.3
 	d["bars"][2].value = 100.0 * float(h["power"]) / 1.3
 	var rs := RageStyle.for_hero(hero)
-	d["special"].text = "Rage attack: %s\nRage mode: %s / %s\nSuper: %s" % [Content.attack_name(hero),
+	var mv := HeroMoves.for_hero(hero)
+	d["special"].text = "%s, %s\nRage attack: %s\nRage mode: %s / %s\nSuper: %s" % [mv["style"],
+		HeroMoves.combo_name(hero, "pound").capitalize(), Content.attack_name(hero),
 		String(rs["light"]).capitalize(), String(rs["heavy"]).capitalize(), String(Skills.super_def(hero)["name"]).capitalize()]
 	var pts := Game.free_points(hero)
 	d["lvl"].text = "LV %d%s" % [Game.hero_level(hero), ("   -   %d skill points  [X]" % pts) if pts > 0 else ""]
