@@ -34,6 +34,24 @@ static func explosion(pos: Vector3, size: float = 1.0) -> void:
 	light_flash(pos + Vector3.UP, Color(1.0, 0.55, 0.2), 10.0 * size, 16.0 * size, 0.6)
 
 
+## Rage-mode punch: a ball of flame with a burning ring on the ground.
+static func fire_burst(pos: Vector3, radius: float) -> void:
+	var s := radius / 4.0
+	var fire_ramp := _ramp([Color(1.8, 0.9, 0.2, 1.0), Color(1.4, 0.32, 0.03, 0.95), Color(0.8, 0.1, 0.01, 0.6), Color(0.2, 0.03, 0.01, 0.0)])
+	var fire := _pm(Vector3.UP, 180.0, 5.0 * s, 13.0 * s, 6.0, 2.6 * s, 4.8 * s, 3.5, 1.0 * s)
+	fire.color_ramp = fire_ramp
+	fire.scale_curve = _grow_curve()
+	_emit(pos, 48, 0.8, _billboard("fire", 1.0, true, Color.WHITE), fire)
+	var ground := Vector3(pos.x, 0.5, pos.z)
+	var ring := _pm(Vector3.UP, 20.0, 3.0, 9.0, 6.0, 2.0 * s, 3.6 * s, 2.0, radius * 0.85)
+	ring.color_ramp = fire_ramp
+	ring.scale_curve = _grow_curve()
+	_emit(ground, 40, 0.9, _billboard("fire", 1.0, true, Color.WHITE), ring)
+	shockwave(ground, radius, Color(1.6, 0.5, 0.08))
+	smoke(pos + Vector3(0, 1.5, 0), s, Color(0.16, 0.11, 0.09))
+	light_flash(pos, Color(1.0, 0.45, 0.1), 12.0 * s, 14.0 * s, 0.45)
+
+
 static func smoke(pos: Vector3, size: float = 1.0, color: Color = Color(0.55, 0.5, 0.45)) -> void:
 	var c0 := Color(color, 0.0)
 	var ramp := _ramp([c0, Color(color, 0.75), Color(color.darkened(0.3), 0.0)])
