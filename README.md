@@ -63,6 +63,20 @@ Tryk **F9** i menuen for at låse alle baner op, hvis du vil teste.
 | Solar Rex | Supernova: tre enorme solflammer |
 | Rustfang | Scrap Barrage: regn af skrot |
 
+## Combos
+
+Tryk knapperne i rytme, så kæder angrebene sammen. Combo-specials viser deres navn over kaijuen.
+
+| Combo | Knapper | Hvad den gør |
+|---|---|---|
+| Tail Spin | let, let, let | Snurrer rundt og slår alt omkring sig væk med en chokbølge |
+| Kaiju Rush | let, let, tung | Stormer frem med skulderen og ramler ind i alt på vejen, som skubbes med og får et sidste stød |
+| Titan Crush | tung, tung, tung | Kæmpe dobbelt-næveslag i jorden med chokbølger, der vandrer langt frem ad gaden |
+| Ground Pound | hop + tung | Styrter ned i gaden og rammer alt rundt om sig, også en svagere ring længere ude |
+| Sky Claw | hop + let | Kløer opad og sender en klo-bølge skråt op, der søger mod nærmeste helikopter, drone eller fly og gør 2,5 gange skade på dem (to gange pr. hop) |
+
+I rage-tilstand er let og tung stadig ildkugler og flammestråle.
+
 ## Bygninger som våben
 
 Når en bygning vælter, ligger der ofte et stykke tilbage i ruinerne med en gylden ring om. Stil dig ved det og tryk **tungt angreb** for at samle det op.
@@ -210,6 +224,7 @@ scripts/kaiju.gd           Fælles krop for kaijuer: liv, knockback, strike()
 scripts/player.gd          Spillerens kaiju og angreb
 scripts/brute.gd           Fjende-kaijuer (crawler, brute, elite) og bosser
 scripts/flyer.gd           Drone-fjende
+scripts/sky_wave.gd        Klo-bølgen fra Sky Claw (hop + let)
 scripts/projectile.gd      Plasma-skud
 scripts/building.gd        Destruerbare bygninger
 scripts/kaiju_model.gd     Procedural kaiju-model og animation
@@ -233,6 +248,7 @@ AUTOPLAY_LEVELS=all AUTOPLAY_SECONDS=0 godot --headless --path . res://tests/aut
 AUTOPLAY_SKILLS=1 AUTOPLAY_SUPER=1 godot --headless --path . res://tests/autoplay.tscn   # alle evner og supers i brug
 KAIJU_TOUCH=1 godot --headless --path . res://tests/touch_test.tscn   # touch-knapperne
 godot --headless --path . res://tests/difficulty_test.tscn   # sværhedsgraderne
+godot --headless --path . res://tests/combo_test.tscn   # alle combos
 ```
 
 ## Mobil (Android / iOS)

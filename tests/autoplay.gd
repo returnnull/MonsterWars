@@ -144,6 +144,7 @@ func _physics_process(delta: float) -> void:
 		for p in Game.players:
 			if is_instance_valid(p):
 				print("  P%d %s rage skills %s" % [p.slot + 1, p.display_name(), p.rage_uses])
+				print("  P%d %s combo specials %s" % [p.slot + 1, p.display_name(), p.combo_uses])
 		results.append("%s:%s" % [current, res])
 		_next()
 	elif limit > 0.0 and t > limit:

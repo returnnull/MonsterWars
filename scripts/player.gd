@@ -1,6 +1,7 @@
 class_name Player
 extends Kaiju
-## A playable kaiju: 3-hit light combo, heavy slam, jump stomp, dodge,
+## A playable kaiju: light and heavy combos (see ATTACKS), jump attacks,
+## dodge,
 ## rage skills paid for with rage (see RAGE_SKILLS) and a super special
 ## unique to each hero. Learned skill tree abilities
 ## (Skills.mods) change stats and add effects to the attacks.
@@ -42,21 +43,41 @@ const FLAME_WIDTH := 2.4
 const FLAME_TICK := 0.1
 ## A special press held longer than this without a combo does nothing.
 const SPECIAL_TAP := 0.45
+## Combos. "next" is the attack a light press chains into, "next_h" the one
+## a heavy press chains into, and "combo" names a combo special (shown over
+## the kaiju when it starts):
+##   light light light  TAIL SPIN    spins round and knocks back all around
+##   light light heavy  KAIJU RUSH   charges forward, ramming what's in the way
+##   heavy heavy heavy  TITAN CRUSH  huge slam with shockwaves marching ahead
+##   jump + heavy       GROUND POUND drops onto the street, hurts all around
+##   jump + light       SKY CLAW     slashes up and sends a claw wave that homes
+##                                   in on aircraft (does AIR_BONUS to them)
+const AIR_MOVES := 2
+const AIR_BONUS := 2.5
 
 const ATTACKS := {
 	"light1": {"dur": 0.30, "active": 0.11, "dmg": 7.0, "kb": Vector3(4, 0, 0), "reach": 2.6, "radius": 2.3,
-		"pose": "jab_r", "shake": 0.12, "bdmg": 10.0, "next": "light2"},
+		"pose": "jab_r", "shake": 0.12, "bdmg": 10.0, "next": "light2", "next_h": "heavy"},
 	"light2": {"dur": 0.30, "active": 0.11, "dmg": 7.0, "kb": Vector3(4, 0, 0), "reach": 2.6, "radius": 2.3,
-		"pose": "jab_l", "shake": 0.12, "bdmg": 10.0, "next": "light3"},
-	"light3": {"dur": 0.55, "active": 0.24, "dmg": 13.0, "kb": Vector3(15, 8, 0), "reach": 0.0, "radius": 4.8,
-		"pose": "spin", "shake": 0.35, "bdmg": 18.0, "next": ""},
-	"heavy": {"dur": 0.72, "active": 0.38, "dmg": 22.0, "kb": Vector3(20, 10, 0), "reach": 3.0, "radius": 3.0,
-		"pose": "slam", "shake": 0.55, "bdmg": 45.0, "next": ""},
+		"pose": "jab_l", "shake": 0.12, "bdmg": 10.0, "next": "light3", "next_h": "rush"},
+	"light3": {"dur": 0.55, "active": 0.24, "dmg": 15.0, "kb": Vector3(15, 8, 0), "reach": 0.0, "radius": 5.2,
+		"pose": "spin", "shake": 0.35, "bdmg": 18.0, "next": "", "next_h": "heavy", "combo": "TAIL SPIN"},
+	"heavy": {"dur": 0.72, "active": 0.38, "dmg": 22.0, "kb": Vector3(14, 10, 0), "reach": 3.0, "radius": 3.0,
+		"pose": "slam", "shake": 0.55, "bdmg": 45.0, "next": "", "next_h": "heavy2"},
+	"heavy2": {"dur": 0.66, "active": 0.32, "dmg": 24.0, "kb": Vector3(10, 9, 0), "reach": 3.2, "radius": 3.2,
+		"pose": "slam", "shake": 0.55, "bdmg": 45.0, "next": "", "next_h": "heavy3"},
+	# Combo specials. "rush" lunges and rams everything it runs into on the way.
+	"rush": {"dur": 0.62, "active": 0.32, "dmg": 26.0, "kb": Vector3(24, 10, 0), "reach": 2.6, "radius": 3.2,
+		"pose": "rush", "shake": 0.55, "bdmg": 60.0, "next": "", "lunge": 26.0, "rush": true, "combo": "KAIJU RUSH"},
+	"heavy3": {"dur": 1.0, "active": 0.5, "dmg": 38.0, "kb": Vector3(18, 18, 0), "reach": 3.4, "radius": 4.4,
+		"pose": "crush", "shake": 0.9, "bdmg": 90.0, "next": "", "lunge": 2.0, "combo": "TITAN CRUSH"},
+	"sky_claw": {"dur": 0.42, "active": 0.12, "dmg": 14.0, "kb": Vector3(6, 12, 0), "reach": 1.8, "radius": 4.2,
+		"pose": "claw_up", "shake": 0.25, "bdmg": 15.0, "next": "", "lunge": 2.0, "combo": "SKY CLAW"},
 	# With a building piece in hand (damage is multiplied by the weapon).
 	"swing1": {"dur": 0.42, "active": 0.16, "dmg": 9.0, "kb": Vector3(10, 4, 0), "reach": 3.4, "radius": 2.9,
-		"pose": "swing", "shake": 0.25, "bdmg": 30.0, "next": "swing2"},
+		"pose": "swing", "shake": 0.25, "bdmg": 30.0, "next": "swing2", "next_h": "heavy"},
 	"swing2": {"dur": 0.5, "active": 0.18, "dmg": 11.0, "kb": Vector3(18, 9, 0), "reach": 3.4, "radius": 3.1,
-		"pose": "swing", "shake": 0.35, "bdmg": 30.0, "next": ""},
+		"pose": "swing", "shake": 0.35, "bdmg": 30.0, "next": "", "next_h": "heavy"},
 	"throw": {"dur": 0.45, "active": 0.2, "dmg": 0.0, "kb": Vector3.ZERO, "reach": 0.0, "radius": 0.0,
 		"pose": "throw", "shake": 0.0, "bdmg": 0.0, "next": ""},
 	# Rage skills ("rage": true): boosted by Focus, don't refill rage themselves.
@@ -67,11 +88,11 @@ const ATTACKS := {
 	# Rage mode fire. "shot" spits a Fireball of that size for "dmg"; "stream"
 	# sprays flame for that long, hurting for "dmg" every FLAME_TICK.
 	"fire1": {"dur": 0.34, "active": 0.12, "dmg": 10.0, "kb": Vector3.ZERO, "reach": 0.0, "radius": 0.0,
-		"pose": "spit_r", "shake": 0.0, "bdmg": 0.0, "next": "fire2", "lunge": 1.0, "shot": 1.0},
+		"pose": "spit_r", "shake": 0.0, "bdmg": 0.0, "next": "fire2", "next_h": "flame", "lunge": 1.0, "shot": 1.0},
 	"fire2": {"dur": 0.34, "active": 0.12, "dmg": 10.0, "kb": Vector3.ZERO, "reach": 0.0, "radius": 0.0,
-		"pose": "spit_l", "shake": 0.0, "bdmg": 0.0, "next": "fire3", "lunge": 1.0, "shot": 1.0},
+		"pose": "spit_l", "shake": 0.0, "bdmg": 0.0, "next": "fire3", "next_h": "flame", "lunge": 1.0, "shot": 1.0},
 	"fire3": {"dur": 0.55, "active": 0.2, "dmg": 18.0, "kb": Vector3.ZERO, "reach": 0.0, "radius": 0.0,
-		"pose": "spit", "shake": 0.0, "bdmg": 0.0, "next": "", "lunge": 0.0, "shot": 1.7},
+		"pose": "spit", "shake": 0.0, "bdmg": 0.0, "next": "", "next_h": "flame", "lunge": 0.0, "shot": 1.7},
 	"flame": {"dur": 1.5, "active": 0.28, "dmg": 5.5, "kb": Vector3.ZERO, "reach": 0.0, "radius": 0.0,
 		"pose": "flame", "shake": 0.0, "bdmg": 0.0, "next": "", "lunge": 0.0, "stream": 1.0},
 }
@@ -90,6 +111,8 @@ var rage := 0.0
 var rage_max := RAGE_MAX
 ## How often each rage skill was used this stage (for tests and stats).
 var rage_uses := {}
+## How often each combo special (ATTACKS with "combo") was used this stage.
+var combo_uses := {}
 var atk: Dictionary = {}
 var _atk_done := false
 var _buffered := ""
@@ -131,6 +154,9 @@ var _held: Node3D
 var _flame_fx: GPUParticles3D
 var _flame_light: OmniLight3D
 var _flame_ticks := 0
+## Jump attacks used since leaving the ground, and who a rush already rammed.
+var _air_moves := 0
+var _rush_hit: Array = []
 
 
 func _ready() -> void:
@@ -477,7 +503,12 @@ func _state_free(input: Vector2) -> Vector3:
 		"light", "heavy":
 			var b := _consume()
 			if not is_on_floor():
-				_start_stomp()
+				if b == "heavy":
+					_start_stomp()
+				elif _air_moves < AIR_MOVES:
+					_air_moves += 1
+					velocity.y = maxf(velocity.y, 7.0)
+					_start_attack("sky_claw")
 			elif b == "heavy" and weapon == "" and _grab_weapon():
 				pass
 			elif weapon != "":
@@ -524,7 +555,11 @@ func _state_free(input: Vector2) -> Vector3:
 func _start_attack(attack_name: String) -> void:
 	atk = ATTACKS[attack_name]
 	_atk_done = false
+	_rush_hit.clear()
 	_set_state(S.ATTACK)
+	if atk.has("combo"):
+		combo_uses[attack_name] = int(combo_uses.get(attack_name, 0)) + 1
+		FX.callout(global_position + Vector3(0, 7.5, 0), atk["combo"], color())
 
 
 func _state_attack() -> Vector3:
@@ -533,6 +568,8 @@ func _state_attack() -> Vector3:
 		_atk_done = true
 		_do_hit()
 	# The flame stream holds the kaiju in place until it has burnt out.
+	if atk.has("rush") and state_t < active:
+		_rush_tick()
 	var streaming: bool = atk.has("stream") and state_t < active + float(atk["stream"])
 	if streaming and state_t >= active:
 		_flame_update()
@@ -544,9 +581,9 @@ func _state_attack() -> Vector3:
 		if _buffered == "light" and next != "" and (armed or atk["pose"] != "swing"):
 			_consume()
 			_start_attack(next)
-		elif _buffered == "heavy" and not atk["pose"] in ["slam", "throw", "flame"] and not atk.get("rage", false):
+		elif _buffered == "heavy" and atk.get("next_h", "") != "":
 			_consume()
-			_start_attack("throw" if armed else ("flame" if raging else "heavy"))
+			_start_attack("throw" if armed else ("flame" if raging else String(atk["next_h"])))
 		elif _buffered.begins_with("rage_") and not atk.get("rage", false):
 			# Rage skills cut the recovery of a normal attack short.
 			_set_state(S.FREE)
@@ -644,17 +681,34 @@ func _do_hit() -> void:
 	if atk.has("stream"):
 		_start_flame()
 		return
+	if atk["pose"] == "claw_up":
+		_sky_claw()
+		return
 	var reach: float = atk["reach"]
 	var center := global_position + Vector3(facing * reach, 3.2, 0)
 	if atk["pose"] == "spin" or atk["pose"] == "roar":
 		center = global_position + Vector3(0, 2.6, 0)
 	var rage_skill: bool = atk.get("rage", false)
 	var dmg: float = atk["dmg"] * (_special_power() if rage_skill else power * _boost())
-	var finisher: bool = atk["pose"] == "spin" or atk["pose"] == "slam"
+	var finisher: bool = atk["pose"] in ["spin", "slam", "crush", "rush"]
 	# Fire goes first so the punch's own knockback wins. Fire hits count as
 	# hits but give no rage, so rage mode can't feed itself.
 	var fire_hits := _fire_burst(center, atk["radius"], dmg, finisher) if raging and not rage_skill else 0
 	var hits := strike(center, atk["radius"], dmg, atk["kb"], "enemies", atk["bdmg"] * power * _bdmg())
+	if atk["pose"] == "spin":
+		FX.shockwave(global_position, atk["radius"] + 1.0, color())
+	if atk["pose"] == "rush":
+		FX.shockwave(center - Vector3(0, 3.0, 0), 4.5, color())
+		FX.dust(center - Vector3(0, 3.0, 0), 1.2)
+		FX.debris_burst(center, 0.8)
+	if atk["pose"] == "crush":
+		var ground := global_position + Vector3(facing * 3.4, 0, 0)
+		FX.shockwave(ground, 8.0, color())
+		FX.shockwave(ground, 5.0, Color(1.0, 0.8, 0.5))
+		FX.dust(ground, 2.0)
+		FX.debris_burst(ground + Vector3(0, 1, 0), 1.4)
+		rumble(0.6, 0.9, 0.3)
+		_eruption_line(global_position.x, facing, 5, 16.0 * power * _boost())
 	if atk["pose"] == "slam":
 		FX.shockwave(global_position + Vector3(facing * 3.0, 0, 0), 5.0, Color(1.0, 0.8, 0.5))
 		FX.dust(global_position + Vector3(facing * 3.0, 0, 0), 1.2)
@@ -782,6 +836,54 @@ func _stop_flame() -> void:
 	_flame_light = null
 
 
+## KAIJU RUSH: rams every enemy the charge runs into once on the way and
+## carries it along, so the final blow hits them all.
+func _rush_tick() -> void:
+	var c := global_position + Vector3(facing * 2.2, 3.0, 0)
+	var dmg: float = atk["dmg"] * 0.4 * power * _boost()
+	for t in get_tree().get_nodes_in_group("enemies"):
+		if t.dead or t in _rush_hit or t.hit_center().distance_to(c) > 2.8 + t.hit_radius:
+			continue
+		_rush_hit.append(t)
+		if deal(t, dmg, Vector3(facing * 24.0, 3.0, 0)):
+			FX.hit_spark(t.hit_center(), dmg)
+			Game.register_hit()
+			Game.shake(0.15)
+			add_rage(dmg * 0.45)
+
+
+## SKY CLAW: slashes overhead and sends a claw wave flying up and ahead that
+## homes in on aircraft (see SkyWave).
+func _sky_claw() -> void:
+	var c := global_position + Vector3(facing * atk["reach"], 4.6, 0)
+	var dmg: float = atk["dmg"] * power * _boost()
+	var hits := 0
+	for t in get_tree().get_nodes_in_group("enemies"):
+		if not t.dead and t.hit_center().distance_to(c) <= atk["radius"] + t.hit_radius:
+			if deal(t, dmg * (AIR_BONUS if t is Flyer else 1.0), Vector3(facing * 6.0, 12.0, 0)):
+				hits += 1
+				FX.hit_spark(t.hit_center(), dmg)
+	var wave := SkyWave.new()
+	wave.shooter = self
+	wave.dir = facing
+	wave.damage = dmg * 1.2
+	wave.tint = color()
+	get_parent().add_child(wave)
+	wave.global_position = c + Vector3(facing * 1.0, 0.5, 0)
+	FX.energy(c, color())
+	if hits > 0:
+		Game.shake(atk["shake"])
+		Game.hitstop(0.05)
+		for i in hits:
+			Game.register_hit()
+		add_rage(dmg * 0.45 * hits)
+
+
+func _on_land() -> void:
+	super._on_land()
+	_air_moves = 0
+
+
 func _bdmg() -> float:
 	return 1.0 + _m("wrecker") / 100.0
 
@@ -813,15 +915,29 @@ func _chain_lightning(from_pos: Vector3, dmg: float) -> void:
 		src = e.hit_center()
 
 
+## Jump + heavy: GROUND POUND. Dives down and hits everything around the
+## landing spot, with a weaker outer ring.
 func _start_stomp() -> void:
-	velocity.y = -42.0
+	velocity.y = -46.0
 	_set_state(S.STOMP)
 
 
 func _stomp_land() -> void:
 	var st := 1.0 + _m("stomp") / 100.0
-	var hits := strike(global_position + Vector3(0, 1.2, 0), 5.5 * st, 16.0 * power * _boost() * st, Vector3(10, 12, 0), "enemies", 30.0 * power * _bdmg())
-	FX.shockwave(global_position, 7.0 * st)
+	var c := global_position + Vector3(0, 1.2, 0)
+	var dmg := 30.0 * power * _boost() * st
+	var hits := strike(c, 7.0 * st, dmg, Vector3(10, 14, 0), "enemies", 55.0 * power * _bdmg())
+	for t in get_tree().get_nodes_in_group("enemies"):
+		var d: float = t.hit_center().distance_to(c) - t.hit_radius
+		if not t.dead and d > 7.0 * st and d <= 11.0 * st and absf(t.hit_center().y - c.y) < 5.0:
+			if deal(t, dmg * 0.35, Vector3(signf(t.global_position.x - global_position.x) * 6.0, 6.0, 0)):
+				hits += 1
+	combo_uses["pound"] = int(combo_uses.get("pound", 0)) + 1
+	FX.callout(global_position + Vector3(0, 7.5, 0), "GROUND POUND", color())
+	FX.shockwave(global_position, 7.0 * st, color())
+	FX.shockwave(global_position, 11.0 * st)
+	FX.debris_burst(global_position + Vector3(0, 0.8, 0), 1.3)
+	rumble(0.5, 0.8, 0.25)
 	if _has("meteor"):
 		for i in 3:
 			_drop_meteor(global_position + Vector3(facing * (4.0 + i * 4.0), 0, randf_range(-2.0, 2.0)), 0.5 + i * 0.18, 18.0 * power * _boost())
@@ -1088,6 +1204,27 @@ func _animate(delta: float) -> void:
 					ar = 2.2
 					al = 2.2
 					lean = -0.35 if after == 0.0 else lerpf(-0.35, 0.0, after)
+				"rush":
+					# Head down, shoulders first.
+					ar = 0.9
+					al = 0.9
+					jaw = 0.6
+					lean = 0.55 if after == 0.0 else lerpf(0.55, 0.0, after)
+				"claw_up":
+					ar = lerpf(-0.4, 3.0, p) if after == 0.0 else lerpf(3.0, 1.2, after)
+					al = lerpf(-0.2, 2.6, p * p) if after == 0.0 else lerpf(2.6, 1.0, after)
+					lean = lerpf(0.1, -0.45, p) if after == 0.0 else lerpf(-0.45, 0.0, after)
+					jaw = p
+				"crush":
+					if after == 0.0:
+						ar = lerpf(0.3, 3.3, minf(p * 1.5, 1.0))
+						al = ar
+						lean = -0.4 * p
+						jaw = p
+					else:
+						ar = lerpf(0.9, 0.4, after)
+						al = ar
+						lean = lerpf(0.7, 0.0, after)
 				"slam":
 					if after == 0.0:
 						ar = lerpf(0.3, 3.0, p)
