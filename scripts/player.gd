@@ -30,10 +30,11 @@ const SUPER_TIME := 3.2
 ##   mode    special tapped:  rage mode, drains RAGE_MODE_DRAIN per second
 const RAGE_SKILLS := {"strike": 25.0, "roar": 35.0, "attack": 50.0, "mode": 30.0}
 const RAGE_MODE_DRAIN := 10.0
-## In rage mode attacks play this much faster and turn to fire: light spits
-## fireballs (fire1-3, see Fireball) and heavy stops to spray a stream of
-## flame ahead (flame, see _flame_tick) that does the most damage. Weapon
-## swings burst into flames for FIRE_DMG of their damage (see _fire_burst).
+## In rage mode attacks play this much faster and turn into the hero's own
+## element (see RageStyle): light spits the hero's shot (fire1-3, see
+## Fireball) and heavy stops to pour the hero's breath ahead (flame, see
+## _flame_tick) that does the most damage. Weapon swings burst into the
+## element for FIRE_DMG of their damage (see _fire_burst).
 const RAGE_ATTACK_SPEED := 1.25
 const FIRE_DMG := 0.6
 ## The heavy flame stream: how far it reaches, how wide it gets at the end,
@@ -167,6 +168,9 @@ var _super := {}
 var _super_tick := 0.0
 var _super_step := 0
 var _super_targets: Array = []
+## Per-super effect nodes (ice blocks of ABSOLUTE ZERO).
+var _super_fx = null
+var _super_ice: Array = []
 var _barrier_up := false
 var _barrier_t := 0.0
 var _barrier_fx: MeshInstance3D
@@ -176,9 +180,10 @@ var _aura_t := 0.0
 var weapon := ""
 var weapon_uses := 0
 var _held: Node3D
+## This hero's rage attacks (RageStyle.STYLES entry).
+var rage_style: Dictionary
 ## The heavy flame stream while it burns (see _flame_tick).
 var _flame_fx: GPUParticles3D
-var _flame_light: OmniLight3D
 var _flame_ticks := 0
 ## How long the current flame pours (grows while heavy is held).
 var _stream_len := 0.0
@@ -192,6 +197,7 @@ func _ready() -> void:
 	level = Game.hero_level(hero)
 	sk = Skills.mods(hero, Game.hero_skills[hero])
 	_super = Skills.super_def(hero)
+	rage_style = RageStyle.for_hero(hero)
 	# Each level above 1 adds 3% health and 2% damage on top of the skill tree.
 	max_hp = _h["hp"] * (1.0 + 0.03 * (level - 1)) * (1.0 + _m("vitality") / 100.0)
 	speed_mul = _h["speed"] * (1.0 + _m("swift") / 100.0)
@@ -406,7 +412,10 @@ func _enter_rage_mode() -> void:
 	Game.shake(0.5)
 	Game.hitstop(0.12)
 	FX.shockwave(global_position, 8.0, color())
+	FX.shockwave(global_position, 5.0, rage_style["glow"] * 1.6)
 	FX.energy(global_position + Vector3(0, 4, 0), color())
+	RageFX.burst(global_position + Vector3(0, 2.5, 0), 4.0, rage_style)
+	FX.callout(global_position + Vector3(0, 7.5, 0), rage_style["mode"], rage_style["glow"])
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud and Game.players.size() == 1:
 		hud.show_message("RAGE MODE!", 1.2)
@@ -627,8 +636,8 @@ func _start_attack(attack_name: String) -> void:
 	_atk_done = false
 	_stream_len = float(atk.get("stream", 0.0))
 	if atk.has("stream"):
-		# Wind-up: the mouth glows and sucks in sparks before the flames come.
-		FX.mouth_charge(to_global(_mouth_pos()) + Vector3(facing * 0.6, 0, 0), float(atk["active"]) / RAGE_ATTACK_SPEED)
+		# Wind-up: the mouth glows and sucks in the element before the breath.
+		RageFX.charge(to_global(_mouth_pos()) + Vector3(facing * 0.6, 0, 0), rage_style, float(atk["active"]) / RAGE_ATTACK_SPEED)
 	_rush_hit.clear()
 	_set_state(S.ATTACK)
 	if atk.has("combo"):
@@ -819,64 +828,112 @@ func _do_hit() -> void:
 			add_rage(dmg * 0.45 * hits)
 
 
-## Rage mode turns every normal attack into a fire blast: flames burst
-## around the point of impact, hurt every enemy and building close by and
-## leave enemies burning. Finishers (spin, slam, last weapon swing) make a
-## bigger blast.
+## Rage mode turns every normal attack into a blast of the hero's element:
+## it bursts around the point of impact, hurts every enemy and building
+## close by and puts the hero's rage effect on them. Finishers (spin, slam,
+## last weapon swing) make a bigger blast.
 func _fire_burst(center: Vector3, radius: float, dmg: float, finisher: bool) -> int:
 	var r := radius * (1.6 if finisher else 1.3) + 1.5
 	var c := Vector3(center.x, maxf(center.y - 0.8, 1.6), center.z)
+	var targets: Array = get_tree().get_nodes_in_group("enemies").filter(func(t) -> bool:
+		return not t.dead and t.hit_center().distance_to(c) <= r + t.hit_radius)
 	var hits := strike(c, r, dmg * FIRE_DMG, Vector3(6, 6, 0), "enemies", dmg * FIRE_DMG * _bdmg())
-	for t in get_tree().get_nodes_in_group("enemies"):
-		if not t.dead and t.hit_center().distance_to(c) <= r + t.hit_radius:
-			if t.has_method("apply_burn"):
-				t.apply_burn(dmg * FIRE_DMG * 0.25, 2.0)
-	FX.fire_burst(c, r)
+	for t in targets:
+		_rage_effect(t, dmg * FIRE_DMG, false)
+	RageFX.burst(c, r, rage_style)
 	if finisher:
 		Game.shake(0.25)
 	return hits
 
 
-## Light attack in rage mode: a fireball flies from the mouth (see Fireball).
+## What the hero's element does to an enemy it hits, on top of the damage
+## (RageStyle "effect"). `heavy` is a tick of the breath.
+func _rage_effect(t: Node, dmg: float, heavy: bool) -> void:
+	if not is_instance_valid(t) or t.dead:
+		return
+	match String(rage_style["effect"]):
+		"burn":
+			if t.has_method("apply_burn"):
+				t.apply_burn(dmg * (0.4 if heavy else 0.25), 2.5)
+		"poison":
+			# Poison eats away for longer than fire and makes them sluggish.
+			if t.has_method("apply_burn"):
+				t.apply_burn(dmg * (0.45 if heavy else 0.3), 4.5)
+			if t.has_method("apply_slow"):
+				t.apply_slow(0.3, 2.0)
+		"frost":
+			if t.has_method("apply_slow"):
+				t.apply_slow(0.55, 2.2)
+			# The breath freezes what it keeps blowing on.
+			if heavy and "frozen_t" in t and _flame_ticks % 6 == 0:
+				t.frozen_t = maxf(t.frozen_t, 0.8)
+				RageFX.ice(Vector3(t.global_position.x, 0, t.global_position.z), rage_style, 1.3)
+		"leech":
+			heal(dmg * 0.25)
+		"shock":
+			if "hitstun" in t:
+				t.hitstun = maxf(t.hitstun, 0.15)
+		"shred":
+			if t.has_method("apply_burn"):
+				t.apply_burn(dmg * 0.15, 1.5)
+
+
+## VOLTRA's ball lightning: bolts jump from the burst on to the two closest
+## enemies it didn't already hit.
+func _chain_shock(from: Node, dmg: float, skip: Array) -> void:
+	var src: Vector3 = from.hit_center()
+	var others: Array = get_tree().get_nodes_in_group("enemies").filter(func(e) -> bool:
+		return not e.dead and not e in skip and e.hit_center().distance_to(src) < 12.0)
+	others.sort_custom(func(a, b) -> bool:
+		return a.hit_center().distance_to(src) < b.hit_center().distance_to(src))
+	for e in others.slice(0, 2):
+		FX.bolt(src, e.hit_center(), rage_style["glow"])
+		if deal(e, dmg, Vector3(facing * 3.0, 2.0, 0)):
+			Game.register_hit()
+			_rage_effect(e, dmg, false)
+		src = e.hit_center()
+
+
+## Light attack in rage mode: the hero's shot flies from the mouth (see
+## Fireball). RUSTFANG's spray fires three smaller ones side by side.
 func _spit_fireball(size: float, dmg: float) -> void:
 	var mouth := to_global(_mouth_pos()) + Vector3(facing * 0.8, 0, 0)
-	var fb := Fireball.new()
-	fb.shooter = self
-	fb.dir = facing
-	fb.damage = dmg
-	fb.size = size
-	fb.splash = 2.4 * size
-	get_parent().add_child(fb)
-	fb.global_position = mouth
-	FX.fire_muzzle(mouth, Vector3(facing, 0, 0), size)
+	var spread: bool = rage_style["move"] == "spread"
+	for z in ([-1.3, 0.0, 1.3] if spread else [0.0]):
+		var fb := Fireball.new()
+		fb.shooter = self
+		fb.style = rage_style
+		fb.dir = facing
+		fb.damage = dmg * (0.45 if spread else 1.0)
+		fb.size = size * (0.7 if spread else 1.0)
+		fb.splash = 2.4 * size * (0.7 if spread else 1.0)
+		get_parent().add_child(fb)
+		fb.global_position = mouth + Vector3(-absf(z) * facing * 0.6, absf(z) * 0.3, z)
+	RageFX.muzzle(mouth, Vector3(facing, 0, 0), rage_style, size)
 	Game.track("fireballs")
 	rumble(0.25, 0.1 * size, 0.08)
 	if size > 1.2:
 		Game.shake(0.15)
+		FX.callout(global_position + Vector3(0, 7.5, 0), rage_style["light"], rage_style["glow"])
 
 
-## Heavy attack in rage mode: the kaiju plants its feet and sprays flame.
+## Heavy attack in rage mode: the kaiju plants its feet and pours out its
+## breath (see RageFX.jet).
 func _start_flame() -> void:
 	_flame_ticks = 0
-	_flame_fx = FX.flame_jet(Vector3(facing, -0.2, 0).normalized(), 32.0, 3.4, 0.42)
-	if _flame_fx:
-		_flame_light = OmniLight3D.new()
-		_flame_light.light_color = Color(1.0, 0.42, 0.1)
-		_flame_light.omni_range = 15.0
-		_flame_fx.add_child(_flame_light)
-	FX.fire_muzzle(to_global(_mouth_pos()), Vector3(facing, 0, 0), 1.6)
-	FX.shockwave(global_position + Vector3(facing * 1.5, 0, 0), 4.0, Color(1.4, 0.45, 0.06))
+	_flame_fx = RageFX.jet(rage_style, Vector3(facing, -0.2, 0).normalized())
+	var mouth := to_global(_mouth_pos())
+	RageFX.muzzle(mouth, Vector3(facing, 0, 0), rage_style, 1.6)
+	FX.shockwave(global_position + Vector3(facing * 1.5, 0, 0), 4.0, rage_style["glow"] * 1.4)
+	FX.callout(global_position + Vector3(0, 7.5, 0), rage_style["heavy"], rage_style["glow"])
 	Game.shake(0.35)
 	rumble(0.5, 0.6, 0.15)
 
 
-## Keeps the flame at the mouth and hurts what it touches every FLAME_TICK.
+## Keeps the breath at the mouth and hurts what it touches every FLAME_TICK.
 func _flame_update() -> void:
 	var mouth := to_global(_mouth_pos()) + Vector3(facing * 0.6, 0, 0)
-	if _flame_fx and is_instance_valid(_flame_fx):
-		_flame_fx.global_position = mouth
-		_flame_light.position = Vector3(facing * FLAME_LEN * 0.45, -1.0, 0)
-		_flame_light.light_energy = 6.0 + sin(state_t * 53.0) * 1.5 + sin(state_t * 31.0) * 1.0
+	RageFX.jet_update(_flame_fx, rage_style, mouth, facing, state_t)
 	var ticks := int(_stream_len / FLAME_TICK + 0.001)
 	while _flame_ticks < ticks and state_t >= float(atk["active"]) + _flame_ticks * FLAME_TICK:
 		_flame_ticks += 1
@@ -884,11 +941,17 @@ func _flame_update() -> void:
 	rumble(0.35, 0.2, 0.1)
 
 
-## One burst of flame damage along the stream: it widens and dips with
-## distance from the mouth, like the flames do.
+## One burst of breath damage along the stream: it widens and dips with
+## distance from the mouth, like the breath does.
 func _flame_tick(mouth: Vector3) -> void:
 	var dmg: float = atk["dmg"] * power * _boost()
-	var hits := 0
+	var effect: String = rage_style["effect"]
+	var kb := Vector3(facing * 1.5, 0.4, 0)
+	if effect == "push":
+		kb = Vector3(facing * 9.0, 1.0, 0)
+	elif effect == "quake" and _flame_ticks % 4 == 0:
+		kb = Vector3(facing * 3.0, 9.0, 0)
+	var hit: Array = []
 	for t in get_tree().get_nodes_in_group("enemies"):
 		if t.dead:
 			continue
@@ -899,29 +962,25 @@ func _flame_tick(mouth: Vector3) -> void:
 		var flame_y := mouth.y - along * 0.22
 		if along > -r - 1.0 and along < FLAME_LEN + r and absf(tc.z - mouth.z) < 0.8 + FLAME_WIDTH * k + r \
 				and absf(tc.y - flame_y) < 2.2 + FLAME_WIDTH * k + r:
-			if deal(t, dmg, Vector3(facing * 1.5, 0.4, 0)):
-				hits += 1
-				if t.has_method("apply_burn"):
-					t.apply_burn(dmg * 0.4, 2.5)
+			if deal(t, dmg, kb):
+				hit.append(t)
+				_rage_effect(t, dmg, true)
 				if _flame_ticks % 3 == 1:
-					FX.fire_muzzle(Vector3(tc.x - facing * r, tc.y, tc.z), Vector3(0, 1, 0), 0.7)
+					RageFX.muzzle(Vector3(tc.x - facing * r, tc.y, tc.z), Vector3(0, 1, 0), rage_style, 0.7)
 	if _flame_ticks % 2 == 1:
+		var bmul := 2.0 if effect in ["quake", "shred"] else 1.0
 		for b in get_tree().get_nodes_in_group("buildings"):
-			b.try_beam(Vector3(mouth.x, mouth.y - 2.0, mouth.z), facing, FLAME_LEN, dmg * 2.0 * _bdmg())
-	if _flame_ticks % 3 == 0:
-		# The street catches fire where the flames lick it.
-		var end := Vector3(mouth.x + facing * FLAME_LEN * randf_range(0.55, 0.9), 0.6, mouth.z + randf_range(-0.8, 0.8))
-		FX.ground_fire(end, 1.0, 1.4)
-	# Fire hits count for the combo but, like all rage fire, give no rage.
-	for i in hits:
+			b.try_beam(Vector3(mouth.x, mouth.y - 2.0, mouth.z), facing, FLAME_LEN, dmg * 2.0 * _bdmg() * bmul)
+	RageFX.jet_tick(rage_style, mouth, facing, FLAME_LEN, _flame_ticks, hit)
+	# Breath hits count for the combo but, like all rage attacks, give no rage.
+	for i in hit.size():
 		Game.register_hit()
-	Game.shake(0.1 if hits > 0 else 0.05)
+	Game.shake(0.1 if not hit.is_empty() else 0.05)
 
 
 func _stop_flame() -> void:
 	FX.stop_stream(_flame_fx)
 	_flame_fx = null
-	_flame_light = null
 
 
 ## KAIJU RUSH: rams every enemy the charge runs into once on the way and
@@ -1379,7 +1438,7 @@ func _make_beam(tint: Color) -> Node3D:
 	var root := Node3D.new()
 	var core_mat := StandardMaterial3D.new()
 	core_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	core_mat.albedo_color = tint.lerp(Color.WHITE, 0.8)
+	core_mat.albedo_color = tint.lerp(Color.WHITE, 0.55)
 	var core := MeshInstance3D.new()
 	var cyl := CylinderMesh.new()
 	cyl.top_radius = 0.35
@@ -1395,8 +1454,8 @@ func _make_beam(tint: Color) -> Node3D:
 	var glow_mat := StandardMaterial3D.new()
 	glow_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	glow_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	glow_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	glow_mat.albedo_color = Color(tint, 0.6)
+	# Blended, not additive, so the beam keeps its colour on a bright day.
+	glow_mat.albedo_color = Color(tint.r * 0.5, tint.g * 0.8, tint.b, 0.5)
 	var outer := MeshInstance3D.new()
 	var cyl2 := CylinderMesh.new()
 	cyl2.top_radius = 1.0
@@ -1469,6 +1528,16 @@ func _start_super() -> void:
 	FX.shockwave(global_position, 12.0, color())
 	FX.energy(global_position + Vector3(0, 5, 0), color())
 	FX.light_flash(global_position + Vector3(0, 6, 0), color(), 14.0, 30.0, 0.8)
+	SuperFX.charge(global_position, rage_style, 0.6)
+	_super_fx = null
+	match String(_super["pattern"]):
+		"storm":
+			SuperFX.storm_cloud(global_position, facing, SUPER_TIME)
+		"supernova":
+			SuperFX.sun(global_position, rage_style, SUPER_TIME - 0.3)
+		"wave":
+			# Rolls in step with the wave's hits in _state_super.
+			SuperFX.tidal_wave(global_position + Vector3(-facing * 7.0, 0, 0), facing, 12 * 3.5, 12 * 0.15, 0.5)
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud:
 		hud.show_message(_super["name"], 1.6)
@@ -1499,10 +1568,15 @@ func _state_super(delta: float) -> void:
 				var f := 1.0 + sin(state_t * 70.0) * 0.15
 				_beam.scale = Vector3(1.4, 3.2 * f, 3.2 * f)
 				_beam_light.light_energy = 14.0 * f
+				if _super_fx == null:
+					_super_fx = RageFX.jet(rage_style, Vector3(facing, 0, 0))
+				RageFX.jet_update(_super_fx, rage_style, to_global(_mouth_pos()), facing, state_t)
 				if _super_tick <= 0.0:
 					_super_tick = 0.1
+					_super_step += 1
 					Game.shake(0.25)
 					var origin := global_position + Vector3(facing * 2.2, 4.85, 0)
+					SuperFX.mega_beam_tick(to_global(_mouth_pos()), facing, BEAM_LEN * 1.2, rage_style, _super_step)
 					for t in get_tree().get_nodes_in_group("enemies"):
 						if t.dead:
 							continue
@@ -1513,6 +1587,9 @@ func _state_super(delta: float) -> void:
 						b.try_beam(origin, facing, BEAM_LEN * 1.4, 40.0)
 			else:
 				_beam.visible = false
+				if _super_fx is GPUParticles3D:
+					FX.stop_stream(_super_fx)
+				_super_fx = null
 		"storm", "meteors", "scrap":
 			if state_t >= 0.5 and state_t < SUPER_TIME - 0.4 and _super_tick <= 0.0:
 				_super_tick = 0.16
@@ -1523,17 +1600,24 @@ func _state_super(delta: float) -> void:
 					target = Vector3(e.global_position.x, 0.0, e.global_position.z) + Vector3(randf_range(-1.5, 1.5), 0, randf_range(-1.0, 1.0))
 				_super_step += 1
 				if pattern == "storm":
-					FX.bolt(target + Vector3(randf_range(-4, 4), 36.0, -2.0), target + Vector3(0, 0.5, 0), color())
-					FX.energy(target + Vector3(0, 1, 0), color())
+					SuperFX.lightning_strike(target, rage_style)
 					var hits := strike(target + Vector3(0, 2.0, 0), 3.5, 16.0 * sp, Vector3(4, 10, 0), "enemies", 30.0)
 					for i in hits:
 						Game.register_hit()
 					Game.shake(0.2)
 				else:
-					var tint := Color(1.0, 0.45, 0.15) if pattern == "meteors" else Color(0.75, 0.7, 0.65)
-					_drop_meteor(target, 0.45, 18.0 * sp, tint)
+					var dmg := 18.0 * sp
+					SuperFX.falling(target, rage_style, pattern == "scrap", 0.45, func() -> void:
+						if is_inside_tree():
+							var hits := strike(target + Vector3(0, 1.5, 0), 3.8, dmg, Vector3(8, 14, 0), "enemies", dmg * _bdmg())
+							Game.shake(0.3)
+							for i in hits:
+								Game.register_hit())
 		"vortex":
 			var c := global_position + Vector3(facing * 6.0, 3.0, 0)
+			if state_t >= 0.4 and _super_fx == null:
+				_super_fx = true
+				SuperFX.singularity(c, rage_style, 1.9)
 			if state_t >= 0.4 and state_t < 2.3:
 				for e in _enemies_near(30.0):
 					if e is Kaiju:
@@ -1558,15 +1642,19 @@ func _state_super(delta: float) -> void:
 		"freeze":
 			if state_t >= 0.5 and _super_step == 0:
 				_super_step = 1
+				_super_ice.clear()
 				for e in _enemies_near(34.0):
 					if e is Kaiju:
 						e.frozen_t = 2.4
 					_super_targets.append(e)
-					FX.energy(e.hit_center(), Color(0.7, 0.95, 1.0))
-				FX.shockwave(global_position, 30.0, Color(0.7, 0.95, 1.0))
+					_super_ice.append(SuperFX.encase(e, clampf(e.hit_radius / 1.6, 0.7, 2.0)))
+				SuperFX.freeze_wave(global_position, 30.0, rage_style)
 				Game.shake(0.5)
 			elif state_t >= 2.6 and _super_step == 1:
 				_super_step = 2
+				for b in _super_ice:
+					SuperFX.shatter(b)
+				_super_ice.clear()
 				for e in _super_targets:
 					if is_instance_valid(e) and not e.dead:
 						_super_hit(e, 75.0 * sp, Vector3(facing * 10.0, 14.0, 0))
@@ -1583,12 +1671,12 @@ func _state_super(delta: float) -> void:
 					return
 				var e: Node3D = foes[_super_step % foes.size()]
 				var side := -1.0 if _super_step % 2 == 0 else 1.0
-				FX.smoke(global_position + Vector3(0, 2, 0), 1.0, Color(0.1, 0.05, 0.1))
+				var from := global_position
 				global_position = Vector3(e.global_position.x - side * 3.2, global_position.y, clampf(e.global_position.z, z_min, z_max))
 				facing = side
 				model.spin = TAU * 0.5
 				_super_hit(e, 20.0 * sp, Vector3(side * 8.0, 6.0, 0))
-				FX.bolt(global_position + Vector3(-side * 2.0, 5.0, 0), e.hit_center() + Vector3(side * 2.0, -1.0, 0), color())
+				SuperFX.slash(from, e.hit_center(), side, rage_style)
 				Game.shake(0.3)
 		"rift", "wave", "supernova":
 			if state_t >= 0.5 and _super_step < 12 and _super_tick <= 0.0:
@@ -1600,7 +1688,7 @@ func _state_super(delta: float) -> void:
 						for dir in [-1.0, 1.0]:
 							var p := Vector3(global_position.x + dir * k * 3.2, 1.5, global_position.z)
 							strike(p, 3.4, 12.0 * sp, Vector3(4, 16, 0), "enemies", 40.0)
-							FX.debris_burst(p, 1.3)
+							SuperFX.rift_step(p, rage_style)
 							FX.dust(p, 1.2)
 							FX.shockwave(Vector3(p.x, 0, p.z), 3.0, color())
 						Game.shake(0.3)
@@ -1611,8 +1699,9 @@ func _state_super(delta: float) -> void:
 								_super_hit(e, 13.0 * sp, Vector3(facing * 18.0, 6.0, 0))
 						for b in get_tree().get_nodes_in_group("buildings"):
 							b.try_hit(Vector3(p.x, 2.0, -7.0), 4.0, 30.0)
-						FX.smoke(p, 1.6, Color(0.5, 0.75, 0.9))
-						FX.shockwave(Vector3(p.x, 0.2, p.z), 6.0, color())
+						RageFX.splash(Vector3(p.x, 0.5, p.z), rage_style, 1.4)
+						if k % 2 == 0:
+							RageFX.ground(Vector3(p.x, 0, p.z), rage_style, 2.0, 2.0)
 						Game.shake(0.25)
 					"supernova":
 						if k % 4 == 1:
@@ -1620,11 +1709,17 @@ func _state_super(delta: float) -> void:
 							var hits := strike(c, 18.0, 35.0 * sp, Vector3(18, 12, 0), "enemies", 60.0)
 							for i in hits:
 								Game.register_hit()
-							FX.shockwave(global_position, 18.0, color())
+							SuperFX.nova_blast(global_position, 18.0, rage_style)
 							FX.explosion(c, 1.6)
 							FX.light_flash(c, color(), 20.0, 40.0, 0.5)
 							Game.shake(0.8)
 	if state_t >= SUPER_TIME:
+		if _super_fx is GPUParticles3D:
+			FX.stop_stream(_super_fx)
+		_super_fx = null
+		for b in _super_ice:
+			SuperFX.shatter(b)
+		_super_ice.clear()
 		_beam.visible = false
 		_beam.scale = Vector3.ONE
 		_set_state(S.FREE)

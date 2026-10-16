@@ -44,24 +44,39 @@ Tryk **F9** i menuen for at låse alle baner op, hvis du vil teste.
 | Rage Strike | R + Y / L + J | 25 | Kaster sig frem med et hårdt slag |
 | War Roar | R + B / L + mellemrum | 35 | Brøl der slår fjender tilbage og giver medspillere tæt på 15 rage |
 | Rage-angreb | R + X / L + K | 50 | Heltens Atomic Beam, Nova Burst eller Earthquake |
-| Rage-tilstand | Tryk kort på R / L | 30+ | Kaijuen gløder, slår 30 % hårdere, er 20 % hurtigere, tager mindre skade og kan ikke slås ud af balance. Angrebene bliver til ild, også med et våben i hånden: hold let angreb inde for at blive ved med at spytte hurtige ildkugler langt frem, der popper med gnister (tredje i comboen er en stor en, der sætter gaden i brand), og hold tungt angreb inde for at lade op med glødende gab og så stå stille og sprøjte en lang flammekaster frem, så længe knappen holdes (op til 4 sekunder, koster 8 ekstra rage i sekundet) med sort røg, der sætter ild til gaden og gør mest skade. Bruger 10 rage i sekundet og slukkes med et nyt tryk eller når baren er tom |
+| Rage-tilstand | Tryk kort på R / L | 30+ | Kaijuen gløder, slår 30 % hårdere, er 20 % hurtigere, tager mindre skade og kan ikke slås ud af balance. Angrebene bliver til heltens eget element (se tabellen nedenfor), også med et våben i hånden: hold let angreb inde for at blive ved med at skyde heltens skud langt frem (tredje i comboen er et stort et, der sætter mærker i gaden), og hold tungt angreb inde for at lade op med glødende gab og så stå stille og puste heltens ånde frem, så længe knappen holdes (op til 4 sekunder, koster 8 ekstra rage i sekundet). Ånden gør mest skade. Bruger 10 rage i sekundet og slukkes med et nyt tryk eller når baren er tom |
+
+  Hver helt har sine egne rage-angreb i rage-tilstand:
+
+  | Helt | Let (skud) | Tung (ånde) | Effekt |
+  |---|---|---|---|
+  | Gorrax | Atom Orb: blå kugle med elektronringe | Atomic Breath: blå atomstråle med ringe | Brænder |
+  | Voltra | Ball Lightning: knitrende kuglelyn | Thunder Breath: forgrenede lyn | Lynet springer videre til to fjender |
+  | Magmos | Lava Glob: lavaklump i en bue | Magma Breath: flammekaster | Brænder, efterlader glødende lava |
+  | Sylvara | Venom Orb: giftkugle | Toxic Mist: giftsky der bliver hængende | Gift (lang brand) og langsommere fjender |
+  | Terraxa | Boulder: kampesten med krystaller | Crystal Spikes: krystalspyd skyder op af gaden | Kaster fjender op, river bygninger ned |
+  | Glacior | Ice Shard: tre isspyd | Frost Breath: isnende ånde med iskrystaller | Gør langsom, ånden fryser fjender fast |
+  | Noctyr | Shadow Blade: skyggesegl der skærer gennem en hel række | Soul Drain: mørk ånde der suger liv | Heler Noctyr |
+  | Coralis | Bubble Blast: boble der springer | Hydro Jet: vandkanon | Skyller fjender langt tilbage |
+  | Solar Rex | Solar Flare: lille sol | Sun Ray: gylden solstråle | Brænder |
+  | Rustfang | Rivet Spray: tre glødende møtrikker | Plasma Cutter: skærebrænder i en regn af gnister | River bygninger ned, gnister brænder |
 
   Har du ikke nok rage, blinker baren rødt. De hvide streger i baren viser, hvornår du har råd til hver evne. I rage-tilstand får du kun halvt så meget rage.
 - **Rage i skilltræet.** Alle helte har evner, der ændrer hvor meget rage de får, eller hvordan de får den: mere rage fra alt, mere rage når man bliver ramt, rage for hver besejret fjende, billigere rage-evner og rage-tilstand, en større rage-bar, og grene-ender som Overdrive (rage fylder sig selv), Blood Pact (Noctyr: betal manglende rage med liv) og Tidal Fury (Coralis: halvdelen af den brugte rage fylder super-måleren).
-- **Super** er en ekstra måler, der fyldes langsomt når du gør skade og besejrer fjender. Når den er fuld, trykker du **ZL** for heltens unikke super-special:
+- **Super** er en ekstra måler, der fyldes langsomt når du gør skade og besejrer fjender. Når den er fuld, trykker du **ZL** for heltens unikke super-special. Alle supers starter med en glødende runecirkel og en lyssøjle i heltens farve:
 
 | Helt | Super-special |
 |---|---|
-| Gorrax | Omega Breath: kæmpe stråle hen over hele skærmen |
-| Voltra | Thunderstorm: lyn slår ned i alle fjender |
-| Magmos | Magma Rain: meteorregn |
-| Sylvara | Singularity: suger fjenderne ind og eksploderer |
-| Terraxa | Tectonic Rift: jorden sprænges op til begge sider |
-| Glacior | Absolute Zero: fryser alle fjender og knuser dem |
-| Noctyr | Shadow Frenzy: teleporterer rundt og flår i fjenderne |
-| Coralis | Tidal Wave: en flodbølge skyller hen over gaden |
-| Solar Rex | Supernova: tre enorme solflammer |
-| Rustfang | Scrap Barrage: regn af skrot |
+| Gorrax | Omega Breath: kæmpe stråle hen over hele skærmen med energiringe og eksplosioner for enden |
+| Voltra | Thunderstorm: en mørk tordensky, og tykke forgrenede lyn slår ned i alle fjender |
+| Magmos | Magma Rain: brændende meteorer med ildhaler, der efterlader glødende lava |
+| Sylvara | Singularity: et sort hul med en hvirvlende lilla skive suger fjenderne ind og eksploderer |
+| Terraxa | Tectonic Rift: glødende revner og krystalspyd sprænger gaden op til begge sider |
+| Glacior | Absolute Zero: frost breder sig, alle fjender fryses inde i isblokke, der knuses |
+| Noctyr | Shadow Frenzy: teleporterer rundt og flår i fjenderne med røde skyggesegl |
+| Coralis | Tidal Wave: en rullende vandmur med skum skyller hen over gaden |
+| Solar Rex | Supernova: en sol vokser over hovedet og sender tre ringe af solild ud |
+| Rustfang | Scrap Barrage: glødende skrot regner ned i gnistregn |
 
 ## Combos
 
@@ -75,9 +90,9 @@ Tryk knapperne i rytme, så kæder angrebene sammen. Combo-specials viser deres 
 | Ground Pound | hop + tung | Styrter ned i gaden og rammer alt rundt om sig, også en svagere ring længere ude |
 | Sky Claw | hop + let | Kløer opad og sender en klo-bølge skråt op, der søger mod nærmeste helikopter, drone eller fly og gør 2,5 gange skade på dem (to gange pr. hop) |
 
-I rage-tilstand er let og tung stadig ildkugler og flammestråle.
+I rage-tilstand er let og tung heltens eget skud og ånde (se Rage og super).
 
-Angreb kan ikke spammes: når en combo (eller et enkelt slag) er slut, skal kaijuen lige komme sig, før næste angreb går i gang. Efter afslutninger som Tail Spin, Titan Crush, den store ildkugle og flammestrålen er pausen længst. Et tryk i pausen venter kort i bufferen, så rytmen holder. Rage strike, brøl og rage-angrebet har deres egen nedkøling.
+Angreb kan ikke spammes: når en combo (eller et enkelt slag) er slut, skal kaijuen lige komme sig, før næste angreb går i gang. Efter afslutninger som Tail Spin, Titan Crush, det store rage-skud og ånden er pausen længst. Et tryk i pausen venter kort i bufferen, så rytmen holder. Rage strike, brøl og rage-angrebet har deres egen nedkøling.
 
 Hop: kaijuen sætter af med et lille knæk i knæene, trækker benene op i toppen, strækker dem ned på vej ned og lander med et tungt dunk, støv og en chokring, der bliver større jo højere faldet er.
 
@@ -286,6 +301,10 @@ scripts/autoload/touch_controls.gd  Touch-knapper til mobil (fodrer de samme inp
 scripts/content.gd         Alt indhold som data: helte, lande, bosser, banegenerator
 scripts/stage_builder.gd   Bygger et lands bane: lys, vejr, by, skyline, vartegn
 scripts/skills.gd          Færdighedstræer, evner, XP-kurve og super-specials
+scripts/rage_style.gd      Hver helts rage-angreb som data (skud, ånde, effekt, farver)
+scripts/rage_fx.gd         Hvordan rage-skud, ånder og mærker i gaden ser ud
+scripts/super_fx.gd        Effekterne til super-specials
+scripts/fireball.gd        Rage-skuddet (flyver lige, i bue, gennem fjender eller tre ad gangen)
 scripts/trophies.gd        Trofæerne, og hvordan de tælles
 scripts/cosmetics.gd       De kosmetiske ting og hvor de sidder på kaijuen
 scripts/weapon.gd          Bygningsstykker der kan samles op og kastes
@@ -321,6 +340,8 @@ KAIJU_TOUCH=1 godot --headless --path . res://tests/touch_test.tscn   # touch-kn
 godot --headless --path . res://tests/difficulty_test.tscn   # sværhedsgraderne
 godot --headless --path . res://tests/trophy_test.tscn   # trofæer, kroner og kosmetik
 COSMETIC_IDS=gold_crown,halo godot --path . res://tests/cosmetic_shots.tscn   # billeder af tingene på kaijuerne
+godot --headless --path . res://tests/hero_rage_test.tscn   # hver helts rage-angreb og super
+HERO=3 godot --path . res://tests/super_shots.tscn   # billeder af en helts super (HERO=3 SHOTS=light,heavy til rage_shots.tscn)
 AUTOPLAY_COSMETICS=1 godot --headless --path . res://tests/autoplay.tscn   # spil med alle ting på
 godot --headless --path . res://tests/combo_test.tscn   # alle combos
 godot --headless --path . res://tests/spam_test.tscn   # anti-spam og hop

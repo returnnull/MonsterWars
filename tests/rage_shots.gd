@@ -1,7 +1,7 @@
 extends Node
 ## Dev helper: screenshots of rage mode fire and the jump, to judge how they
-## look. SHOTS picks "light", "heavy", "jump" (default all). Shots go to
-## user://rage_<what>_N.png.
+## look. SHOTS picks "light", "heavy", "jump" (default all), HERO the hero
+## (default 0). Shots go to user://rage_<hero>_<what>_N.png.
 
 var main: Node
 var p: Player
@@ -9,7 +9,7 @@ var p: Player
 
 func _ready() -> void:
 	Game.set_meta("no_save", true)
-	Game.party = {0: 0}
+	Game.party = {0: int(OS.get_environment("HERO"))}
 	Game.level = Content.level(0, 0)
 	main = load("res://scenes/main.tscn").instantiate()
 	add_child(main)
@@ -71,7 +71,7 @@ func _jump() -> void:
 
 
 func _shot(what: String, n: int) -> void:
-	get_viewport().get_texture().get_image().save_png("user://rage_%s_%d.png" % [what, n])
+	get_viewport().get_texture().get_image().save_png("user://rage_%d_%s_%d.png" % [p.hero, what, n])
 
 
 func _rage() -> void:
