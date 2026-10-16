@@ -7,6 +7,10 @@ extends CanvasLayer
 ## thumb lands; the right side holds the face buttons in the Switch layout,
 ## plus rage, super and pause.
 ##
+## Menus switch it to menu buttons (menu_buttons()): only the buttons that do
+## something on that screen are shown, renamed to what they do ("OK" in green,
+## "BACK" in red), so it is clear which one accepts.
+##
 ## Shown on touchscreens (and on desktop with KAIJU_TOUCH=1, where the mouse
 ## acts as a finger). Hidden again as soon as a gamepad or keyboard is used,
 ## and back on the next touch.
@@ -28,6 +32,8 @@ const BUTTONS := [
 	["II", Vector2(1850, 70), 48.0, ["pause"]],
 ]
 const MOVE_ACTIONS := ["p0_move_left", "p0_move_right", "p0_move_up", "p0_move_down"]
+const OK_COLOR := Color(0.35, 1.0, 0.5)
+const BACK_COLOR := Color(1.0, 0.4, 0.35)
 
 ## True while the overlay is drawn and listening.
 var shown := false
@@ -42,6 +48,9 @@ var _stick_vec := Vector2.ZERO
 var _fingers := {}
 ## Action -> current strength (0 = released), so only changes are sent.
 var _strength := {}
+## Menu mode: button name ("JUMP", "DODGE", ...) -> label shown instead.
+## Buttons left out are hidden. Empty = the in-game layout.
+var _menu := {}
 
 
 func _ready() -> void:
@@ -80,6 +89,34 @@ func _input(event: InputEvent) -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_APPLICATION_PAUSED:
 		_release_all()
+
+
+## Switches to menu buttons, e.g. {"JUMP": "OK", "DODGE": "BACK"}. The
+## buttons keep their places and actions; only the named ones are shown.
+func menu_buttons(labels: Dictionary) -> void:
+	if labels == _menu:
+		return
+	_menu = labels.duplicate()
+	_release_all()
+
+
+## Back to the full in-game layout.
+func game_buttons() -> void:
+	menu_buttons({})
+
+
+func in_menu() -> bool:
+	return not _menu.is_empty()
+
+
+func _active(i: int) -> bool:
+	return _menu.is_empty() or _menu.has(BUTTONS[i][0])
+
+
+func _radius(i: int) -> float:
+	var r: float = BUTTONS[i][2]
+	# The menu's confirm button is the one to find at a glance.
+	return r * 1.2 if not _menu.is_empty() and BUTTONS[i][0] == "JUMP" else r
 
 
 func _set_shown(on: bool) -> void:
@@ -128,8 +165,10 @@ func _button_at(pos: Vector2) -> int:
 	var best := -1
 	var best_d := INF
 	for i in BUTTONS.size():
+		if not _active(i):
+			continue
 		# A little slack around each button makes them easier to hit.
-		var d: float = pos.distance_to(BUTTONS[i][1]) - float(BUTTONS[i][2]) * 1.2
+		var d: float = pos.distance_to(BUTTONS[i][1]) - _radius(i) * 1.2
 		if d <= 0.0 and d < best_d:
 			best = i
 			best_d = d
@@ -191,18 +230,35 @@ func _on_draw() -> void:
 	var font := ThemeDB.fallback_font
 	# Stick: a faint hint where it rests, the real base while a thumb is down.
 	var base := _stick_origin if _stick_finger >= 0 else Vector2(330, 800)
-	var alpha := 0.55 if _stick_finger >= 0 else 0.25
+	# Fainter at rest in menus, where it sits over the menu items.
+	var alpha := 0.55 if _stick_finger >= 0 else (0.15 if not _menu.is_empty() else 0.25)
 	_draw.draw_circle(base, STICK_RADIUS, Color(0, 0, 0, alpha * 0.5))
 	_draw.draw_arc(base, STICK_RADIUS, 0, TAU, 64, Color(1, 1, 1, alpha), 4.0, true)
 	_draw.draw_circle(base + _stick_vec * STICK_RADIUS, 62.0, Color(1, 1, 1, alpha + 0.15))
+	if not _menu.is_empty() and _stick_finger < 0:
+		var mw := font.get_string_size("MOVE", HORIZONTAL_ALIGNMENT_CENTER, -1, 26).x
+		_draw.draw_string(font, base + Vector2(-mw * 0.5, STICK_RADIUS + 40), "MOVE", HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color(1, 1, 1, 0.5))
 	for i in BUTTONS.size():
+		if not _active(i):
+			continue
 		var pos: Vector2 = BUTTONS[i][1]
-		var r: float = BUTTONS[i][2]
+		var r := _radius(i)
 		var on := held.has(i)
-		var tint := Color(1.0, 0.45, 0.25) if BUTTONS[i][0] == "RAGE" else Color(0.7, 0.45, 1.0) if BUTTONS[i][0] == "SUPER" else Color.WHITE
-		_draw.draw_circle(pos, r, Color(tint.r, tint.g, tint.b, 0.5 if on else 0.18))
-		_draw.draw_arc(pos, r, 0, TAU, 48, Color(tint.r, tint.g, tint.b, 0.8), 4.0, true)
-		var text: String = BUTTONS[i][0]
+		var text: String = _menu.get(BUTTONS[i][0], BUTTONS[i][0])
+		var tint := Color.WHITE
+		if not _menu.is_empty():
+			tint = OK_COLOR if BUTTONS[i][0] == "JUMP" else BACK_COLOR if BUTTONS[i][0] == "DODGE" else Color(0.55, 0.8, 1.0)
+		elif text == "RAGE":
+			tint = Color(1.0, 0.45, 0.25)
+		elif text == "SUPER":
+			tint = Color(0.7, 0.45, 1.0)
+		var fill := (0.5 if on else 0.32) if not _menu.is_empty() else (0.5 if on else 0.18)
+		_draw.draw_circle(pos, r, Color(tint.r, tint.g, tint.b, fill))
+		_draw.draw_arc(pos, r, 0, TAU, 48, Color(tint.r, tint.g, tint.b, 0.9), 5.0 if not _menu.is_empty() else 4.0, true)
 		var size := 30 if r > 60.0 else 26
+		# Long menu labels shrink to fit inside the circle.
 		var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, size).x
-		_draw.draw_string(font, pos + Vector2(-w * 0.5, size * 0.35), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(1, 1, 1, 0.9))
+		while w > r * 1.7 and size > 16:
+			size -= 2
+			w = font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, size).x
+		_draw.draw_string(font, pos + Vector2(-w * 0.5, size * 0.35), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(1, 1, 1, 0.95))

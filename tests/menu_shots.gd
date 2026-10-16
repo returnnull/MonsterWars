@@ -22,6 +22,9 @@ func _ready() -> void:
 	await _wait(0.3)
 	await _press("p0_jump")
 	await _wait(0.5)
+	_shot("menu_difficulty")
+	await _press("p0_jump")
+	await _wait(0.5)
 	# Skill tree for hero 0 at about level 17.
 	Game.hero_xp[0] = 8000
 	Game.reset_skills(0)
