@@ -7,6 +7,7 @@ extends Node
 ##   AUTOPLAY_SECONDS max game seconds per level (0 = just build the level and run 3 s)
 ##   AUTOPLAY_SPEED   time scale; AUTOPLAY_SHOTS "t1,t2" screenshot times;
 ##   AUTOPLAY_MORTAL  let players die; AUTOPLAY_RAGE start with full rage.
+##   AUTOPLAY_COSMETICS dress the heroes in unlocked cosmetics.
 ##   AUTOPLAY_ROSTER  replace each level's waves with every regular enemy type
 ##                    (N per wave, default 3), to check they can all be killed.
 ##                    AUTOPLAY_ROSTER_IDS "tank,heli,..." limits it to those ids.
@@ -52,6 +53,15 @@ func _ready() -> void:
 			Game.hero_skills[h] = [1, 5, 5, 1, 5, 5, 1, 4, 1, 0]
 	if _env("AUTOPLAY_SUPER", "") != "":
 		_super_test = true
+	# AUTOPLAY_COSMETICS=1 unlocks every trophy and dresses each hero in a
+	# full outfit (see Cosmetics).
+	if _env("AUTOPLAY_COSMETICS", "") != "":
+		for t in Trophies.LIST:
+			Game.trophies[t["id"]] = true
+		for h in Content.HEROES.size():
+			for slot in Cosmetics.SLOTS:
+				var opts := Cosmetics.for_slot(slot)
+				Game.wear(h, slot, opts[(h * 3) % opts.size()])
 	_next()
 
 

@@ -10,6 +10,16 @@ extends KaijuModel
 ## World units per glTF unit; the T-Rex is about 15 units tall in the file.
 const MODEL_SCALE := 0.31
 const BLEND := 0.15
+## Where cosmetics sit (see Cosmetics): the bone they ride on, the anchor's
+## position in model space (rest pose, size 1.0) and its tilt about Z in
+## degrees. The neck frame leans with the neck, so its Y runs along it.
+const COSMETIC_ANCHORS := {
+	"head": ["Head", Vector3(3.2, 4.62, 0), 0.0],
+	"face": ["Head", Vector3(3.69, 4.29, 0), 0.0],
+	"neck": ["Neck", Vector3(2.4, 3.78, 0), -64.0],
+	"back": ["Shoulders", Vector3(1.1, 3.75, 0), 0.0],
+	"tail": ["Tail5", Vector3(-5.2, 2.95, 0), 0.0],
+}
 
 var _inst: Node3D
 var _lean: Node3D
@@ -85,6 +95,31 @@ func build_glb(path: String, spike: Color) -> void:
 		if s > 0.0:
 			hand.scale = Vector3.ONE * global_basis.get_scale().x / s
 	_play("Idle")
+
+
+## Hangs the anchor on its bone so that, in the rest pose, it sits at the
+## model-space spot in COSMETIC_ANCHORS; from then on it moves with the bone.
+func cosmetic_anchor(slot: String) -> Node3D:
+	var spot: Array = COSMETIC_ANCHORS.get(slot, [])
+	var skel := _find(_inst, "Skeleton3D") as Skeleton3D if _inst else null
+	if spot.is_empty() or skel == null or skel.find_bone(spot[0]) < 0:
+		return null
+	# The skeleton's transform in model space, from the local transforms up
+	# the tree (the model may not be in the scene tree yet).
+	var skel_xf := Transform3D.IDENTITY
+	var n: Node = skel
+	while n != self and n is Node3D:
+		skel_xf = (n as Node3D).transform * skel_xf
+		n = n.get_parent()
+	var bone_xf := skel_xf * skel.get_bone_global_rest(skel.find_bone(spot[0]))
+	var want := Transform3D(Basis(Vector3.BACK, deg_to_rad(spot[2])), spot[1])
+	var ba := BoneAttachment3D.new()
+	ba.bone_name = spot[0]
+	skel.add_child(ba)
+	var anchor := Node3D.new()
+	anchor.transform = bone_xf.affine_inverse() * want
+	ba.add_child(anchor)
+	return anchor
 
 
 func mouth_global() -> Vector3:

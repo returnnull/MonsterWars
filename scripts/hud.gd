@@ -179,8 +179,12 @@ func show_end(title: String, did_win: bool) -> void:
 	var keys := "%s: Space / B      World map: Shift / A" % ("Next level" if won else "Retry")
 	if TouchControls.shown:
 		keys = "%s: tap %s      World map: tap MAP" % ["Next level" if won else "Retry", "NEXT" if won else "RETRY"]
-	_end_stats.text = "Score %d\nDestruction %d%%   Best combo %d   Difficulty %s\n\n%s\n%s" % [
-		Game.score, Game.destruction_percent(), Game.best_combo, Game.difficulty()["name"], xp_lines, keys]
+	var trophy_lines := ""
+	for id in Game.new_trophies:
+		var t := Trophies.get_def(id)
+		trophy_lines += "TROPHY: %s  -  new item: %s\n" % [t["name"], Cosmetics.item(t["item"])["name"]]
+	_end_stats.text = "Score %d\nDestruction %d%%   Best combo %d   Difficulty %s\n\n%s%s\n%s" % [
+		Game.score, Game.destruction_percent(), Game.best_combo, Game.difficulty()["name"], xp_lines, trophy_lines, keys]
 	TouchControls.menu_buttons({"JUMP": "NEXT" if won else "RETRY", "DODGE": "MAP"})
 	_end_panel.visible = true
 	_end_panel.modulate.a = 0.0

@@ -1,9 +1,9 @@
 extends Control
-## Front end: title menu (play / settings / quit) -> difficulty -> hero select (1-4 players)
+## Front end: title menu (play / trophies / settings / quit) -> difficulty -> hero select (1-4 players)
 ## -> world map (10 countries) -> level select (10 levels each). Any controller can navigate; in hero
-## select every controller drives its own slot.
+## select every controller drives its own slot, and can open its kaiju's skill tree or wardrobe.
 
-enum Screen { TITLE, SETTINGS, DIFFICULTY, HEROES, MAP, LEVELS, SKILLS }
+enum Screen { TITLE, SETTINGS, DIFFICULTY, HEROES, MAP, LEVELS, SKILLS, WARDROBE, TROPHIES }
 
 const SLOT_W := 460.0
 
@@ -41,6 +41,22 @@ var _stage_model: KaijuModel
 var _stage_hero_idx := 0
 var _roar_t := 0.0
 var _was_roaring := false
+# Wardrobe: the hero being dressed, the selected slot row, each row's choice
+# (index into _wd_options) and what the preview wears, locked try-ons included.
+var _wd_hero := 0
+var _wd_row := 0
+var _wd_options: Array = []
+var _wd_choice: Array = []
+var _wd_look := {}
+var _wd_rows: Array[Dictionary] = []
+var _wd_info: Label
+var _wd_lock: Label
+var _wd_pivot: Node3D
+var _wd_model: KaijuModel
+# Trophy list: the cards and the selected one.
+var _tr_cards: Array[Panel] = []
+var _tr_sel := 0
+var _tr_info: Label
 
 
 func _ready() -> void:
@@ -94,6 +110,10 @@ func _process(delta: float) -> void:
 			_levels_input()
 		Screen.SKILLS:
 			_skills_input()
+		Screen.WARDROBE:
+			_wardrobe_input(delta)
+		Screen.TROPHIES:
+			_trophies_input()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -115,6 +135,8 @@ func _clear() -> void:
 	_level_cards.clear()
 	_diff_cards.clear()
 	_sk_cards.clear()
+	_wd_rows.clear()
+	_tr_cards.clear()
 	_footer = null
 	_items.clear()
 	_set_stage_visible(false)
@@ -301,6 +323,7 @@ func _stage_hero(hero: int) -> void:
 	_stage_model = GlbKaijuModel.for_hero(h, _stage_pivot)
 	_stage_model.scale = Vector3.ONE * float(h["size"]) * 1.25
 	_stage_model.glow = 0.4
+	Cosmetics.dress(_stage_model, Game.outfit(hero))
 
 
 func _set_stage_visible(on: bool) -> void:
@@ -344,12 +367,13 @@ func _show_title() -> void:
 	t.label_settings.shadow_color = Color(1.0, 0.35, 0.1, 0.45)
 	_label(_root, "10 kaiju  -  10 countries  -  100 levels  -  up to 4 players", Vector2(120, 340), 30, Color(0.8, 0.85, 1.0))
 	_items.clear()
-	_item_actions = ["play", "settings"]
+	_item_actions = ["play", "trophies", "settings"]
 	if Game.can_quit():
 		_item_actions.append("quit")
-	var names := {"play": "PLAY", "settings": "SETTINGS", "quit": "QUIT"}
+	var names := {"play": "PLAY", "trophies": "TROPHIES", "settings": "SETTINGS", "quit": "QUIT"}
 	for i in _item_actions.size():
-		_items.append(_menu_item(names[_item_actions[i]], Vector2(110, 520 + i * 110)))
+		_items.append(_menu_item(names[_item_actions[i]], Vector2(110, 480 + i * 110)))
+	_items[1]["value"].text = "%d / %d" % [Game.trophies.size(), Trophies.LIST.size()]
 	_sel = 0
 	_highlight_items()
 	_hint("Up/Down: choose    B / Space: select", "MOVE: choose    OK: select", {"JUMP": "OK"}, false)
@@ -362,6 +386,8 @@ func _title_input() -> void:
 		match _item_actions[_sel]:
 			"play":
 				_show_difficulty()
+			"trophies":
+				_show_trophies()
 			"settings":
 				_show_settings()
 			"quit":
@@ -509,9 +535,9 @@ func _show_heroes(restore: Array = []) -> void:
 	_clear()
 	screen = Screen.HEROES
 	_center(_label(_root, "CHOOSE YOUR KAIJU", Vector2(0, 30), 64, Color(1.0, 0.9, 0.75)))
-	_hint("Left/Right: choose    B / Space: join, then ready    X / K: skill tree    A / Shift: back    All ready: world map",
-		"MOVE: choose kaiju    OK: ready    SKILLS: skill tree    BACK: back",
-		{"JUMP": "OK", "DODGE": "BACK", "HEAVY": "SKILLS"})
+	_hint("Left/Right: choose    B / Space: join, then ready    X / K: skill tree    Y / J: wardrobe    A / Shift: back    All ready: map",
+		"MOVE: choose kaiju    OK: ready    SKILLS: skill tree    STYLE: wardrobe    BACK: back",
+		{"JUMP": "OK", "DODGE": "BACK", "HEAVY": "SKILLS", "LIGHT": "STYLE"})
 	for slot in Game.MAX_PLAYERS:
 		var x := (1920.0 - SLOT_W * 4) * 0.5 + slot * SLOT_W
 		var d := {"joined": false, "ready": false, "hero": Game.party.get(slot, slot)}
@@ -613,6 +639,9 @@ func _heroes_input() -> void:
 			if Input.is_action_just_pressed(pre + "heavy"):
 				_show_skills(slot, d["hero"])
 				return
+			if Input.is_action_just_pressed(pre + "light"):
+				_show_wardrobe(slot, d["hero"])
+				return
 			if Input.is_action_just_pressed(pre + "jump"):
 				d["ready"] = true
 				_refresh_slot(slot)
@@ -645,6 +674,7 @@ func _set_hero(slot: int, hero: int) -> void:
 	m.glow = 1.0
 	m.position = Vector3(1.0, 0, 0)
 	m.scale = Vector3.ONE * float(h["size"])
+	Cosmetics.dress(m, Game.outfit(hero))
 	d["name"].text = h["name"]
 	d["name"].label_settings.font_color = Color(h["accent"]).lerp(Color.WHITE, 0.35)
 	d["title"].text = h["title"]
@@ -927,6 +957,230 @@ func _skills_input() -> void:
 		_build_skills()
 	elif Input.is_action_just_pressed(pre + "dodge"):
 		_show_heroes(_sk_return)
+
+
+# --- wardrobe --------------------------------------------------------------
+
+## Dress a kaiju in the cosmetics its trophies unlocked, one item per slot.
+## Locked items can be tried on in the preview but are not kept.
+func _show_wardrobe(slot: int, hero: int) -> void:
+	_sk_return = _slots.map(func(d: Dictionary) -> Dictionary:
+		return {"joined": d["joined"], "ready": d["ready"], "hero": d["hero"]})
+	_sk_slot = slot
+	_wd_hero = hero
+	_wd_row = 0
+	_wd_look = Game.outfit(hero).duplicate()
+	_wd_options = []
+	_wd_choice = []
+	for s in Cosmetics.SLOTS:
+		var opts: Array = [""] + Cosmetics.for_slot(s)
+		_wd_options.append(opts)
+		_wd_choice.append(maxi(opts.find(_wd_look.get(s, "")), 0))
+	_clear()
+	screen = Screen.WARDROBE
+	_backdrop()
+	var h := Content.hero(hero)
+	var accent: Color = Color(h["accent"]).lerp(Color.WHITE, 0.3)
+	_label(_root, "%s  WARDROBE" % h["name"], Vector2(60, 30), 56, accent)
+	_label(_root, "P%d" % (slot + 1), Vector2(60, 100), 26, Color(1, 1, 1, 0.6))
+	var count := _label(_root, "TROPHIES %d / %d" % [Game.trophies.size(), Trophies.LIST.size()], Vector2(1060, 44), 32,
+		Color(1.0, 0.85, 0.4))
+	count.size.x = 800
+	count.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_build_wardrobe_stage(h)
+	for i in Cosmetics.SLOTS.size():
+		var panel := Panel.new()
+		panel.position = Vector2(1010, 150 + i * 128)
+		panel.size = Vector2(850, 112)
+		_root.add_child(panel)
+		_label(panel, Cosmetics.SLOT_NAMES[Cosmetics.SLOTS[i]], Vector2(24, 36), 26, Color(1, 1, 1, 0.6))
+		var name_label := _label(panel, "", Vector2(130, 26), 40, Color.WHITE)
+		name_label.size.x = 560
+		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		var have := _label(panel, "", Vector2(690, 38), 24, Color(1, 1, 1, 0.6))
+		have.size.x = 136
+		have.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		_wd_rows.append({"panel": panel, "name": name_label, "have": have})
+	_wd_lock = _label(_root, "", Vector2(1010, 806), 30, Color(1.0, 0.45, 0.4))
+	_wd_info = _label(_root, "", Vector2(1010, 850), 26, Color(1, 1, 1, 0.85))
+	_wd_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_wd_info.custom_minimum_size = Vector2(850, 0)
+	_wd_info.size = Vector2(850, 140)
+	_hint("Up/Down: choose slot    Left/Right: change item    A / Shift: back",
+		"MOVE: choose slot and item    BACK: back", {"DODGE": "BACK"})
+	_refresh_wardrobe()
+
+
+## A turntable with the kaiju on the left half of the screen.
+func _build_wardrobe_stage(h: Dictionary) -> void:
+	var vpc := SubViewportContainer.new()
+	vpc.position = Vector2(40, 130)
+	vpc.size = Vector2(940, 860)
+	vpc.stretch = true
+	vpc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(vpc)
+	var vp := SubViewport.new()
+	vp.own_world_3d = true
+	vp.transparent_bg = true
+	vp.msaa_3d = Viewport.MSAA_2X
+	vpc.add_child(vp)
+	var env := WorldEnvironment.new()
+	env.environment = Environment.new()
+	env.environment.background_mode = Environment.BG_CLEAR_COLOR
+	env.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.environment.ambient_light_color = Color(0.55, 0.55, 0.65)
+	env.environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env.environment.glow_enabled = true
+	vp.add_child(env)
+	var sun := DirectionalLight3D.new()
+	sun.rotation_degrees = Vector3(-35, 30, 0)
+	sun.light_energy = 1.4
+	sun.shadow_enabled = true
+	vp.add_child(sun)
+	var rim := DirectionalLight3D.new()
+	rim.rotation_degrees = Vector3(-10, 200, 0)
+	rim.light_color = Color(1.0, 0.6, 0.4)
+	rim.light_energy = 1.2
+	vp.add_child(rim)
+	var floor_mi := MeshInstance3D.new()
+	var disc := CylinderMesh.new()
+	disc.top_radius = 6.5
+	disc.bottom_radius = 6.8
+	disc.height = 0.3
+	floor_mi.mesh = disc
+	var fm := StandardMaterial3D.new()
+	fm.albedo_color = Color(0.12, 0.11, 0.16)
+	fm.roughness = 0.6
+	floor_mi.material_override = fm
+	floor_mi.position.y = -0.15
+	vp.add_child(floor_mi)
+	_wd_pivot = Node3D.new()
+	_wd_pivot.rotation.y = -0.5
+	vp.add_child(_wd_pivot)
+	var cam := Camera3D.new()
+	cam.fov = 34.0
+	cam.position = Vector3(0, 6.5, 23.0)
+	cam.look_at_from_position(cam.position, Vector3(0, 3.0, 0))
+	vp.add_child(cam)
+	_wd_model = GlbKaijuModel.for_hero(h, _wd_pivot)
+	_wd_model.scale = Vector3.ONE * float(h["size"])
+	_wd_model.position = Vector3(-0.5, 0, 0)
+	_wd_model.glow = 0.6
+
+
+func _refresh_wardrobe() -> void:
+	for i in _wd_rows.size():
+		var opts: Array = _wd_options[i]
+		var id: String = opts[_wd_choice[i]]
+		var row: Dictionary = _wd_rows[i]
+		var locked := id != "" and not Game.item_unlocked(id)
+		row["name"].text = "<  %s  >" % (Cosmetics.item(id)["name"] if id != "" else "NONE")
+		row["name"].label_settings.font_color = Color(1, 1, 1, 0.45) if locked else Color.WHITE
+		var have := opts.filter(func(o: String) -> bool: return o != "" and Game.item_unlocked(o)).size()
+		row["have"].text = "%d / %d" % [have, opts.size() - 1]
+		var sel := i == _wd_row
+		row["panel"].add_theme_stylebox_override("panel", _card_style(
+			Color(0.9, 0.42, 0.15, 0.85) if sel else Color(0.05, 0.05, 0.1, 0.7),
+			Color(1.0, 0.85, 0.5) if sel else Color(1, 1, 1, 0.1)))
+	var cur: String = _wd_options[_wd_row][_wd_choice[_wd_row]]
+	if cur == "":
+		_wd_lock.text = ""
+		_wd_info.text = "Nothing worn here. Earn trophies to unlock more items."
+	else:
+		var t := Trophies.for_item(cur)
+		_wd_lock.text = "" if Game.item_unlocked(cur) else "LOCKED  -  try-on only"
+		_wd_info.text = "Trophy: %s\n%s    (%s)" % [t["name"], t["desc"], Trophies.progress_text(t)]
+	Cosmetics.dress(_wd_model, _wd_look)
+
+
+func _wardrobe_input(delta: float) -> void:
+	_wd_pivot.rotation.y += delta * 0.35
+	var pre := "p%d_" % _sk_slot
+	var row := _wd_row
+	if Input.is_action_just_pressed(pre + "move_up"):
+		_wd_row = posmod(_wd_row - 1, _wd_rows.size())
+	elif Input.is_action_just_pressed(pre + "move_down"):
+		_wd_row = posmod(_wd_row + 1, _wd_rows.size())
+	if row != _wd_row:
+		_refresh_wardrobe()
+		return
+	var step := 0
+	if Input.is_action_just_pressed(pre + "move_left"):
+		step = -1
+	elif Input.is_action_just_pressed(pre + "move_right"):
+		step = 1
+	if step != 0:
+		var opts: Array = _wd_options[_wd_row]
+		_wd_choice[_wd_row] = posmod(_wd_choice[_wd_row] + step, opts.size())
+		var slot: String = Cosmetics.SLOTS[_wd_row]
+		var id: String = opts[_wd_choice[_wd_row]]
+		_wd_look[slot] = id
+		# Locked items are only tried on; the saved outfit keeps what it had.
+		if id == "" or Game.item_unlocked(id):
+			Game.wear(_wd_hero, slot, id)
+		_refresh_wardrobe()
+	elif Input.is_action_just_pressed(pre + "dodge"):
+		_show_heroes(_sk_return)
+
+
+# --- trophies --------------------------------------------------------------
+
+const TR_COLS := 6
+
+
+## Every trophy with its progress and the cosmetic it unlocks.
+func _show_trophies() -> void:
+	_clear()
+	screen = Screen.TROPHIES
+	_backdrop()
+	_center(_label(_root, "TROPHIES  %d / %d" % [Game.trophies.size(), Trophies.LIST.size()], Vector2(0, 26), 56,
+		Color(1.0, 0.9, 0.75)))
+	_hint("Move: choose    A / Shift: back    Wear the items in kaiju select (Y / J: wardrobe)",
+		"MOVE: choose    BACK: back", {"DODGE": "BACK"})
+	var w := (1920.0 - 160.0 - (TR_COLS - 1) * 12.0) / TR_COLS
+	for i in Trophies.LIST.size():
+		var t: Dictionary = Trophies.LIST[i]
+		var card := Panel.new()
+		card.position = Vector2(80 + (i % TR_COLS) * (w + 12.0), 118 + (i / TR_COLS) * 88)
+		card.size = Vector2(w, 78)
+		_root.add_child(card)
+		var done := Game.has_trophy(t["id"])
+		if done:
+			card.set_meta("tint", Color(0.32, 0.22, 0.06, 0.92))
+		var n := _label(card, t["name"], Vector2(12, 6), 22, Color(1.0, 0.88, 0.45) if done else Color(1, 1, 1, 0.75))
+		n.size.x = w - 24
+		n.clip_text = true
+		_label(card, Trophies.progress_text(t), Vector2(12, 42), 20, Color(0.6, 1.0, 0.7) if done else Color(1, 1, 1, 0.5))
+		_tr_cards.append(card)
+	_tr_info = _label(_root, "", Vector2(80, 912), 26, Color(1, 1, 1, 0.9))
+	_tr_info.size.x = 1760
+	_tr_sel = clampi(_tr_sel, 0, _tr_cards.size() - 1)
+	_refresh_trophies()
+
+
+func _refresh_trophies() -> void:
+	_highlight(_tr_cards, _tr_sel)
+	var t: Dictionary = Trophies.LIST[_tr_sel]
+	var it := Cosmetics.item(t["item"])
+	_tr_info.text = "%s  -  %s\nUnlocks: %s  (%s)" % [t["name"], t["desc"], it["name"],
+		String(Cosmetics.SLOT_NAMES[it["slot"]]).capitalize()]
+
+
+func _trophies_input() -> void:
+	var prev := _tr_sel
+	if _any_just("move_left"):
+		_tr_sel -= 1
+	elif _any_just("move_right"):
+		_tr_sel += 1
+	elif _any_just("move_up"):
+		_tr_sel -= TR_COLS
+	elif _any_just("move_down"):
+		_tr_sel += TR_COLS
+	_tr_sel = clampi(_tr_sel, 0, _tr_cards.size() - 1)
+	if _tr_sel != prev:
+		_refresh_trophies()
+	if _any_just("dodge"):
+		_show_title()
 
 
 # --- widgets ---------------------------------------------------------------

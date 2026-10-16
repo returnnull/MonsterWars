@@ -47,5 +47,6 @@ func _process(delta: float) -> void:
 			p.hp = minf(p.hp + HEAL, p.max_hp)
 			p.health_changed.emit(p.hp, p.max_hp)
 			FX.energy(global_position, Color(0.4, 1.0, 0.6))
+			Game.track("orbs")
 			queue_free()
 			return
