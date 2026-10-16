@@ -602,9 +602,13 @@ static func burst(pos: Vector3, radius: float, st: Dictionary) -> void:
 
 ## Stops a stream after `t` seconds, unless it is gone by then (level ended).
 static func _stop_later(p: GPUParticles3D, t: float) -> void:
-	p.get_tree().create_timer(t, false).timeout.connect(func() -> void:
-		if is_instance_valid(p):
-			FX.stop_stream(p))
+	# The timer lives on the stream, so it goes when the level does.
+	var timer := Timer.new()
+	timer.wait_time = t
+	timer.one_shot = true
+	timer.autostart = true
+	timer.timeout.connect(FX.stop_stream.bind(p))
+	p.add_child(timer)
 
 
 ## What the element leaves on the street for a while: burning flames,
