@@ -18,8 +18,6 @@ var hp_mul := 1.0
 var dmg_mul := 1.0
 var speed := 4.0
 var dmg := 10.0
-## Allowed x range for its own movement (set by main to the wave arena).
-var arena := Vector2(-INF, INF)
 
 var _vis: Node3D
 var _turret: Node3D
@@ -128,7 +126,7 @@ func _think(delta: float, p: Kaiju) -> Vector3:
 		if nx < arena.x or nx > arena.y:
 			mv.x = signf((arena.x + arena.y) * 0.5 - global_position.x) * speed * 0.5 if (global_position.x < arena.x or global_position.x > arena.y) else 0.0
 		_cd -= delta
-		if _cd <= 0.0 and adx < 30.0:
+		if _cd <= 0.0 and adx < 30.0 and in_arena():
 			_start_act(adx)
 	else:
 		_act_t += delta

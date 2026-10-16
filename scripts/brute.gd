@@ -214,6 +214,16 @@ func _approach(p: Kaiju) -> Vector3:
 	var melee := _melee_range()
 	var want := melee * _range_mul
 	var mv := Vector3.ZERO
+	if not in_arena():
+		# Still behind the gate: come in before doing anything else.
+		mv.x = signf((arena.x + arena.y) * 0.5 - global_position.x) * speed
+		if absf(dz) > 0.5:
+			mv.z = signf(dz) * speed * 0.7
+		return mv
+	if arena.x > x_min or arena.y < x_max:
+		# Inside now: no retreating back out behind the gates.
+		x_min = maxf(x_min, arena.x)
+		x_max = minf(x_max, arena.y)
 	if absf(dx) > want:
 		mv.x = signf(dx) * speed
 	elif absf(dx) < want - 1.3:
@@ -484,7 +494,7 @@ func _do_summon() -> void:
 			s.kind = _summon
 			s.hp_mul = hp_mul
 			s.dmg_mul = dmg_mul
-			s.arena = Vector2(x_min, x_max)
+			s.arena = arena
 			m = s
 			get_parent().add_child(s)
 			s.global_position = global_position + Vector3(-facing * (3.0 + i * 1.5), 0.3, (i - 0.5) * 2.0)
@@ -493,6 +503,7 @@ func _do_summon() -> void:
 			f.kind = "drone"
 			f.hp_mul = hp_mul * 0.6
 			f.dmg_mul = dmg_mul
+			f.arena = arena
 			m = f
 			get_parent().add_child(f)
 			f.global_position = global_position + Vector3(randf_range(-6, 6), 14.0, -2.0)
@@ -503,6 +514,7 @@ func _do_summon() -> void:
 			b.dmg_mul = dmg_mul
 			b.x_min = x_min
 			b.x_max = x_max
+			b.arena = arena
 			m = b
 			get_parent().add_child(b)
 			b.global_position = global_position + Vector3(facing * (2.5 + i * 1.5), 0.5, (i - 0.5) * 2.0)

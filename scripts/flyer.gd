@@ -18,6 +18,11 @@ var hp := 35.0
 var dmg := 8.0
 var dead := false
 var hit_radius := 1.5
+## The wave arena between its gates (set by main). Aircraft fly in over the
+## gates, hold their fire until they are over the arena and then stay over it,
+## so they never hang out of reach beyond the barricades.
+var arena := Vector2(-INF, INF)
+const ARENA_MARGIN := 1.5
 
 var _vel := Vector3.ZERO
 var _fire_cd := 2.0
@@ -38,6 +43,7 @@ var _arm_t := 0.0
 var _bomb_t := 0.0
 var _dir := 1.0
 var _visual: Node3D
+var _entered := false
 
 
 func _ready() -> void:
@@ -122,6 +128,8 @@ func _process(delta: float) -> void:
 	var p := Game.nearest_player(global_position) as Kaiju
 	if p == null:
 		return
+	if not _entered and _over_arena():
+		_entered = true
 	match kind:
 		"bomber":
 			_fly_bomber(delta, p)
@@ -131,6 +139,31 @@ func _process(delta: float) -> void:
 			_fly_saucer(delta, p)
 		_:
 			_fly_hover(delta, p)
+	if _entered and not dead:
+		var lo := arena.x + ARENA_MARGIN
+		var hi := arena.y - ARENA_MARGIN
+		if global_position.x < lo or global_position.x > hi:
+			global_position.x = clampf(global_position.x, lo, hi)
+			_vel.x = 0.0
+
+
+## Over the arena, far enough in from the gates to be hit.
+func _over_arena() -> bool:
+	return global_position.x >= arena.x + ARENA_MARGIN and global_position.x <= arena.y - ARENA_MARGIN
+
+
+## Keeps a hover point over the arena. Next to a gate the aircraft switches
+## to the player's open side instead of hanging behind the barricade.
+func _arena_target(target: Vector3, px: float) -> Vector3:
+	var lo := arena.x + ARENA_MARGIN
+	var hi := arena.y - ARENA_MARGIN
+	if target.x < lo or target.x > hi:
+		var mirrored := 2.0 * px - target.x
+		if mirrored >= lo and mirrored <= hi:
+			_side = -_side
+			target.x = mirrored
+	target.x = clampf(target.x, lo, hi)
+	return target
 
 
 # --- behaviours --------------------------------------------------------------
@@ -152,7 +185,7 @@ func _fly_hover(delta: float, p: Kaiju) -> void:
 	elif _swoop_cd <= 0.0:
 		_swoop = 2.4
 		_side = -_side
-	_steer(delta, target, max_speed, 2.5)
+	_steer(delta, _arena_target(target, p.global_position.x), max_speed, 2.5)
 	var dx := p.global_position.x - global_position.x
 	_face(delta, dx, heli)
 
@@ -168,7 +201,7 @@ func _fly_hover(delta: float, p: Kaiju) -> void:
 	_warn_mat.emission_energy_multiplier = 8.0 if (warning and fmod(_t, 0.12) < 0.06) else 1.5
 	if _swoop > 0.0:
 		_fire_cd = maxf(_fire_cd, 0.8)
-	if _fire_cd <= 0.0 and absf(dx) < 24.0 and not p.dead:
+	if _fire_cd <= 0.0 and absf(dx) < 24.0 and not p.dead and _entered:
 		if heli:
 			_burst = 5
 			_burst_t = 0.0
@@ -183,7 +216,10 @@ func _fly_hover(delta: float, p: Kaiju) -> void:
 func _fly_bomber(delta: float, p: Kaiju) -> void:
 	var dx := p.global_position.x - global_position.x
 	# Passed far enough beyond the player: turn around.
-	if dx * _dir < -16.0:
+	# Passed far enough beyond the player, or about to cross a gate: turn around.
+	var at_gate := _entered and ((_dir > 0.0 and global_position.x > arena.y - ARENA_MARGIN - 2.0) \
+			or (_dir < 0.0 and global_position.x < arena.x + ARENA_MARGIN + 2.0))
+	if dx * _dir < -16.0 or at_gate:
 		_dir = -_dir
 		_bomb_t = 0.0
 	var alt := 4.8 + sin(_t * 0.8) * 0.4
@@ -201,7 +237,7 @@ func _fly_bomber(delta: float, p: Kaiju) -> void:
 	_bomb_t -= delta
 	var ahead := dx * _dir
 	_warn_mat.emission_energy_multiplier = 8.0 if (ahead > 0.0 and ahead < 14.0 and fmod(_t, 0.2) < 0.1) else 1.5
-	if not turning and ahead > 1.0 and ahead < 11.0 and _bomb_t <= 0.0:
+	if not turning and ahead > 1.0 and ahead < 11.0 and _bomb_t <= 0.0 and _entered:
 		_bomb_t = 0.35
 		var b := Projectile.new()
 		b.style = "bomb"
@@ -229,9 +265,10 @@ func _fly_wasp(delta: float, p: Kaiju) -> void:
 		_arm_t += delta
 		return
 	var target := p.global_position + Vector3(_side * 7.0 + sin(_t * 2.0) * 1.5, 5.0 + sin(_t * 3.1) * 0.7, sin(_t * 1.7) * 1.5)
-	_steer(delta, target, 16.0, 3.5)
+	_steer(delta, _arena_target(target, p.global_position.x), 16.0, 3.5)
 	_face(delta, p.global_position.x - global_position.x, false)
-	_fire_cd -= delta
+	if _entered:
+		_fire_cd -= delta
 	_warn_mat.emission_energy_multiplier = 10.0 if (_fire_cd < 0.7 and fmod(_t, 0.1) < 0.05) else 2.0
 	if _fire_cd <= 0.0:
 		_dive = true
@@ -269,14 +306,14 @@ func _fly_saucer(delta: float, p: Kaiju) -> void:
 		if _swoop <= 0.0:
 			_swoop_cd = randf_range(5.0, 7.0)
 			_side = -_side
-	elif _swoop_cd <= 0.0:
+	elif _swoop_cd <= 0.0 and _entered:
 		_swoop = 3.0
 		_burst = 0
 	else:
 		_warn_mat.emission_energy_multiplier = 3.0
-	_steer(delta, target, 11.0, 2.0)
+	_steer(delta, _arena_target(target, p.global_position.x), 11.0, 2.0)
 	_fire_cd -= delta
-	if _swoop <= 0.0 and _fire_cd <= 0.0 and not p.dead:
+	if _swoop <= 0.0 and _fire_cd <= 0.0 and not p.dead and _entered:
 		_fire_cd = randf_range(2.2, 3.0)
 		for a in [-0.18, 0.0, 0.18]:
 			var b := Projectile.new()

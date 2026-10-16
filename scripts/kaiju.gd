@@ -23,6 +23,9 @@ var hit_radius := 1.6
 var hit_height := 3.0
 var x_min := -INF
 var x_max := INF
+## The wave arena between its gates (enemies only). Enemies come in over the
+## gates but only start attacks once they are inside it.
+var arena := Vector2(-INF, INF)
 var z_min := -5.0
 var z_max := 3.0
 ## Status effects put on by player abilities.
@@ -47,6 +50,11 @@ func init_body(radius: float, height: float, layer: int) -> void:
 	col.position.y = height * 0.5
 	add_child(col)
 	hp = max_hp
+
+
+## True once the body stands inside its wave arena (always, without one).
+func in_arena() -> bool:
+	return global_position.x >= arena.x and global_position.x <= arena.y
 
 
 func hit_center() -> Vector3:
