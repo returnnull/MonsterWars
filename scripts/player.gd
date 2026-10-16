@@ -29,6 +29,10 @@ const SUPER_TIME := 3.2
 ##   mode    special tapped:  rage mode, drains RAGE_MODE_DRAIN per second
 const RAGE_SKILLS := {"strike": 25.0, "roar": 35.0, "attack": 50.0, "mode": 30.0}
 const RAGE_MODE_DRAIN := 10.0
+## In rage mode normal attacks play this much faster and burst into flames
+## for FIRE_DMG of their damage around the point of impact (see _fire_burst).
+const RAGE_ATTACK_SPEED := 1.25
+const FIRE_DMG := 0.6
 ## A special press held longer than this without a combo does nothing.
 const SPECIAL_TAP := 0.45
 
@@ -312,7 +316,8 @@ func _roar() -> void:
 			FX.energy(p.global_position + Vector3(0, 4, 0), color())
 
 
-## Rage mode: the kaiju glows, hits 30% harder, moves 20% faster, takes
+## Rage mode: the kaiju glows, hits 30% harder, attacks 25% faster with
+## fire blasts (see _fire_burst), moves 20% faster, takes
 ## less damage and can't be staggered. It drains rage every second and ends
 ## when the bar is empty or special is tapped again.
 func _enter_rage_mode() -> void:
@@ -334,7 +339,7 @@ func _exit_rage_mode() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	state_t += delta
+	state_t += delta * (RAGE_ATTACK_SPEED if raging and state == S.ATTACK and not atk.get("rage", false) else 1.0)
 	invuln = maxf(invuln - delta, 0.0)
 	_dodge_cd = maxf(_dodge_cd - delta, 0.0)
 	_passives(delta)
@@ -561,6 +566,10 @@ func _swing_weapon(center: Vector3) -> void:
 	var w: Dictionary = Weapon.KINDS[weapon]
 	var reach_c := global_position + Vector3(facing * (atk["reach"] + w["reach"]), 3.0, 0)
 	var dmg: float = atk["dmg"] * w["dmg"] * power * _boost()
+	if raging:
+		var fire_hits := _fire_burst(reach_c, atk["radius"], dmg, atk["next"] == "")
+		for i in fire_hits:
+			Game.register_hit()
 	var hits := strike(reach_c, atk["radius"], dmg, atk["kb"], "enemies", atk["bdmg"] * power * _bdmg())
 	if hits > 0:
 		Game.shake(atk["shake"])
@@ -604,8 +613,11 @@ func _do_hit() -> void:
 		center = global_position + Vector3(0, 2.6, 0)
 	var rage_skill: bool = atk.get("rage", false)
 	var dmg: float = atk["dmg"] * (_special_power() if rage_skill else power * _boost())
-	var hits := strike(center, atk["radius"], dmg, atk["kb"], "enemies", atk["bdmg"] * power * _bdmg())
 	var finisher: bool = atk["pose"] == "spin" or atk["pose"] == "slam"
+	# Fire goes first so the punch's own knockback wins. Fire hits count as
+	# hits but give no rage, so rage mode can't feed itself.
+	var fire_hits := _fire_burst(center, atk["radius"], dmg, finisher) if raging and not rage_skill else 0
+	var hits := strike(center, atk["radius"], dmg, atk["kb"], "enemies", atk["bdmg"] * power * _bdmg())
 	if atk["pose"] == "slam":
 		FX.shockwave(global_position + Vector3(facing * 3.0, 0, 0), 5.0, Color(1.0, 0.8, 0.5))
 		FX.dust(global_position + Vector3(facing * 3.0, 0, 0), 1.2)
@@ -623,14 +635,31 @@ func _do_hit() -> void:
 		FX.shockwave(center - Vector3(0, 3.2, 0), 4.0, color())
 		FX.energy(center, color())
 		FX.dust(global_position, 1.0)
-	if hits > 0:
+	if hits + fire_hits > 0:
 		rumble(0.3, 0.15 if dmg < 15.0 else 0.5, 0.1)
 		Game.shake(atk["shake"])
 		Game.hitstop(0.05 if dmg < 15.0 else 0.09)
-		for i in hits:
+		for i in hits + fire_hits:
 			Game.register_hit()
 		if not rage_skill:
 			add_rage(dmg * 0.45 * hits)
+
+
+## Rage mode turns every normal attack into a fire blast: flames burst
+## around the point of impact, hurt every enemy and building close by and
+## leave enemies burning. Finishers (spin, slam, last weapon swing) make a
+## bigger blast.
+func _fire_burst(center: Vector3, radius: float, dmg: float, finisher: bool) -> int:
+	var r := radius * (1.6 if finisher else 1.3) + 1.5
+	var c := Vector3(center.x, maxf(center.y - 0.8, 1.6), center.z)
+	var hits := strike(c, r, dmg * FIRE_DMG, Vector3(6, 6, 0), "enemies", dmg * FIRE_DMG * _bdmg())
+	for t in get_tree().get_nodes_in_group("enemies"):
+		if not t.dead and t.hit_center().distance_to(c) <= r + t.hit_radius:
+			t.apply_burn(dmg * FIRE_DMG * 0.25, 2.0)
+	FX.fire_burst(c, r)
+	if finisher:
+		Game.shake(0.25)
+	return hits
 
 
 func _bdmg() -> float:
