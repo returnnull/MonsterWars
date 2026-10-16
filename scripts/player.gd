@@ -37,6 +37,9 @@ const RAGE_MODE_DRAIN := 10.0
 ## element for FIRE_DMG of their damage (see _fire_burst).
 const RAGE_ATTACK_SPEED := 1.25
 const FIRE_DMG := 0.6
+## Rage attacks shake the screen this much of what other hits do: they come
+## fast and often (fireballs, breath ticks), so full shake gets tiring.
+const RAGE_SHAKE := 0.25
 ## The heavy flame stream: how far it reaches, how wide it gets at the end,
 ## and how often it hurts what it touches.
 const FLAME_LEN := 12.0
@@ -394,11 +397,16 @@ func _roar() -> void:
 	FX.shockwave(global_position, 9.0, color())
 	FX.shockwave(global_position, 5.0, rage_style["glow"])
 	RageFX.burst(global_position + Vector3(0, 2.5, 0), 6.0, rage_style)
-	Game.shake(0.4)
+	rage_shake(0.4)
 	for p in Game.living_players():
 		if p != self and p.global_position.distance_to(global_position) < 16.0:
 			p.add_rage(15.0)
 			FX.energy(p.global_position + Vector3(0, 4, 0), color())
+
+
+## Screen shake for rage attacks, scaled down by RAGE_SHAKE.
+static func rage_shake(amount: float) -> void:
+	Game.shake(amount * RAGE_SHAKE)
 
 
 ## Rage mode: the kaiju glows, hits 30% harder, attacks 25% faster with
@@ -410,7 +418,7 @@ func _enter_rage_mode() -> void:
 	Game.track("rage_modes")
 	rumble(0.6, 0.8, 0.4)
 	_rage_announced = false
-	Game.shake(0.5)
+	rage_shake(0.5)
 	Game.hitstop(0.12)
 	FX.shockwave(global_position, 8.0, color())
 	FX.shockwave(global_position, 5.0, rage_style["glow"] * 1.6)
@@ -825,7 +833,10 @@ func _do_hit() -> void:
 		FX.dust(global_position, 1.0)
 	if hits + fire_hits > 0:
 		rumble(0.3, 0.15 if dmg < 15.0 else 0.5, 0.1)
-		Game.shake(atk["shake"])
+		if rage_skill or raging:
+			rage_shake(atk["shake"])
+		else:
+			Game.shake(atk["shake"])
 		Game.hitstop(0.05 if dmg < 15.0 else 0.09)
 		for i in hits + fire_hits:
 			Game.register_hit()
@@ -847,7 +858,7 @@ func _fire_burst(center: Vector3, radius: float, dmg: float, finisher: bool) -> 
 		_rage_effect(t, dmg * FIRE_DMG, false)
 	RageFX.burst(c, r, rage_style)
 	if finisher:
-		Game.shake(0.25)
+		rage_shake(0.25)
 	return hits
 
 
@@ -918,7 +929,7 @@ func _spit_fireball(size: float, dmg: float) -> void:
 	Game.track("fireballs")
 	rumble(0.25, 0.1 * size, 0.08)
 	if size > 1.2:
-		Game.shake(0.15)
+		rage_shake(0.15)
 		FX.callout(global_position + Vector3(0, 7.5, 0), rage_style["light"], rage_style["glow"])
 
 
@@ -931,7 +942,7 @@ func _start_flame() -> void:
 	RageFX.muzzle(mouth, Vector3(facing, 0, 0), rage_style, 1.6)
 	FX.shockwave(global_position + Vector3(facing * 1.5, 0, 0), 4.0, rage_style["glow"] * 1.4)
 	FX.callout(global_position + Vector3(0, 7.5, 0), rage_style["heavy"], rage_style["glow"])
-	Game.shake(0.35)
+	rage_shake(0.35)
 	rumble(0.5, 0.6, 0.15)
 
 
@@ -980,7 +991,7 @@ func _flame_tick(mouth: Vector3) -> void:
 	# Breath hits count for the combo but, like all rage attacks, give no rage.
 	for i in hit.size():
 		Game.register_hit()
-	Game.shake(0.1 if not hit.is_empty() else 0.05)
+	rage_shake(0.1 if not hit.is_empty() else 0.05)
 
 
 func _stop_flame() -> void:
@@ -1127,7 +1138,7 @@ func _start_beam() -> void:
 	_special_step = 0
 	_flame_ticks = 0
 	invuln = 0.0
-	Game.shake(0.3)
+	rage_shake(0.3)
 	FX.energy(global_position + Vector3(facing * 2.0, 5.0, 0), color())
 	RageFX.charge(to_global(_mouth_pos()) + Vector3(facing * 0.6, 0, 0), rage_style, BEAM_CHARGE)
 	FX.callout(global_position + Vector3(0, 7.5, 0), rage_style["attack"], rage_style["glow"])
@@ -1163,7 +1174,7 @@ func _state_beam(delta: float) -> void:
 	if _beam_tick <= 0.0:
 		_beam_tick = 0.1
 		_beam_damage()
-		Game.shake(0.1)
+		rage_shake(0.1)
 	if state_t >= _special_time:
 		_beam.visible = false
 		_end_special()
@@ -1213,7 +1224,7 @@ func _state_lightning(delta: float) -> void:
 		var hits := strike(target + Vector3(0, 2.0, 0), 3.5, dmg * 1.5, Vector3(4, 10, 0), "enemies", 30.0 * _bdmg())
 		for i in hits:
 			Game.register_hit()
-	Game.shake(0.15)
+	rage_shake(0.15)
 	rumble(0.3, 0.4, 0.1)
 	if state_t >= _special_time:
 		_end_special()
@@ -1243,7 +1254,7 @@ func _state_nova() -> void:
 				RageFX.ground(global_position, rage_style, 2.4, 1.5)
 			_:
 				RageFX.ground(global_position, rage_style, 2.4, 1.5)
-		Game.shake(0.5)
+		rage_shake(0.5)
 		for i in hits:
 			Game.register_hit()
 	if state_t >= _special_time:
@@ -1278,7 +1289,7 @@ func _state_quake() -> void:
 				RageFX.trail_burst(Vector3(x, 0.5, c.z), rage_style)
 			_:
 				RageFX.pop(c + Vector3(0, 1.0, 0), rage_style, 1.4)
-		Game.shake(0.35)
+		rage_shake(0.35)
 		for i in hits:
 			Game.register_hit()
 	if state_t >= _special_time:

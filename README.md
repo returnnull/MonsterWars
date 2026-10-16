@@ -339,6 +339,7 @@ AUTOPLAY_SKILLS=1 AUTOPLAY_SUPER=1 godot --headless --path . res://tests/autopla
 KAIJU_TOUCH=1 godot --headless --path . res://tests/touch_test.tscn   # touch-knapperne
 godot --headless --path . res://tests/difficulty_test.tscn   # sværhedsgraderne
 godot --headless --path . res://tests/trophy_test.tscn   # trofæer, kroner og kosmetik
+xvfb-run godot --path . --write-movie /tmp/lab.avi --fixed-fps 30 res://tests/anim_lab.tscn   # optag heltens animationer (gang, løb, vending, hop, angreb)
 COSMETIC_IDS=gold_crown,halo godot --path . res://tests/cosmetic_shots.tscn   # billeder af tingene på kaijuerne
 godot --headless --path . res://tests/hero_rage_test.tscn   # hver helts rage-angreb og super
 HERO=3 godot --path . res://tests/super_shots.tscn   # billeder af en helts super (HERO=3 SHOTS=light,heavy til rage_shots.tscn)
