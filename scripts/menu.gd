@@ -1,9 +1,9 @@
 extends Control
-## Front end: title menu (play / settings / quit) -> hero select (1-4 players) -> world map (10 countries)
-## -> level select (10 levels each). Any controller can navigate; in hero
+## Front end: title menu (play / settings / quit) -> difficulty -> hero select (1-4 players)
+## -> world map (10 countries) -> level select (10 levels each). Any controller can navigate; in hero
 ## select every controller drives its own slot.
 
-enum Screen { TITLE, SETTINGS, HEROES, MAP, LEVELS, SKILLS }
+enum Screen { TITLE, SETTINGS, DIFFICULTY, HEROES, MAP, LEVELS, SKILLS }
 
 const SLOT_W := 460.0
 
@@ -17,6 +17,11 @@ var _level := 0
 var _slots: Array[Dictionary] = []
 var _map_cards: Array[Panel] = []
 var _level_cards: Array[Panel] = []
+var _diff_cards: Array[Panel] = []
+var _diff := 1
+# Bottom help line: [keyboard/controller text, touch text].
+var _footer: Label
+var _footer_texts := ["", ""]
 # Skill tree screen: who opened it, for which hero, and the selected node.
 var _sk_slot := 0
 var _sk_hero := 0
@@ -71,12 +76,16 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
+	if _footer:
+		_footer.text = _footer_texts[1] if TouchControls.shown else _footer_texts[0]
 	_animate_stage(delta)
 	match screen:
 		Screen.TITLE:
 			_title_input()
 		Screen.SETTINGS:
 			_settings_input()
+		Screen.DIFFICULTY:
+			_difficulty_input()
 		Screen.HEROES:
 			_heroes_input()
 		Screen.MAP:
@@ -104,7 +113,9 @@ func _clear() -> void:
 	_slots.clear()
 	_map_cards.clear()
 	_level_cards.clear()
+	_diff_cards.clear()
 	_sk_cards.clear()
+	_footer = null
 	_items.clear()
 	_set_stage_visible(false)
 	_root.modulate.a = 0.0
@@ -341,7 +352,7 @@ func _show_title() -> void:
 		_items.append(_menu_item(names[_item_actions[i]], Vector2(110, 520 + i * 110)))
 	_sel = 0
 	_highlight_items()
-	_label(_root, "Up/Down: choose    B / Space: select", Vector2(120, 1010), 24, Color(1, 1, 1, 0.7))
+	_hint("Up/Down: choose    B / Space: select", "MOVE: choose    OK: select", {"JUMP": "OK"}, false)
 
 
 func _title_input() -> void:
@@ -350,7 +361,7 @@ func _title_input() -> void:
 	if _any_just("jump") or Input.is_action_just_pressed("pause"):
 		match _item_actions[_sel]:
 			"play":
-				_show_heroes()
+				_show_difficulty()
 			"settings":
 				_show_settings()
 			"quit":
@@ -370,7 +381,8 @@ func _show_settings() -> void:
 		_items.append(_menu_item("", Vector2(110, 360 + i * 110), 760))
 	_sel = 0
 	_refresh_settings()
-	_label(_root, "Up/Down: choose    Left/Right: change    A / Shift: back", Vector2(120, 1010), 24, Color(1, 1, 1, 0.7))
+	_hint("Up/Down: choose    Left/Right: change    A / Shift: back", "MOVE: choose and change    OK: change    BACK: back",
+		{"JUMP": "OK", "DODGE": "BACK"}, false)
 
 
 func _refresh_settings() -> void:
@@ -402,6 +414,51 @@ func _settings_input() -> void:
 		return
 	Game.step_setting(key, step)
 	_refresh_settings()
+
+
+# --- difficulty ------------------------------------------------------------
+
+func _show_difficulty() -> void:
+	_clear()
+	screen = Screen.DIFFICULTY
+	_backdrop()
+	_center(_label(_root, "CHOOSE DIFFICULTY", Vector2(0, 120), 72, Color(1.0, 0.9, 0.75)))
+	_hint("Left/Right: choose    B / Space: select    A / Shift: back    (change later in Settings)",
+		"MOVE: choose    OK: select    BACK: back", {"JUMP": "OK", "DODGE": "BACK"})
+	for i in Game.DIFFICULTIES.size():
+		var d: Dictionary = Game.DIFFICULTIES[i]
+		var card := Panel.new()
+		card.position = Vector2(180 + i * 540, 330)
+		card.size = Vector2(480, 440)
+		_root.add_child(card)
+		var name_label := _label(card, d["name"], Vector2(0, 40), 64, d["color"])
+		name_label.size.x = card.size.x
+		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_label(card, "Enemy health  %d%%\nEnemy damage  %d%%" % [
+			roundi(d["hp"] * 100.0), roundi(d["dmg"] * 100.0)], Vector2(50, 150), 30, Color(1, 1, 1, 0.9))
+		var desc := _label(card, d["desc"], Vector2(50, 260), 26, Color(1, 1, 1, 0.75))
+		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		desc.custom_minimum_size = Vector2(380, 0)
+		desc.size = Vector2(380, 150)
+		_diff_cards.append(card)
+	_diff = int(Game.settings["difficulty"])
+	_highlight(_diff_cards, _diff)
+
+
+func _difficulty_input() -> void:
+	var prev := _diff
+	if _any_just("move_left") or _any_just("move_up"):
+		_diff -= 1
+	elif _any_just("move_right") or _any_just("move_down"):
+		_diff += 1
+	_diff = clampi(_diff, 0, Game.DIFFICULTIES.size() - 1)
+	if _diff != prev:
+		_highlight(_diff_cards, _diff)
+	if _any_just("jump") or Input.is_action_just_pressed("pause"):
+		Game.set_setting("difficulty", _diff)
+		_show_heroes()
+	elif _any_just("dodge"):
+		_show_title()
 
 
 # --- vertical menu widgets -------------------------------------------------
@@ -452,8 +509,9 @@ func _show_heroes(restore: Array = []) -> void:
 	_clear()
 	screen = Screen.HEROES
 	_center(_label(_root, "CHOOSE YOUR KAIJU", Vector2(0, 30), 64, Color(1.0, 0.9, 0.75)))
-	_center(_label(_root, "Left/Right: choose    B / Space: join, then ready    X / K: skill tree    A / Shift: back    All ready: world map",
-		Vector2(0, 1010), 24, Color(1, 1, 1, 0.75)))
+	_hint("Left/Right: choose    B / Space: join, then ready    X / K: skill tree    A / Shift: back    All ready: world map",
+		"MOVE: choose kaiju    OK: ready    SKILLS: skill tree    BACK: back",
+		{"JUMP": "OK", "DODGE": "BACK", "HEAVY": "SKILLS"})
 	for slot in Game.MAX_PLAYERS:
 		var x := (1920.0 - SLOT_W * 4) * 0.5 + slot * SLOT_W
 		var d := {"joined": false, "ready": false, "hero": Game.party.get(slot, slot)}
@@ -560,7 +618,7 @@ func _heroes_input() -> void:
 				_refresh_slot(slot)
 			elif Input.is_action_just_pressed(pre + "dodge"):
 				if slot == 0:
-					_show_title()
+					_show_difficulty()
 					return
 				d["joined"] = false
 				_refresh_slot(slot)
@@ -624,8 +682,12 @@ func _show_map() -> void:
 	screen = Screen.MAP
 	_backdrop()
 	_center(_label(_root, "WORLD MAP", Vector2(0, 30), 64, Color(1.0, 0.9, 0.75)))
-	_center(_label(_root, "Move: choose country    B / Space: select    A / Shift: back to kaiju select",
-		Vector2(0, 1010), 24, Color(1, 1, 1, 0.75)))
+	_hint("Move: choose country    B / Space: select    A / Shift: back to kaiju select",
+		"MOVE: choose country    OK: select    BACK: kaiju select", {"JUMP": "OK", "DODGE": "BACK"})
+	var diff := Game.difficulty()
+	var dl := _label(_root, "DIFFICULTY: %s" % diff["name"], Vector2(1300, 56), 28, diff["color"])
+	dl.size.x = 560
+	dl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	for i in Content.COUNTRIES.size():
 		var c := Content.country(i)
 		var col := i % 5
@@ -693,8 +755,8 @@ func _show_levels() -> void:
 	_backdrop()
 	var c := Content.country(_country)
 	_center(_label(_root, "%s  -  %s" % [c["name"], c["city"]], Vector2(0, 40), 64, Color(1.0, 0.9, 0.75)))
-	_center(_label(_root, "Move: choose level    B / Space: play    A / Shift: back to map",
-		Vector2(0, 1010), 24, Color(1, 1, 1, 0.75)))
+	_hint("Move: choose level    B / Space: play    A / Shift: back to map",
+		"MOVE: choose level    PLAY: start    BACK: world map", {"JUMP": "PLAY", "DODGE": "BACK"})
 	for i in Content.LEVELS_PER_COUNTRY:
 		var g := _country * Content.LEVELS_PER_COUNTRY + i
 		var card := Panel.new()
@@ -831,8 +893,9 @@ func _build_skills() -> void:
 	var sel_block := Skills.buy_block(xp, ranks, _sk_sel)
 	var hint := _label(_root, "" if sel_block == "" else sel_block, Vector2(150, 935), 26, Color(1.0, 0.5, 0.4))
 	hint.size.x = 1620
-	_center(_label(_root, "Move: choose    B / Space: learn    Y / J: reset all points    A / Shift: back",
-		Vector2(0, 1010), 24, Color(1, 1, 1, 0.75)))
+	_hint("Move: choose    B / Space: learn    Y / J: reset all points    A / Shift: back",
+		"MOVE: choose    LEARN: buy skill    RESET: refund all points    BACK: back",
+		{"JUMP": "LEARN", "DODGE": "BACK", "LIGHT": "RESET"})
 	_highlight(_sk_cards, _sk_sel)
 
 
@@ -867,6 +930,15 @@ func _skills_input() -> void:
 
 
 # --- widgets ---------------------------------------------------------------
+
+## The help line along the bottom, worded for touch while the touch buttons
+## are shown, and the touch buttons this screen uses (see TouchControls).
+func _hint(pad_text: String, touch_text: String, buttons: Dictionary, centered: bool = true) -> void:
+	_footer_texts = [pad_text, touch_text]
+	_footer = _label(_root, pad_text, Vector2(120, 1010), 24, Color(1, 1, 1, 0.75))
+	if centered:
+		_center(_footer)
+	TouchControls.menu_buttons(buttons)
 
 func _highlight(cards: Array[Panel], idx: int) -> void:
 	for i in cards.size():

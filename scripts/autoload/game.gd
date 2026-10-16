@@ -19,8 +19,19 @@ const MAX_PLAYERS := 4
 const SAVE_PATH := "user://save.json"
 const SETTINGS_PATH := "user://settings.json"
 ## Defaults for the options screen. "shake" is a percentage (0-100).
-const DEFAULT_SETTINGS := {"rumble": true, "shake": 100, "fullscreen": false, "hints": true}
-const SETTING_NAMES := {"rumble": "RUMBLE", "shake": "SCREEN SHAKE", "fullscreen": "FULLSCREEN", "hints": "CONTROLS HELP"}
+## "difficulty" indexes DIFFICULTIES.
+const DEFAULT_SETTINGS := {"difficulty": 1, "rumble": true, "shake": 100, "fullscreen": false, "hints": true}
+const SETTING_NAMES := {"difficulty": "DIFFICULTY", "rumble": "RUMBLE", "shake": "SCREEN SHAKE",
+	"fullscreen": "FULLSCREEN", "hints": "CONTROLS HELP"}
+## Enemy health and damage multipliers, and the XP bonus for the risk.
+const DIFFICULTIES := [
+	{"name": "EASY", "hp": 0.7, "dmg": 0.6, "xp": 1.0, "color": Color(0.45, 0.95, 0.6),
+		"desc": "Weaker enemies that hit softly. For learning the ropes and playing with kids."},
+	{"name": "NORMAL", "hp": 1.0, "dmg": 1.0, "xp": 1.0, "color": Color(1.0, 0.8, 0.35),
+		"desc": "The intended challenge."},
+	{"name": "HARD", "hp": 1.4, "dmg": 1.5, "xp": 1.3, "color": Color(1.0, 0.35, 0.3),
+		"desc": "Tougher enemies that hit much harder. +30% XP."},
+]
 ## Controls overview shown in the pause menu: [action, keyboard, controller].
 ## Controller names follow the Nintendo Switch layout (see _setup_input).
 const CONTROLS := [
@@ -73,6 +84,26 @@ func _ready() -> void:
 	_reset_heroes()
 	load_progress()
 	load_settings()
+	_keep_web_storage()
+
+
+## Saves on the way out: closing the window, or a phone/browser putting the
+## game in the background (it may be killed there without warning).
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_PAUSED \
+			or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		save_progress()
+
+
+## In the browser user:// lives in IndexedDB, which the browser may clear
+## when space runs low. Asking for persistent storage keeps saves safe.
+func _keep_web_storage() -> void:
+	if OS.has_feature("web") and not has_meta("no_save"):
+		JavaScriptBridge.eval("navigator.storage && navigator.storage.persist && navigator.storage.persist()", true)
+
+
+func difficulty() -> Dictionary:
+	return DIFFICULTIES[clampi(int(settings["difficulty"]), 0, DIFFICULTIES.size() - 1)]
 
 
 func _reset_heroes() -> void:
@@ -187,6 +218,8 @@ func start_level(country_idx: int, level_idx: int) -> void:
 
 
 func go_to_menu(screen: String = "map") -> void:
+	# Keeps XP earned in a level that was left through the pause menu.
+	save_progress()
 	get_tree().paused = false
 	Engine.time_scale = 1.0
 	set_meta("menu_screen", screen)
@@ -208,6 +241,8 @@ func save_progress() -> void:
 	if f:
 		f.store_string(JSON.stringify({"unlocked": unlocked, "best": best_scores, "party": party,
 			"hero_xp": hero_xp, "hero_skills": hero_skills}))
+		# Closing flushes the file (and on the web syncs it to IndexedDB).
+		f.close()
 
 
 func load_progress() -> void:
@@ -234,9 +269,9 @@ func load_progress() -> void:
 
 ## Settings shown in the options lists, in order.
 func setting_keys() -> Array:
-	var keys := ["rumble", "shake", "hints"]
+	var keys := ["difficulty", "rumble", "shake", "hints"]
 	if can_quit():
-		keys.insert(2, "fullscreen")
+		keys.insert(3, "fullscreen")
 	return keys
 
 
@@ -248,13 +283,19 @@ func can_quit() -> bool:
 func setting_text(key: String) -> String:
 	if key == "shake":
 		return "<  %d%%  >" % int(settings["shake"])
+	if key == "difficulty":
+		return "<  %s  >" % difficulty()["name"]
 	return "<  %s  >" % ("ON" if settings[key] else "OFF")
 
 
-## Left/right on an options row: steps screen shake by 25%, flips the rest.
+## Left/right on an options row: steps screen shake by 25%, cycles the
+## difficulty, flips the rest.
 func step_setting(key: String, step: int) -> void:
 	if key == "shake":
 		set_setting("shake", clampi(int(settings["shake"]) + step * 25, 0, 100))
+		return
+	if key == "difficulty":
+		set_setting("difficulty", posmod(int(settings["difficulty"]) + step, DIFFICULTIES.size()))
 		return
 	set_setting(key, not bool(settings[key]))
 	if key == "rumble" and settings["rumble"]:
@@ -284,6 +325,7 @@ func save_settings() -> void:
 	var f := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify(settings))
+		f.close()
 
 
 func load_settings() -> void:
@@ -295,6 +337,7 @@ func load_settings() -> void:
 				if data.has(k):
 					settings[k] = type_convert(data[k], typeof(DEFAULT_SETTINGS[k]))
 	settings["shake"] = clampi(int(settings["shake"]), 0, 100)
+	settings["difficulty"] = clampi(int(settings["difficulty"]), 0, DIFFICULTIES.size() - 1)
 	apply_settings()
 
 
