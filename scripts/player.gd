@@ -55,6 +55,7 @@ const SPECIAL_TAP := 0.45
 ## Combos. "next" is the attack a light press chains into, "next_h" the one
 ## a heavy press chains into, and "combo" names a combo special (shown over
 ## the kaiju when it starts):
+##   (every hero has its own name and element for each combo, see HeroMoves)
 ##   light light light  TAIL SPIN    spins round and knocks back all around
 ##   light light heavy  KAIJU RUSH   charges forward, ramming what's in the way
 ##   heavy heavy heavy  TITAN CRUSH  huge slam with shockwaves marching ahead
@@ -187,6 +188,9 @@ var weapon_uses := 0
 var _held: Node3D
 ## This hero's rage attacks (RageStyle.STYLES entry).
 var rage_style: Dictionary
+## How this hero fights: pace, reach and the names of its combos (HeroMoves).
+var moves: Dictionary
+var _rush_fx_t := 0.0
 ## The heavy flame stream while it burns (see _flame_tick).
 var _flame_fx: GPUParticles3D
 var _flame_ticks := 0
@@ -203,6 +207,7 @@ func _ready() -> void:
 	sk = Skills.mods(hero, Game.hero_skills[hero])
 	_super = Skills.super_def(hero)
 	rage_style = RageStyle.for_hero(hero)
+	moves = HeroMoves.for_hero(hero)
 	# Each level above 1 adds 3% health and 2% damage on top of the skill tree.
 	max_hp = _h["hp"] * (1.0 + 0.03 * (level - 1)) * (1.0 + _m("vitality") / 100.0)
 	speed_mul = _h["speed"] * (1.0 + _m("swift") / 100.0)
@@ -659,7 +664,11 @@ func _state_free(input: Vector2) -> Vector3:
 
 func _start_attack(attack_name: String) -> void:
 	atk = ATTACKS[attack_name]
+	if not atk.get("rage", false) and not atk.has("shot") and not atk.has("stream") \
+			and not atk["pose"] in ["swing", "throw"]:
+		atk = HeroMoves.tune(atk, hero)
 	_atk_name = attack_name
+	_rush_fx_t = 0.0
 	_atk_done = false
 	_stream_len = float(atk.get("stream", 0.0))
 	if atk.has("stream"):
@@ -669,7 +678,7 @@ func _start_attack(attack_name: String) -> void:
 	_set_state(S.ATTACK)
 	if atk.has("combo"):
 		combo_uses[attack_name] = int(combo_uses.get(attack_name, 0)) + 1
-		FX.callout(global_position + Vector3(0, 7.5, 0), atk["combo"], color())
+		FX.callout(global_position + Vector3(0, 7.5, 0), HeroMoves.combo_name(hero, attack_name), rage_style["glow"])
 
 
 func _state_attack() -> Vector3:
@@ -815,22 +824,27 @@ func _do_hit() -> void:
 	var fire_hits := _fire_burst(center, atk["radius"], dmg, finisher) if raging and not rage_skill else 0
 	var hits := strike(center, atk["radius"], dmg, atk["kb"], "enemies", atk["bdmg"] * power * _bdmg())
 	if atk["pose"] == "spin":
-		FX.shockwave(global_position, atk["radius"] + 1.0, color())
+		# The hero's element bursts up in a ring all around it.
+		FX.shockwave(global_position, atk["radius"] + 1.0, rage_style["glow"])
+		_erupt_ring(global_position, atk["radius"] * 0.9, 6, 0.7)
 	if atk["pose"] == "rush":
-		FX.shockwave(center - Vector3(0, 3.0, 0), 4.5, color())
+		FX.shockwave(center - Vector3(0, 3.0, 0), 4.5, rage_style["glow"])
 		FX.dust(center - Vector3(0, 3.0, 0), 1.2)
 		FX.debris_burst(center, 0.8)
+		RageFX.burst(center, 3.5, rage_style)
 	if atk["pose"] == "crush":
-		var ground := global_position + Vector3(facing * 3.4, 0, 0)
-		FX.shockwave(ground, 8.0, color())
-		FX.shockwave(ground, 5.0, Color(1.0, 0.8, 0.5))
+		var ground := global_position + Vector3(facing * (atk["reach"] + 0.4), 0, 0)
+		FX.shockwave(ground, 8.0, rage_style["glow"])
 		FX.dust(ground, 2.0)
 		FX.debris_burst(ground + Vector3(0, 1, 0), 1.4)
+		_erupt(ground, 1.3)
 		rumble(0.6, 0.9, 0.3)
-		_eruption_line(global_position.x, facing, 5, 16.0 * power * _boost())
+		_eruption_line(global_position.x, facing, 5, 16.0 * power * _boost() * float(moves["dmg"]))
 	if atk["pose"] == "slam":
-		FX.shockwave(global_position + Vector3(facing * 3.0, 0, 0), 5.0, Color(1.0, 0.8, 0.5))
-		FX.dust(global_position + Vector3(facing * 3.0, 0, 0), 1.2)
+		var ground := global_position + Vector3(facing * atk["reach"], 0, 0)
+		FX.shockwave(ground, 5.0, rage_style["glow"])
+		FX.dust(ground, 1.2)
+		_erupt(ground, 0.75)
 		Game.shake(0.3)
 		if _m("quake_slam") > 0.0:
 			_eruption_line(global_position.x, facing, 4, _m("quake_slam") * power * _boost())
@@ -839,6 +853,13 @@ func _do_hit() -> void:
 		hits += strike(c, 7.5, 16.0 * power * _boost(), Vector3(12, 9, 0), "enemies", 20.0 * power)
 		FX.shockwave(global_position, 7.5, color())
 		FX.energy(c, color())
+	if finisher and not rage_skill and not raging:
+		# Combo finishers put the hero's element on what they hit (burn,
+		# shock, poison, frost, leech...).
+		for t in _targets_near(center, atk["radius"]):
+			_rage_effect(t, dmg * 0.5, false)
+	elif hits > 0 and not rage_skill and not raging:
+		RageFX.pop(center, rage_style, 0.4)
 	if finisher and hits > 0 and _m("shock") > 0.0:
 		_chain_lightning(center, _m("shock") * power * _boost())
 	if atk["pose"] == "jab_r" and rage_skill:
@@ -1020,6 +1041,10 @@ func _stop_flame() -> void:
 ## carries it along, so the final blow hits them all.
 func _rush_tick() -> void:
 	var c := global_position + Vector3(facing * 2.2, 3.0, 0)
+	# The charge leaves a trail of the hero's element on the street.
+	if state_t >= _rush_fx_t:
+		_rush_fx_t = state_t + 0.09
+		_erupt(global_position + Vector3(-facing * 0.5, 0, randf_range(-0.6, 0.6)), 0.55)
 	var dmg: float = atk["dmg"] * 0.4 * power * _boost()
 	for t in get_tree().get_nodes_in_group("enemies"):
 		if t.dead or t in _rush_hit or t.hit_center().distance_to(c) > 2.8 + t.hit_radius:
@@ -1047,10 +1072,11 @@ func _sky_claw() -> void:
 	wave.shooter = self
 	wave.dir = facing
 	wave.damage = dmg * 1.2
-	wave.tint = color()
+	wave.tint = rage_style["glow"]
 	get_parent().add_child(wave)
 	wave.global_position = c + Vector3(facing * 1.0, 0.5, 0)
-	FX.energy(c, color())
+	FX.energy(c, rage_style["glow"])
+	RageFX.pop(c, rage_style, 0.7)
 	if hits > 0:
 		Game.shake(atk["shake"])
 		Game.hitstop(0.05)
@@ -1077,6 +1103,18 @@ func _bdmg() -> float:
 	return 1.0 + _m("wrecker") / 100.0
 
 
+## The hero's element bursting out of the street (see RageFX.erupt).
+func _erupt(pos: Vector3, size: float) -> void:
+	RageFX.erupt(pos, rage_style, size)
+
+
+## A ring of `count` element bursts around `pos`.
+func _erupt_ring(pos: Vector3, radius: float, count: int, size: float) -> void:
+	for i in count:
+		var a := TAU * i / count + randf_range(-0.2, 0.2)
+		_erupt(pos + Vector3(cos(a) * radius, 0, sin(a) * radius * 0.6), size)
+
+
 ## Shockwaves that travel forward along the ground (Seismic Slam and co).
 func _eruption_line(x0: float, dir: float, count: int, dmg: float) -> void:
 	var z := global_position.z
@@ -1087,8 +1125,8 @@ func _eruption_line(x0: float, dir: float, count: int, dmg: float) -> void:
 		var c := Vector3(x0 + dir * (5.0 + i * 3.5), 1.5, z)
 		strike(c, 3.0, dmg, Vector3(5, 13, 0), "enemies", dmg * _bdmg())
 		FX.dust(c, 1.0)
-		FX.debris_burst(c, 0.8)
-		FX.shockwave(Vector3(c.x, 0, z), 3.0, color())
+		FX.shockwave(Vector3(c.x, 0, z), 3.0, rage_style["glow"])
+		_erupt(c, 0.8)
 
 
 ## Lightning that jumps from a hit to the two closest other enemies.
@@ -1122,10 +1160,16 @@ func _stomp_land() -> void:
 			if deal(t, dmg * 0.35, Vector3(signf(t.global_position.x - global_position.x) * 6.0, 6.0, 0)):
 				hits += 1
 	combo_uses["pound"] = int(combo_uses.get("pound", 0)) + 1
-	FX.callout(global_position + Vector3(0, 7.5, 0), "GROUND POUND", color())
-	FX.shockwave(global_position, 7.0 * st, color())
-	FX.shockwave(global_position, 11.0 * st)
+	for t in _targets_near(c, 7.0 * st):
+		_rage_effect(t, dmg * 0.5, false)
+	FX.callout(global_position + Vector3(0, 7.5, 0), HeroMoves.combo_name(hero, "pound"), rage_style["glow"])
+	FX.shockwave(global_position, 7.0 * st, rage_style["glow"])
+	FX.shockwave(global_position, 11.0 * st, rage_style["spark"])
 	FX.debris_burst(global_position + Vector3(0, 0.8, 0), 1.3)
+	# The stomp makes the hero's element burst out of the street around it.
+	RageFX.burst(global_position + Vector3(0, 1.0, 0), 5.0 * st, rage_style)
+	_erupt(global_position, 1.2)
+	_erupt_ring(global_position, 5.5 * st, 8, 0.9)
 	rumble(0.5, 0.8, 0.25)
 	if _has("meteor"):
 		for i in 3:
