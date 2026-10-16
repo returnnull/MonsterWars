@@ -302,7 +302,7 @@ func _hit_one(e: Node) -> void:
 		FX.hit_spark(e.hit_center(), damage)
 		shooter._rage_effect(e, damage, false)
 		RageFX.pop(e.hit_center(), style, size * 0.7)
-		Game.shake(0.08)
+		Player.rage_shake(0.08)
 
 
 ## The shot bursts where it lands: hurts and wrecks what is close by and
@@ -337,6 +337,6 @@ func _burst() -> void:
 		RageFX.ground(pos, style, 1.2 if size > 1.2 else 0.8, 1.0)
 	if size > 1.2:
 		RageFX.burst(pos, r, style)
-	Game.shake(0.1 * size + (0.1 if hits > 0 else 0.0))
+	Player.rage_shake(0.1 * size + (0.1 if hits > 0 else 0.0))
 	FX.stop_stream(_trail)
 	queue_free()
