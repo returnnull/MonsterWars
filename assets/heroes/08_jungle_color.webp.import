@@ -1,0 +1,37 @@
+[remap]
+
+importer="texture"
+type="CompressedTexture2D"
+uid="uid://5umtysiog5om"
+path="res://.godot/imported/08_jungle_color.webp-048b2bb8ef571a210845f2b10489758b.ctex"
+metadata={
+"vram_texture": false
+}
+generator_parameters={
+"md5": "5511293db45424922384a007c917fc7d"
+}
+
+[deps]
+
+source_file="res://assets/heroes/08_jungle_color.webp"
+dest_files=["res://.godot/imported/08_jungle_color.webp-048b2bb8ef571a210845f2b10489758b.ctex"]
+
+[params]
+
+compress/mode=1
+compress/high_quality=false
+compress/lossy_quality=0.85
+compress/hdr_compression=1
+compress/normal_map=0
+compress/channel_pack=0
+mipmaps/generate=true
+mipmaps/limit=-1
+roughness/mode=0
+roughness/src_normal=""
+process/fix_alpha_border=true
+process/premult_alpha=false
+process/normal_map_invert_y=false
+process/hdr_as_srgb=false
+process/hdr_clamp_exposure=false
+process/size_limit=0
+detect_3d/compress_to=0

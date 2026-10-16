@@ -1,7 +1,8 @@
 class_name GlbKaijuModel
 extends KaijuModel
 ## A hero kaiju loaded from a rigged .glb (the T-Rex variants in
-## assets/heroes, built from Quaternius' CC0 T-Rex). It takes the same pose
+## assets/heroes, built from Quaternius' CC0 T-Rex by tools/make_hero_variants.py:
+## a smooth subdivided body with a baked skin texture). It takes the same pose
 ## targets as KaijuModel and maps them onto the model's own animations:
 ## Idle, Walk, Run, Attack and Jump. Lean tilts the whole body, glow drives
 ## the emissive spikes and eye_glow the eyes. Faces +X with its origin at the
@@ -40,6 +41,10 @@ const FOOT_MAX_PULL := 1.3
 const LEGS := [["BackUpLeg.L", "BackLowLeg.L", "BackLowLeg.L_end"], ["BackUpLeg.R", "BackLowLeg.R", "BackLowLeg.R_end"]]
 const TAIL_BONES := ["Tail1", "Tail2", "Tail3", "Tail4", "Tail5"]
 const SPINE_BONES := ["Hips", "Torso", "Shoulders", "Neck", "Head"]
+## The models are dense (30-70k triangles); this lets Godot's automatic LODs
+## step down a little sooner. At the game camera's distance it looks the
+## same and draws about 40% fewer triangles; close-ups keep full detail.
+const LOD_BIAS := 0.5
 ## Where cosmetics sit (see Cosmetics): the bone they ride on, the anchor's
 ## position in model space (rest pose, size 1.0) and its tilt about Z in
 ## degrees. The neck frame leans with the neck, so its Y runs along it.
@@ -455,6 +460,7 @@ func _update_glb_glow(delta: float) -> void:
 func _collect_materials(n: Node) -> void:
 	if n is MeshInstance3D:
 		var mi := n as MeshInstance3D
+		mi.lod_bias = LOD_BIAS
 		for i in mi.mesh.get_surface_count():
 			var src := mi.get_active_material(i)
 			if not (src is StandardMaterial3D):

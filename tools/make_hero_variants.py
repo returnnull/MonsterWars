@@ -1,6 +1,10 @@
 """Build the 10 hero kaiju in assets/heroes from Quaternius' CC0 T-Rex (poly.pizza/m/UYtneO5FpF).
 
 Exports a .glb per variant (rig + animations) and renders a preview .png.
+The low-poly base body is subdivided into a smooth, dense mesh and gets a
+baked skin texture (colour with scales, mottling and ambient occlusion, a
+normal map with scales, wrinkles and belly ridges, and roughness/metal).
+The spikes, plates and horns are built with many more segments and bevels.
 
 Usage: python3 -I tools/make_hero_variants.py <fbx> <outdir> [variant-ids...]
 """
@@ -12,6 +16,10 @@ FBX, OUT = sys.argv[1], sys.argv[2]
 ONLY = sys.argv[3:]
 RENDER = os.environ.get("NO_RENDER") != "1"
 SAMPLES = int(os.environ.get("SAMPLES", "48"))
+## Times the base body is subdivided (Catmull-Clark); 2 gives ~30k triangles.
+SUBDIV = int(os.environ.get("SUBDIV", "2"))
+## Size of the baked skin textures (square).
+TEX = int(os.environ.get("TEX", "1024"))
 
 SPINE = ["Tail5", "Tail4", "Tail3", "Tail2", "Tail1", "Back", "Hips", "Torso", "Shoulders", "Neck", "Head"]
 SPINE_PATH = ["Tail5_end", "Tail5", "Tail4", "Tail3", "Tail2", "Tail1", "Back", "Hips", "Torso", "Shoulders", "Neck", "Head"]
@@ -233,7 +241,9 @@ def add_prism(bm, outline, base, T, U, S, length, height, thick, bevel_top=0.35)
     return ring_a + ring_b
 
 
-def add_cone(bm, base, axis, length, radius, sides=6, bend=0.0, side_vec=None, rings=4, flat=False):
+def add_cone(bm, base, axis, length, radius, sides=6, bend=0.0, side_vec=None, rings=4, flat=False, smooth=True):
+    if smooth:  # round horns and spikes: many more segments
+        sides, rings = max(sides * 3, 16), rings * 3
     axis = axis.normalized()
     side = (side_vec or axis.orthogonal()).normalized()
     side = (side - axis * side.dot(axis)).normalized()
@@ -267,7 +277,7 @@ def add_cone(bm, base, axis, length, radius, sides=6, bend=0.0, side_vec=None, r
 
 def add_shield(bm, base, T, U, S, length, height, width):
     """Low rounded armour scute (half ellipsoid-ish)."""
-    segs, rings = 8, 3
+    segs, rings = 32, 10
     grid = []
     for r in range(rings + 1):
         f = r / rings
@@ -287,18 +297,279 @@ def add_shield(bm, base, T, U, S, length, height, width):
     bm.faces.new(grid[-1])
 
 
-def new_part(name, bm, bone, mat):
+def new_part(name, bm, bone, mat, bevel=0.0, smooth_angle=35):
+    """A rigid part skinned to one bone. bevel rounds its edges (with segments,
+    so flat plates catch the light); faces meeting under smooth_angle shade smooth."""
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me)
     bm.free()
     ob = bpy.data.objects.new(name, me)
     bpy.context.scene.collection.objects.link(ob)
     ob.data.materials.append(mat)
+    if bevel > 0:
+        md = ob.modifiers.new("bevel", "BEVEL")
+        md.width = bevel
+        md.segments = 3
+        md.limit_method = "ANGLE"
+        md.angle_limit = math.radians(30)
+        md.harden_normals = False
+        apply_modifiers(ob)
+        # a little rounding of the long faces too
+        md = ob.modifiers.new("sub", "SUBSURF")
+        md.levels = 1
+        md.subdivision_type = "SIMPLE"
+        apply_modifiers(ob)
+        me = ob.data
+    for p in me.polygons:
+        p.use_smooth = True
+    me.set_sharp_from_angle(angle=math.radians(smooth_angle))
     vg = ob.vertex_groups.new(name=bone)
     vg.add(list(range(len(me.vertices))), 1.0, "REPLACE")
-    for p in me.polygons:
-        p.use_smooth = False
     return ob
+
+
+def apply_modifiers(ob):
+    bpy.ops.object.select_all(action="DESELECT")
+    bpy.context.view_layer.objects.active = ob
+    ob.select_set(True)
+    for md in list(ob.modifiers):
+        if md.type != "ARMATURE":
+            bpy.ops.object.modifier_apply(modifier=md.name)
+
+
+def refine_body(mesh, levels):
+    """Subdivides the low-poly body into a smooth one. Claws and teeth are
+    fully creased so they keep their points; the skin weights follow along."""
+    me = mesh.data
+    sharp = {i for i, m in enumerate(me.materials) if m.name in ("Black", "LightYellow")}
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    cl = bm.edges.layers.float.get("crease_edge") or bm.edges.layers.float.new("crease_edge")
+    for f in bm.faces:
+        if f.material_index in sharp:
+            for e in f.edges:
+                e[cl] = 1.0
+    bm.to_mesh(me)
+    bm.free()
+    md = mesh.modifiers.new("sub", "SUBSURF")
+    md.levels = md.render_levels = levels
+    md.boundary_smooth = "PRESERVE_CORNERS"
+    md.use_creases = True
+    bpy.context.view_layer.objects.active = mesh
+    while mesh.modifiers[0] != md:
+        bpy.ops.object.modifier_move_up(modifier=md.name)
+    apply_modifiers(mesh)
+    for p in me.polygons:
+        p.use_smooth = True
+
+
+# ---------------------------------------------------------------- skin texture
+# What each of the base model's materials becomes in the baked skin: which
+# pattern it gets (scales, belly ridges, smooth), its roughness and metal.
+SKIN_SLOTS = {"Green": "scales", "LightGreen": "belly", "Black": "smooth", "Red": "mouth", "LightYellow": "smooth"}
+
+
+def _n(nt, kind, loc=(0, 0), **inputs):
+    node = nt.nodes.new(kind)
+    node.location = loc
+    for k, v in inputs.items():
+        node.inputs[k].default_value = v
+    return node
+
+
+def bake_material(src, kind, image, rough, metal, rng):
+    """A material that bakes src's colour with a skin pattern into image.
+    Its output is switched between the lit BSDF (normal bake) and flat
+    emissions (colour bake, roughness/metal bake)."""
+    color = tuple(src.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value)[:3]
+    m = bpy.data.materials.new(src.name + "_bake")
+    nt = m.node_tree
+    nt.nodes.clear()
+    out = _n(nt, "ShaderNodeOutputMaterial")
+    tc = _n(nt, "ShaderNodeTexCoord")
+    co = tc.outputs["Object"]
+    lk = nt.links.new
+    # Scales: Voronoi cells, domed (distance to the edge) with a dark seam.
+    vor = _n(nt, "ShaderNodeTexVoronoi", Scale=2.4, Randomness=0.9)
+    vor.feature = "DISTANCE_TO_EDGE"
+    lk(co, vor.inputs["Vector"])
+    dome = _n(nt, "ShaderNodeMapRange", **{"From Min": 0.0, "From Max": 0.18})
+    lk(vor.outputs["Distance"], dome.inputs["Value"])
+    big = _n(nt, "ShaderNodeTexVoronoi", Scale=0.9, Randomness=1.0)
+    big.feature = "DISTANCE_TO_EDGE"
+    lk(co, big.inputs["Vector"])
+    bigd = _n(nt, "ShaderNodeMapRange", **{"From Min": 0.0, "From Max": 0.3})
+    lk(big.outputs["Distance"], bigd.inputs["Value"])
+    # Wrinkles and mottling.
+    noise = _n(nt, "ShaderNodeTexNoise", Scale=0.35, Detail=8.0, Roughness=0.6)
+    lk(co, noise.inputs["Vector"])
+    fine = _n(nt, "ShaderNodeTexNoise", Scale=6.0, Detail=4.0, Roughness=0.7)
+    lk(co, fine.inputs["Vector"])
+    # Belly: ridged bands across the body (the model's length runs along Y).
+    sep = _n(nt, "ShaderNodeSeparateXYZ")
+    lk(co, sep.inputs["Vector"])
+    wave = _n(nt, "ShaderNodeTexWave", Scale=0.55, Distortion=1.5, Detail=2.0)
+    wave.wave_type = "BANDS"
+    wave.bands_direction = "Y"
+    wave.wave_profile = "SIN"
+    lk(co, wave.inputs["Vector"])
+
+    def mix_math(op, a, b):
+        n_ = _n(nt, "ShaderNodeMath")
+        n_.operation = op
+        for i, v in enumerate((a, b)):
+            if isinstance(v, (int, float)):
+                n_.inputs[i].default_value = v
+            else:
+                lk(v, n_.inputs[i])
+        return n_.outputs[0]
+
+    if kind == "scales":
+        height = mix_math("ADD", mix_math("MULTIPLY", dome.outputs[0], 0.6), mix_math("MULTIPLY", bigd.outputs[0], 0.4))
+        height = mix_math("ADD", height, mix_math("MULTIPLY", noise.outputs["Fac"], 0.5))
+        shade = mix_math("ADD", 0.55, mix_math("MULTIPLY", dome.outputs[0], 0.45))
+        bump_str = 0.55
+    elif kind == "belly":
+        height = mix_math("ADD", mix_math("MULTIPLY", wave.outputs["Fac"], 0.8), mix_math("MULTIPLY", fine.outputs["Fac"], 0.25))
+        shade = mix_math("ADD", 0.7, mix_math("MULTIPLY", wave.outputs["Fac"], 0.3))
+        bump_str = 0.45
+    elif kind == "mouth":
+        height = fine.outputs["Fac"]
+        shade = mix_math("ADD", 0.75, mix_math("MULTIPLY", fine.outputs["Fac"], 0.3))
+        bump_str = 0.2
+    else:
+        height = mix_math("MULTIPLY", fine.outputs["Fac"], 0.3)
+        shade = mix_math("ADD", 0.85, mix_math("MULTIPLY", fine.outputs["Fac"], 0.2))
+        bump_str = 0.1
+    # Colour: the slot colour, mottled, darker in the scale seams.
+    mott = mix_math("ADD", 0.8, mix_math("MULTIPLY", noise.outputs["Fac"], 0.4))
+    val = mix_math("MULTIPLY", shade, mott)
+    tint = _n(nt, "ShaderNodeMix")
+    tint.data_type = "RGBA"
+    tint.blend_type = "MULTIPLY"
+    tint.inputs["Factor"].default_value = 1.0
+    tint.inputs[6].default_value = (*color, 1)
+    comb = _n(nt, "ShaderNodeCombineColor")
+    for i in range(3):
+        lk(val, comb.inputs[i])
+    lk(comb.outputs[0], tint.inputs[7])
+    bump = _n(nt, "ShaderNodeBump", Strength=bump_str, Distance=0.12)
+    lk(height, bump.inputs["Height"])
+    bsdf = _n(nt, "ShaderNodeBsdfPrincipled")
+    lk(bump.outputs["Normal"], bsdf.inputs["Normal"])
+    lk(tint.outputs[2], bsdf.inputs["Base Color"])
+    # Roughness: glossier on the scale tops, rougher in the seams.
+    r = mix_math("ADD", rough - 0.1, mix_math("MULTIPLY", mix_math("SUBTRACT", 1.0, shade), 0.5))
+    orm = _n(nt, "ShaderNodeCombineColor")
+    orm.inputs[0].default_value = 1.0
+    lk(r, orm.inputs[1])
+    orm.inputs[2].default_value = metal
+    e_col = _n(nt, "ShaderNodeEmission")
+    lk(tint.outputs[2], e_col.inputs["Color"])
+    e_orm = _n(nt, "ShaderNodeEmission")
+    lk(orm.outputs[0], e_orm.inputs["Color"])
+    img = nt.nodes.new("ShaderNodeTexImage")
+    img.image = image
+    nt.nodes.active = img
+    m["outs"] = None
+    return m, dict(bsdf=bsdf.outputs[0], color=e_col.outputs[0], orm=e_orm.outputs[0], out=out.inputs["Surface"])
+
+
+def bake_skin(mesh, var, parts):
+    """Bakes the body's colour (with ambient occlusion from the spikes and
+    plates), a tangent-space normal map and roughness/metal into textures,
+    and gives the body one skin material that uses them."""
+    me = mesh.data
+    bpy.ops.object.select_all(action="DESELECT")
+    bpy.context.view_layer.objects.active = mesh
+    mesh.select_set(True)
+    uv = me.uv_layers.new(name="UVMap")
+    me.uv_layers.active = uv
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(angle_limit=math.radians(60), island_margin=0.004, area_weight=0.0, correct_aspect=True,
+                             scale_to_bounds=True)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    rng = random.Random(var["id"] + "skin")
+    metal = var.get("body_metal", 0.0)
+    imgs = {k: bpy.data.images.new(k, TEX, TEX, alpha=False, float_buffer=(k == "normal"))
+            for k in ("color", "ao", "normal", "orm")}
+    imgs["normal"].colorspace_settings.name = "Non-Color"
+    imgs["orm"].colorspace_settings.name = "Non-Color"
+    imgs["ao"].colorspace_settings.name = "Non-Color"
+    orig = list(me.materials)
+    bakes = []
+    for i, src in enumerate(orig):
+        kind = SKIN_SLOTS.get(src.name, "smooth")
+        rough = 0.42 if (kind == "scales" and metal) else {"scales": 0.62, "belly": 0.7, "mouth": 0.45, "smooth": 0.35}[kind]
+        m, socks = bake_material(src, kind, imgs["color"], rough, metal if kind == "scales" else 0.0, rng)
+        me.materials[i] = m
+        bakes.append((m, socks))
+    sc = bpy.context.scene
+    sc.render.engine = "CYCLES"
+    sc.cycles.device = "CPU"
+    sc.render.bake.margin = 6
+    sc.render.bake.use_clear = True
+
+    def bake(kind, out_sock, image, samples=1, **kw):
+        sc.cycles.samples = samples
+        for m, socks in bakes:
+            nt = m.node_tree
+            for l in list(nt.links):
+                if l.to_socket == socks["out"]:
+                    nt.links.remove(l)
+            nt.links.new(socks[out_sock], socks["out"])
+            img = [n for n in nt.nodes if n.type == "TEX_IMAGE"][0]
+            img.image = image
+            nt.nodes.active = img
+        bpy.ops.object.bake(type=kind, **kw)
+
+    bake("EMIT", "color", imgs["color"])
+    bake("EMIT", "orm", imgs["orm"])
+    bake("NORMAL", "bsdf", imgs["normal"], samples=4, normal_space="TANGENT")
+    sc.world = sc.world or bpy.data.worlds.new("W")
+    sc.world.light_settings.distance = 1.8
+    bake("AO", "bsdf", imgs["ao"], samples=48)
+    # Occlusion darkens the colour (cavities, under the plates and arms).
+    n = TEX * TEX * 4
+    col, ao = [0.0] * n, [0.0] * n
+    imgs["color"].pixels.foreach_get(col)
+    imgs["ao"].pixels.foreach_get(ao)
+    for j in range(0, n, 4):
+        a = 0.45 + 0.55 * ao[j]
+        col[j] *= a
+        col[j + 1] *= a
+        col[j + 2] *= a
+    imgs["color"].pixels.foreach_set(col)
+    imgs["orm"].pixels.foreach_get(col)
+    for j in range(0, n, 4):
+        col[j] = ao[j]
+    imgs["orm"].pixels.foreach_set(col)
+    for k in ("color", "normal", "orm"):
+        imgs[k].pack()
+    # One skin material for the whole body.
+    skin = bpy.data.materials.new("Skin")
+    nt = skin.node_tree
+    p = nt.nodes["Principled BSDF"]
+    t_col = nt.nodes.new("ShaderNodeTexImage")
+    t_col.image = imgs["color"]
+    nt.links.new(t_col.outputs["Color"], p.inputs["Base Color"])
+    t_orm = nt.nodes.new("ShaderNodeTexImage")
+    t_orm.image = imgs["orm"]
+    sep = nt.nodes.new("ShaderNodeSeparateColor")
+    nt.links.new(t_orm.outputs["Color"], sep.inputs[0])
+    nt.links.new(sep.outputs[1], p.inputs["Roughness"])
+    nt.links.new(sep.outputs[2], p.inputs["Metallic"])
+    t_nrm = nt.nodes.new("ShaderNodeTexImage")
+    t_nrm.image = imgs["normal"]
+    nm = nt.nodes.new("ShaderNodeNormalMap")
+    nt.links.new(t_nrm.outputs["Color"], nm.inputs["Color"])
+    nt.links.new(nm.outputs["Normal"], p.inputs["Normal"])
+    for poly in me.polygons:
+        poly.material_index = 0
+    me.materials.clear()
+    me.materials.append(skin)
 
 
 # ---------------------------------------------------------------- build
@@ -319,6 +590,7 @@ def build(var):
     scale_chain(arm, mesh, ["Head", "Head_end"], "Head", var.get("head", 1))
     scale_chain(arm, mesh, ["Tail1", "Tail2", "Tail3", "Tail4", "Tail5", "Tail5_end"], "Tail1", var.get("tail", 1))
     mesh.data.update()
+    refine_body(mesh, SUBDIV)
 
     # recolour
     mats = {m.name: m for m in mesh.data.materials}
@@ -347,7 +619,7 @@ def build(var):
         loc = mesh.matrix_world @ loc
         bm = bmesh.new()
         r = 0.42 * var.get("head", 1)
-        bmesh.ops.create_icosphere(bm, subdivisions=2, radius=r, matrix=Matrix.Translation(loc + Vector((-sign * r * 0.35, 0, 0))))
+        bmesh.ops.create_icosphere(bm, subdivisions=4, radius=r, matrix=Matrix.Translation(loc + Vector((-sign * r * 0.35, 0, 0))))
         eye_parts.append(new_part(f"eye_{sign}", bm, "Head", eye_mat))
         for pp in eye_parts[-1].data.polygons:
             pp.use_smooth = True
@@ -379,22 +651,25 @@ def build(var):
                 S = Tt.cross(U).normalized()
                 base = loc - U * 0.25
                 bm = bmesh.new()
+                bev = 0.0
                 shape = row["shape"]
                 L = spacing * row["w"] * (0.85 if sign else 1.0)
                 if shape in ("plate", "blade", "zigzag", "leaf"):
                     add_prism(bm, poly2d(shape, rng), base, Tt, U, S, L, h, max(0.12, L * 0.09))
+                    bev = max(0.04, L * 0.05)
                 elif shape == "cone":
                     ax = (U - Tt * 0.35).normalized()
                     add_cone(bm, base, ax, h, L * 0.45, sides=6, bend=0.25, side_vec=S)
                 elif shape == "crystal":
                     ax = (U + S * rng.uniform(-0.3, 0.3) + Tt * rng.uniform(-0.4, 0.0)).normalized()
-                    add_cone(bm, base, ax, h, L * 0.4, sides=4, rings=1)
+                    add_cone(bm, base, ax, h, L * 0.4, sides=6, rings=1, smooth=False)
                     ax2 = (ax + S * rng.uniform(-0.6, 0.6)).normalized()
-                    add_cone(bm, base + Tt * L * 0.2, ax2, h * 0.55, L * 0.25, sides=4, rings=1)
+                    add_cone(bm, base + Tt * L * 0.2, ax2, h * 0.55, L * 0.25, sides=6, rings=1, smooth=False)
+                    bev = 0.0
                 elif shape == "shield":
                     add_shield(bm, base + U * 0.2, Tt, U, S, L, h, L * 0.8)
                 bone = nearest_bone(arm, loc, SPINE)
-                parts.append(new_part(f"{shape}_{len(parts)}", bm, bone, part_mats[row["mat"]]))
+                parts.append(new_part(f"{shape}_{len(parts)}", bm, bone, part_mats[row["mat"]], bevel=bev))
 
     # horns on the head: u = 0 at back of skull, 1 at snout
     hs, he = bone_seg(arm, "Head")
@@ -414,10 +689,13 @@ def build(var):
             bm = bmesh.new()
             add_cone(bm, loc - ax * 0.3, ax, hn["len"] * var.get("head", 1), hn["r"] * var.get("head", 1),
                      sides=hn.get("sides", 6), bend=hn.get("bend", 0) * (1 if dy >= 0 else -1),
-                     side_vec=V(0, 1, 0) if abs(ax.y) < 0.9 else V(1, 0, 0), flat=hn.get("flat", False))
+                     side_vec=V(0, 1, 0) if abs(ax.y) < 0.9 else V(1, 0, 0), flat=hn.get("flat", False),
+                     smooth=hn.get("sides", 6) > 4)
             parts.append(new_part(f"horn_{len(parts)}", bm, "Head", part_mats[hn["mat"]]))
             if hn.get("xoff"):
                 break
+
+    bake_skin(mesh, var, parts)
 
     # merge parts into the skinned mesh
     bpy.ops.object.select_all(action="DESELECT")
@@ -438,7 +716,8 @@ def export(arm, mesh, path):
     arm.select_set(True)
     mesh.select_set(True)
     bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", use_selection=True, export_animations=True,
-                              export_animation_mode="ACTIONS", export_apply=False)
+                              export_animation_mode="ACTIONS", export_apply=False, export_tangents=True,
+                              export_image_format="WEBP", export_image_quality=90)
 
 
 def render(arm, mesh, path, action="Idle", frame=20):
