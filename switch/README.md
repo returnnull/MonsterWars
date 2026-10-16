@@ -6,6 +6,9 @@ game as a homebrew `.nro`, plus the files for an installable `.nsp`.
 It needs a Switch running custom firmware (Atmosphère). An official release
 on an unmodified Switch needs Nintendo's developer program instead.
 
+The port builds and packs cleanly but has not been run on real hardware yet;
+report problems with `sdmc:/switch/kaiju-dawn/log.txt` attached.
+
 ## What is in here
 
 - `platform/`: the Switch platform for Godot (copied into the engine's
@@ -14,7 +17,7 @@ on an unmodified Switch needs Nintendo's developer program instead.
     Godot's Compatibility renderer at 1280x720 (the console scales it when docked).
   - Controllers: up to 4 players. Pro Controllers, Joy-Con pairs, handheld mode,
     and single Joy-Cons held sideways. Buttons are positional like on PC, so the
-    bottom button (B) selects and jumps, as the in-game hints say. Rumble works.
+    bottom button (B) selects and jumps, as the in-game hints say. Rumble is supported.
   - Touch screen in handheld mode (the game's touch controls show up).
   - Sound through the audio renderer service.
   - Saves and the log go to the SD card (`sdmc:/switch/Godot/app_userdata/Kaiju Dawn/`
