@@ -9,6 +9,7 @@ files = [
     "display_server_switch.cpp",
     "joypad_switch.cpp",
     "audio_driver_switch.cpp",
+    "posix_stubs.c",
 ]
 
 # The ELF is turned into a .nro (with the game pack in RomFS) by switch/build.sh.

@@ -19,6 +19,9 @@ on an unmodified Switch needs Nintendo's developer program instead.
   - Sound through the audio renderer service.
   - Saves and the log go to the SD card (`sdmc:/switch/Godot/app_userdata/Kaiju Dawn/`
     and `sdmc:/switch/kaiju-dawn/log.txt`).
+- `platform/compat/` and `platform/posix_stubs.c`: stand-ins for POSIX headers and
+  calls that Horizon lacks (dynamic libraries, processes, syslog).
+- Jolt physics and CSG are left out: Jolt has no Horizon support and the game uses neither.
 - `patches/`: small changes to the engine source.
 - `build.sh`: builds the engine, exports the game pack and makes the `.nro`.
 - `docker-build.sh`: runs `build.sh` in devkitPro's Docker image (only Docker needed).

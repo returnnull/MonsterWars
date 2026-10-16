@@ -42,7 +42,8 @@ for p in "$ROOT"/switch/patches/*.patch; do
 done
 
 echo "== Engine for Switch"
-(cd "$GODOT_SRC" && scons platform=switch target=template_release -j"$JOBS")
+if command -v scons >/dev/null; then SCONS=(scons); else SCONS=(python3 -m SCons); fi
+(cd "$GODOT_SRC" && "${SCONS[@]}" platform=switch target=template_release -j"$JOBS")
 ELF=$GODOT_SRC/bin/godot.switch.template_release.arm64
 
 echo "== Game pack"

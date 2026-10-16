@@ -53,6 +53,8 @@ def get_flags():
         "module_camera_enabled": False,
         "module_openxr_enabled": False,
         "module_theora_enabled": False,
+        "module_jolt_physics_enabled": False,  # Jolt has no Horizon platform support.
+        "module_csg_enabled": False,  # Manifold clashes with newlib's ctype macros; the game has no CSG.
         "module_text_server_adv_enabled": False,
         "module_text_server_fb_enabled": True,
         "brotli": False,
@@ -86,7 +88,7 @@ def configure(env: "SConsEnvironment"):
     arch = ["-march=armv8-a+crc+crypto", "-mtune=cortex-a57", "-mtp=soft", "-fPIE"]
     env.Prepend(CCFLAGS=arch + ["-ffunction-sections", "-fdata-sections"])
     env.Append(CPPDEFINES=["__SWITCH__", "HORIZON_ENABLED", "UNIX_ENABLED", "EGL_STATIC", "NO_FCNTL", "UNIX_SOCKET_UNAVAILABLE", "_GNU_SOURCE", "GLES3_ENABLED"])
-    env.Prepend(CPPPATH=["#platform/switch"])
+    env.Prepend(CPPPATH=["#platform/switch", "#platform/switch/compat"])
     env.Append(CCFLAGS=["-isystem", dkp + "/portlibs/switch/include", "-isystem", dkp + "/libnx/include"])
 
     env.Append(LIBPATH=[dkp + "/portlibs/switch/lib", dkp + "/libnx/lib"])
