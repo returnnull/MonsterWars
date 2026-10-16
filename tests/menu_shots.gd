@@ -58,20 +58,19 @@ func _ready() -> void:
 	Game.reset_skills(0)
 	await _press("p0_heavy")
 	await _wait(0.3)
-	await _press("p0_jump")
-	await _press("p0_move_down")
-	for i in 5:
+	for i in 3:
 		await _press("p0_jump")
 	await _press("p0_move_down")
 	for i in 5:
 		await _press("p0_jump")
+	await _press("p0_move_right")
+	for i in 3:
+		await _press("p0_jump")
+	await _press("p0_move_down")
+	for i in 3:
+		await _press("p0_jump")
 	await _press("p0_move_down")
 	await _press("p0_jump")
-	await _press("p0_move_left")
-	await _press("p0_move_up")
-	await _press("p0_move_up")
-	for i in 4:
-		await _press("p0_jump")
 	await _press("p0_move_down")
 	await _wait(0.6)
 	_shot("menu_skills")

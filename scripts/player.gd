@@ -164,6 +164,8 @@ var _special_step := 0
 var level := 1
 ## Learned abilities, {kind: value} (see Skills.KINDS).
 var sk := {}
+var _kill_rush_t := 0.0
+var _arcing := false
 var raging := false
 var super_meter := 0.0
 var _special_time := BEAM_TIME
@@ -237,6 +239,8 @@ func _has(kind: String) -> bool:
 ## Damage multiplier from rage mode and Berserk.
 func _boost() -> float:
 	var b := 1.3 if raging else 1.0
+	if _kill_rush_t > 0.0:
+		b *= 1.0 + _m("killrush") / 100.0
 	if _has("berserk") and hp < max_hp * 0.4:
 		b *= 1.35
 	return b
@@ -287,6 +291,7 @@ func add_super(amount: float) -> void:
 	if state == S.SUPER or dead:
 		return
 	var was_full := super_meter >= SUPER_MAX
+	amount *= 1.0 + _m("radiance") / 100.0
 	super_meter = minf(super_meter + amount, SUPER_MAX)
 	super_changed.emit(super_meter, SUPER_MAX)
 	if super_meter >= SUPER_MAX and not was_full:
@@ -298,6 +303,10 @@ func on_enemy_killed() -> void:
 	add_super(4.0)
 	if _m("rampage") > 0.0:
 		add_rage(_m("rampage"))
+	if _m("killrush") > 0.0:
+		_kill_rush_t = 5.0
+	if _m("salvage") > 0.0:
+		heal(max_hp * _m("salvage") / 100.0)
 	if _has("vampire"):
 		heal(max_hp * 0.06)
 		FX.energy(global_position + Vector3(0, 3, 0), Color(1.0, 0.2, 0.3))
@@ -368,6 +377,9 @@ func _use_rage_skill(skill: String) -> bool:
 		return false
 	rage_uses[skill] = int(rage_uses.get(skill, 0)) + 1
 	Game.run["rage"] = true
+	if _m("tide_heal") > 0.0:
+		heal(max_hp * _m("tide_heal") / 100.0)
+		FX.energy(global_position + Vector3(0, 3, 0), Color(0.4, 0.8, 1.0))
 	match skill:
 		"strike", "roar":
 			_spend_rage(rage_cost(skill))
@@ -428,6 +440,10 @@ func _enter_rage_mode() -> void:
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud and Game.players.size() == 1:
 		hud.show_message("RAGE MODE!", 1.2)
+	if _has("meltdown"):
+		FX.shockwave(global_position, 11.0, Color(0.5, 1.0, 0.6))
+		FX.light_flash(global_position + Vector3(0, 3, 0), Color(0.5, 1.0, 0.6), 16.0, 12.0, 0.3)
+		strike(global_position + Vector3(0, 2.5, 0), 10.0, 4.0 * _special_power(), Vector3(0, 9, 0), "enemies", 2.0 * power)
 
 
 func _exit_rage_mode() -> void:
@@ -485,6 +501,7 @@ func _passives(delta: float) -> void:
 		rage_changed.emit(rage, rage_max)
 		if rage <= 0.0:
 			_exit_rage_mode()
+	_kill_rush_t = maxf(_kill_rush_t - delta, 0.0)
 	if _m("regen") > 0.0 and hp < max_hp:
 		heal(max_hp * _m("regen") / 100.0 * delta)
 	if _has("overdrive"):
@@ -1340,7 +1357,7 @@ func _incoming(dmg: float, _from: Node3D) -> float:
 		return 0.0
 	dmg *= 1.0 - minf(_m("armor"), 60.0) / 100.0
 	if raging:
-		dmg *= 0.75
+		dmg *= 0.5 if _has("bulwark") else 0.75
 	if dmg >= hp and _has("second_wind") and not _second_wind_used:
 		_second_wind_used = true
 		hp = max_hp * 0.4
@@ -1371,10 +1388,16 @@ func _on_strike_hit(target: Node, dmg: float) -> void:
 	if _m("leech") > 0.0:
 		heal(dmg * _m("leech") / 100.0)
 	if target is Kaiju:
-		if _m("burn") > 0.0:
-			target.apply_burn(_m("burn") * power, 3.0)
+		if _m("burn") > 0.0 or _m("venom") > 0.0:
+			var dot := (_m("burn") + _m("venom")) * power * (1.0 + _m("inferno") / 100.0)
+			target.apply_burn(dot, 5.0 if _m("venom") > 0.0 else 3.0)
 		if _m("frost") > 0.0:
 			target.apply_slow(minf(_m("frost"), 70.0) / 100.0, 1.5)
+	# Static arcs can't set off more arcs.
+	if _m("static") > 0.0 and not _arcing and randf() * 100.0 < _m("static"):
+		_arcing = true
+		_chain_shock(target, power * 1.5 * _boost(), [target])
+		_arcing = false
 
 
 func _on_hurt(dmg: float, from: Node3D) -> void:
@@ -1382,6 +1405,8 @@ func _on_hurt(dmg: float, from: Node3D) -> void:
 	rumble(0.4, clampf(dmg / 30.0, 0.2, 1.0), 0.18)
 	add_rage(dmg * 0.35 * (1.0 + _m("bloodrage") / 100.0))
 	Game.combo = 0
+	if _m("frostbite") > 0.0 and from is Kaiju and from.is_in_group("enemies"):
+		from.apply_slow(minf(_m("frostbite"), 70.0) / 100.0, 2.0)
 	if _m("thorns") > 0.0 and from is Kaiju and from.is_in_group("enemies"):
 		from.take_hit(_m("thorns") * power, Vector3.ZERO, self)
 	# Rage attacks and supers can't be interrupted; rage mode shrugs off stagger.
