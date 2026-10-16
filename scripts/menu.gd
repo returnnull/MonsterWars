@@ -843,8 +843,12 @@ func _levels_input() -> void:
 
 # --- skill tree ------------------------------------------------------------
 
-const SK_COL_X := [150.0, 720.0, 1290.0]
-const SK_ROW_Y := [330.0, 520.0, 710.0]
+## Tree grid: column x, row y and card size; the detail panel sits right of it.
+const SK_X0 := 150.0
+const SK_DX := 270.0
+const SK_Y0 := 150.0
+const SK_DY := 104.0
+const SK_CARD := Vector2(250, 84)
 
 
 func _show_skills(slot: int, hero: int) -> void:
@@ -856,6 +860,10 @@ func _show_skills(slot: int, hero: int) -> void:
 	_build_skills()
 
 
+func _sk_pos(n: Dictionary) -> Vector2:
+	return Vector2(SK_X0 + n["col"] * SK_DX, SK_Y0 + n["row"] * SK_DY)
+
+
 func _build_skills() -> void:
 	_clear()
 	screen = Screen.SKILLS
@@ -864,6 +872,7 @@ func _build_skills() -> void:
 	var xp: int = Game.hero_xp[_sk_hero]
 	var ranks: Array = Game.hero_skills[_sk_hero]
 	var lvl := Game.hero_level(_sk_hero)
+	var spent := Skills.points_spent(_sk_hero, ranks)
 	_label(_root, "%s  SKILL TREE" % h["name"], Vector2(60, 30), 56, accent)
 	_label(_root, "P%d" % (_sk_slot + 1), Vector2(60, 100), 26, Color(1, 1, 1, 0.6))
 	var prog := Skills.xp_progress(xp)
@@ -873,45 +882,55 @@ func _build_skills() -> void:
 	var lv_label := _label(_root, info, Vector2(1060, 36), 32, Color(1.0, 0.95, 0.6))
 	lv_label.size.x = 800
 	lv_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	var pts := _label(_root, "SKILL POINTS: %d   (used %d of %d)" % [Game.free_points(_sk_hero), Skills.points_spent(ranks),
+	var pts := _label(_root, "SKILL POINTS: %d   (used %d of %d)" % [Game.free_points(_sk_hero), spent,
 		Skills.points_total(xp)], Vector2(1060, 80), 30, Color(0.6, 1.0, 0.7))
 	pts.size.x = 800
 	pts.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	for i in Skills.NODE_COUNT:
+	# Row gates down the left side: lit once enough points are in the tree.
+	for row in Skills.ROWS:
+		var gate: int = Skills.ROW_GATE[row]
+		var open := spent >= gate
+		var gl := _label(_root, "OPEN" if gate == 0 else ("%d PTS" % gate), Vector2(30, SK_Y0 + row * SK_DY + 26),
+			22, Color(0.6, 1.0, 0.7) if open else Color(1, 1, 1, 0.35))
+		gl.size.x = 104
+		gl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# Links first, so the cards cover their ends.
+	for i in Skills.node_count(_sk_hero):
+		var n := Skills.node(_sk_hero, i)
+		for p in Skills.parents(_sk_hero, i):
+			var line := Line2D.new()
+			var from := _sk_pos(Skills.node(_sk_hero, p)) + Vector2(SK_CARD.x * 0.5, SK_CARD.y)
+			var to := _sk_pos(n) + Vector2(SK_CARD.x * 0.5, 0)
+			line.points = PackedVector2Array([from, to])
+			line.width = 5.0
+			line.default_color = accent if int(ranks[p]) > 0 else Color(1, 1, 1, 0.18)
+			_root.add_child(line)
+	for i in Skills.node_count(_sk_hero):
 		var n := Skills.node(_sk_hero, i)
 		var card := Panel.new()
-		if i == 0:
-			card.position = Vector2(720, 122)
-		else:
-			card.position = Vector2(SK_COL_X[n[2]], SK_ROW_Y[n[3] - 1])
-		card.size = Vector2(450, 160)
+		card.position = _sk_pos(n)
+		card.size = SK_CARD
 		_root.add_child(card)
 		var r := int(ranks[i])
-		var mx := Skills.max_rank(i)
-		var block := Skills.buy_block(xp, ranks, i)
-		var title_col := accent if r > 0 else Color(1, 1, 1, 0.9)
-		_label(card, n[0], Vector2(18, 10), 30, title_col)
-		var tier_name := "ROOT" if i == 0 else ("BRANCH END" if n[3] == 3 else "TIER %d" % n[3])
-		_label(card, tier_name, Vector2(18, 50), 18, Color(1, 1, 1, 0.5))
-		var rank_label := _label(card, "%d / %d" % [r, mx], Vector2(300, 14), 26, Color(0.6, 1.0, 0.7) if r == mx else Color.WHITE)
-		rank_label.size.x = 130
-		rank_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		var desc := _label(card, "", Vector2(18, 76), 20, Color(1, 1, 1, 0.85))
-		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		desc.custom_minimum_size = Vector2(414, 0)
-		desc.size = Vector2(414, 50)
-		desc.text = Skills.describe(_sk_hero, i, r)
-		var cost_text := "MAXED" if r == mx else "COST %d" % Skills.cost(i)
-		var cost_label := _label(card, cost_text, Vector2(300, 50), 18, Color(1.0, 0.8, 0.4) if block == "" else Color(1, 1, 1, 0.4))
-		cost_label.size.x = 130
-		cost_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		var mx := Skills.max_rank(_sk_hero, i)
+		var block := Skills.buy_block(_sk_hero, xp, ranks, i)
+		if Skills.is_capstone(_sk_hero, i):
+			card.set_meta("tint", Color(0.2, 0.12, 0.06, 0.92))
+		_label(card, n["name"], Vector2(12, 8), 22, accent if r > 0 else Color(1, 1, 1, 0.9))
+		var cost_text := "MAXED" if r == mx else "COST %d" % Skills.cost(_sk_hero, i)
+		_label(card, cost_text, Vector2(12, 46), 18, Color(1.0, 0.8, 0.4) if block == "" else Color(1, 1, 1, 0.4))
+		# One pip per rank the node can take, lit for every rank learned.
+		for k in mx:
+			var pip := ColorRect.new()
+			pip.size = Vector2(14, 14)
+			pip.position = Vector2(SK_CARD.x - 24 - (mx - 1 - k) * 20, 52)
+			pip.color = (Color(0.6, 1.0, 0.7) if r == mx else accent) if k < r else Color(1, 1, 1, 0.18)
+			pip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			card.add_child(pip)
 		if r == 0 and block != "" and block != "NOT ENOUGH POINTS":
-			card.modulate = Color(0.6, 0.6, 0.65)
+			card.modulate = Color(0.55, 0.55, 0.6)
 		_sk_cards.append(card)
-	for b in 3:
-		var bl := _label(_root, Skills.branch_name(_sk_hero, b), Vector2(SK_COL_X[b], 292), 28, accent)
-		bl.size.x = 450
-		bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_build_skill_detail(accent, xp, ranks)
 	var super_def := Skills.super_def(_sk_hero)
 	# Rage skill prices with this tree's "frugal" and "deep_rage" skills.
 	var m := Skills.mods(_sk_hero, ranks)
@@ -921,8 +940,8 @@ func _build_skills() -> void:
 		int(Player.RAGE_MAX + float(m.get("deep_rage", 0.0))), price.call("strike"), price.call("roar"),
 		Content.attack_name(_sk_hero), price.call("attack"), price.call("mode"), super_def["name"]],
 		Vector2(150, 890), 26, Color(1.0, 0.8, 0.4))
-	var sel_block := Skills.buy_block(xp, ranks, _sk_sel)
-	var hint := _label(_root, "" if sel_block == "" else sel_block, Vector2(150, 935), 26, Color(1.0, 0.5, 0.4))
+	var sel_block := Skills.buy_block(_sk_hero, xp, ranks, _sk_sel)
+	var hint := _label(_root, "" if sel_block == "MAXED" else sel_block, Vector2(150, 935), 26, Color(1.0, 0.5, 0.4))
 	hint.size.x = 1620
 	_hint("Move: choose    B / Space: learn    Y / J: reset all points    A / Shift: back",
 		"MOVE: choose    LEARN: buy skill    RESET: refund all points    BACK: back",
@@ -930,20 +949,81 @@ func _build_skills() -> void:
 	_highlight(_sk_cards, _sk_sel)
 
 
+## The selected skill in full: what it does now and what the next rank adds.
+func _build_skill_detail(accent: Color, xp: int, ranks: Array) -> void:
+	var panel := Panel.new()
+	panel.position = Vector2(1520, 150)
+	panel.size = Vector2(370, 712)
+	panel.add_theme_stylebox_override("panel", _card_style(Color(0.06, 0.06, 0.1, 0.85), Color(1, 1, 1, 0.12)))
+	_root.add_child(panel)
+	var n := Skills.node(_sk_hero, _sk_sel)
+	var r := int(ranks[_sk_sel])
+	var mx := Skills.max_rank(_sk_hero, _sk_sel)
+	var box := VBoxContainer.new()
+	box.position = Vector2(20, 20)
+	box.size = Vector2(330, 672)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(box)
+	var add := func(text: String, size: int, col: Color, gap: float) -> void:
+		var l := _label(box, text, Vector2.ZERO, size, col)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.custom_minimum_size = Vector2(330, 0)
+		if gap > 0.0:
+			var spacer := Control.new()
+			spacer.custom_minimum_size = Vector2(0, gap)
+			spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			box.add_child(spacer)
+	add.call(n["name"], 32, accent, 6)
+	var where := "BOTTOM ROW" if Skills.is_capstone(_sk_hero, _sk_sel) else "ROW %d" % (n["row"] + 1)
+	add.call("%s   ·   RANK %d / %d" % [where, r, mx], 20, Color(1, 1, 1, 0.55), 18)
+	add.call(Skills.describe(_sk_hero, _sk_sel, r), 24, Color(1, 1, 1, 0.92), 18)
+	if mx > 1 and r > 0 and r < mx:
+		add.call("NEXT RANK", 18, Color(1, 1, 1, 0.5), 2)
+		add.call(Skills.describe(_sk_hero, _sk_sel, r + 1), 22, Color(0.6, 1.0, 0.7), 18)
+	if r < mx:
+		add.call("COST %d POINT%s" % [Skills.cost(_sk_hero, _sk_sel), "" if Skills.cost(_sk_hero, _sk_sel) == 1 else "S"], 22,
+			Color(1.0, 0.8, 0.4), 6)
+		var gate: int = Skills.ROW_GATE[n["row"]]
+		if gate > 0:
+			add.call("Row opens at %d points spent in the tree" % gate, 18, Color(1, 1, 1, 0.55), 18)
+	var block := Skills.buy_block(_sk_hero, xp, ranks, _sk_sel)
+	if block != "" and block != "MAXED":
+		add.call(block, 20, Color(1.0, 0.5, 0.4), 0)
+
+
+## Moves the selection to the closest skill in a direction on the grid.
+func _sk_step(dir: Vector2i) -> int:
+	var cur := Skills.node(_sk_hero, _sk_sel)
+	var best := _sk_sel
+	var best_score := INF
+	for i in Skills.node_count(_sk_hero):
+		var n := Skills.node(_sk_hero, i)
+		var dr: int = n["row"] - cur["row"]
+		var dc: int = n["col"] - cur["col"]
+		var along := dr if dir.y != 0 else dc
+		var across := dc if dir.y != 0 else dr
+		if along * (dir.y if dir.y != 0 else dir.x) <= 0:
+			continue
+		if dir.x != 0 and across != 0:
+			continue
+		var score := absi(along) * 10.0 + absi(across)
+		if score < best_score:
+			best_score = score
+			best = i
+	return best
+
+
 func _skills_input() -> void:
 	var pre := "p%d_" % _sk_slot
-	var n := Skills.node(_sk_hero, _sk_sel)
-	var b: int = n[2]
-	var tier: int = n[3]
 	var nxt := _sk_sel
 	if Input.is_action_just_pressed(pre + "move_down"):
-		nxt = 4 if _sk_sel == 0 else (_sk_sel + 1 if tier < 3 else _sk_sel)
+		nxt = _sk_step(Vector2i(0, 1))
 	elif Input.is_action_just_pressed(pre + "move_up"):
-		nxt = 0 if tier == 1 else (_sk_sel - 1 if tier > 1 else _sk_sel)
-	elif Input.is_action_just_pressed(pre + "move_left") and b > 0:
-		nxt = 1 + (b - 1) * 3 + tier - 1
-	elif Input.is_action_just_pressed(pre + "move_right") and b >= 0 and b < 2:
-		nxt = 1 + (b + 1) * 3 + tier - 1
+		nxt = _sk_step(Vector2i(0, -1))
+	elif Input.is_action_just_pressed(pre + "move_left"):
+		nxt = _sk_step(Vector2i(-1, 0))
+	elif Input.is_action_just_pressed(pre + "move_right"):
+		nxt = _sk_step(Vector2i(1, 0))
 	if nxt != _sk_sel:
 		_sk_sel = nxt
 		_build_skills()

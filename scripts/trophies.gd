@@ -70,7 +70,7 @@ const LIST := [
 	{"id": "level_25", "name": "Distinguished", "desc": "Get a kaiju to level 25", "stat": "@best_level", "goal": 25, "item": "monocle"},
 	{"id": "all_level_10", "name": "Proud Parent", "desc": "Get all 10 kaiju to level 10", "stat": "@heroes_level_10", "goal": 10, "item": "medal"},
 	{"id": "all_heroes", "name": "Team Spirit", "desc": "Clear a level with each of the 10 kaiju", "stat": "@heroes_cleared", "goal": 10, "item": "rainbow_scarf"},
-	{"id": "branch_end", "name": "Specialist", "desc": "Learn a skill at the end of a skill tree branch", "stat": "branch_ends", "goal": 1, "item": "wizard_hat"},
+	{"id": "branch_end", "name": "Specialist", "desc": "Learn a skill in the bottom row of a skill tree", "stat": "branch_ends", "goal": 1, "item": "wizard_hat"},
 	# Special clears.
 	{"id": "flawless", "name": "Untouchable", "desc": "Clear a level without taking any damage", "stat": "clears_flawless", "goal": 1, "item": "halo"},
 	{"id": "close_call", "name": "Close Call", "desc": "Clear a level with less than 10% health left", "stat": "clears_close", "goal": 1, "item": "eyepatch"},

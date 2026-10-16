@@ -26,14 +26,16 @@ Tryk **F9** i menuen for at låse alle baner op, hvis du vil teste.
 
 - Hver helt har sin egen XP og kan nå **level 25**. XP får man for hver fjende der bliver besejret (alle spillere på banen får den) og en bonus når banen er klaret. Man beholder XP selv om man taber.
 - Hvert level giver **2 færdighedspoint** (50 i alt ved level 25) og lidt mere liv og skade.
-- Hver helt har **10 evner** i et færdighedstræ: en rod-evne og tre grene med tre evner hver.
-  - Rod: 1 point. Låser de tre grene op.
-  - Trin 1: op til 5 rang, 1 point pr. rang.
-  - Trin 2: op til 5 rang, 2 point pr. rang. Kræver 3 rang i trin 1.
-  - Grenens ende: 6 point. Kræver at trin 2 er fyldt helt op.
-- At nå enden af en gren koster mindst 19 point. Med 50 point kan man altså nå enden af to grene, men aldrig alle tre, så man skal vælge.
-- Træet åbnes fra kaiju-valget med **X** (Switch) / **K**. Lær med B, nulstil alle point gratis med Y, tilbage med A.
-- Evnerne er forskellige fra helt til helt og bygger på 33 effekter: mere skade, liv, fart, rage, panser, livsdræn, brand, frost, kædelyn, chokbølger fra slam, større stomp, eksplosion når man undviger, kritiske slag, ekstra skade på svækkede fjender, og grene-ender som Berserk, Second Wind (overlev et dødeligt slag), Overdrive (rage fylder sig selv), Meteor-stomp, brændende aura, skjold, nova ved combo-afslutning og livsdræn ved drab.
+- Hver helt har sit **eget færdighedstræ** med 19-21 evner i 7 rækker, bygget op om heltens element (atom, lyn, magma, gift, jord, frost, skygge/blod, vand, sol, skrot). Træerne har forskellig form: nogle starter fra én rod, andre fra to, og nogle har en flaskehals på midten, man skal igennem.
+  - En evne kræver mindst ét point i en af de evner den hænger fra i rækken over (stregerne på skærmen).
+  - **Rækkerne låses op af point brugt i hele træet**: række 2 ved 3 point, række 3 ved 7, række 4 ved 13, række 5 ved 20, række 6 ved 28 og nederste række ved 36. Én lige linje ned gennem træet koster langt mindre end det, så man er nødt til at sprede sine point for at nå bunden.
+  - **Kun nogle evner kan tages flere gange** (3 eller 5 rang, vist som små firkanter på kortet). Resten læres én gang og giver så dobbelt effekt.
+  - Prisen stiger ned gennem træet: 1, 2, 2, 3, 3, 4 og 5 point pr. rang.
+  - Et helt træ koster 75-87 point, så med 50 point får man lidt over halvdelen og typisk 1-2 evner fra nederste række. Man skal vælge.
+- Træet åbnes fra kaiju-valget med **X** (Switch) / **K**. Lær med B, nulstil alle point gratis med Y, tilbage med A. Panelet til højre viser hvad den valgte evne gør nu og hvad næste rang giver.
+- Alle træer har mindst én rage-evne (mere rage, billigere rage-evner, større rage-bar, rage fra drab eller skade, Blood Pact, Wrath eller Overdrive).
+- Hver helt har også en **signatur-evne** som kun den har: Gorrax *Meltdown* (atomeksplosion når rage mode starter), Voltra *Spark Gap* (chance for lyn der springer videre), Magmos *White Heat* (stærkere brand), Sylvara *Toxic Glands* (gift i 5 sekunder), Terraxa *Unbreakable* (rage mode halverer skade), Glacior *Rime Shell* (dem der rammer dig bliver bremset), Noctyr *Night Feast* (mere skade efter hvert drab), Coralis *Healing Tide* (rage-evner heler), Solar Rex *Radiance* (super-baren fyldes hurtigere) og Rustfang *Salvage* (drab reparerer dig).
+- Gemte træer fra før denne ændring nulstilles én gang, så pointene kan bruges i de nye træer. XP og level beholdes.
 
 ## Rage og super
 
@@ -149,7 +151,7 @@ Særlige bedrifter giver trofæer, og hvert trofæ låser en kosmetisk ting op, 
 | Distinguished | Get a kaiju to level 25 | Monocle (ansigt) |
 | Proud Parent | Get all 10 kaiju to level 10 | Gold Medal (hals) |
 | Team Spirit | Clear a level with each of the 10 kaiju | Rainbow Scarf (hals) |
-| Specialist | Learn a skill at the end of a skill tree branch | Wizard Hat (hoved) |
+| Specialist | Learn a skill in the bottom row of a skill tree | Wizard Hat (hoved) |
 | Untouchable | Clear a level without taking any damage | Halo (hoved) |
 | Close Call | Clear a level with less than 10% health left | Eyepatch (ansigt) |
 | Inner Peace | Defeat a boss without using any rage skill or rage mode | Prayer Beads (hals) |
@@ -339,6 +341,7 @@ AUTOPLAY_SKILLS=1 AUTOPLAY_SUPER=1 godot --headless --path . res://tests/autopla
 KAIJU_TOUCH=1 godot --headless --path . res://tests/touch_test.tscn   # touch-knapperne
 godot --headless --path . res://tests/difficulty_test.tscn   # sværhedsgraderne
 godot --headless --path . res://tests/trophy_test.tscn   # trofæer, kroner og kosmetik
+godot --headless --path . res://tests/skill_tree_test.tscn   # alle færdighedstræer følger reglerne
 COSMETIC_IDS=gold_crown,halo godot --path . res://tests/cosmetic_shots.tscn   # billeder af tingene på kaijuerne
 godot --headless --path . res://tests/hero_rage_test.tscn   # hver helts rage-angreb og super
 HERO=3 godot --path . res://tests/super_shots.tscn   # billeder af en helts super (HERO=3 SHOTS=light,heavy til rage_shots.tscn)

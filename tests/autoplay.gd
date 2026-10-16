@@ -45,12 +45,19 @@ func _ready() -> void:
 	for slot in int(_env("AUTOPLAY_PLAYERS", "1")):
 		Game.party[slot] = int(heroes.split(",")[slot]) if heroes != "" else slot
 	Engine.time_scale = float(_env("AUTOPLAY_SPEED", "1"))
-	# AUTOPLAY_SKILLS=1 maxes every hero's level and learns two full branches
-	# plus some of the third, so every ability gets exercised.
+	# AUTOPLAY_SKILLS=1 maxes every hero's level and spends all its points,
+	# one rank at a time across the tree, so most abilities get exercised.
 	if _env("AUTOPLAY_SKILLS", "") != "":
 		for h in Content.HEROES.size():
 			Game.hero_xp[h] = 999999
-			Game.hero_skills[h] = [1, 5, 5, 1, 5, 5, 1, 4, 1, 0]
+			Game.hero_skills[h] = Skills.empty_ranks(h)
+			var bought := true
+			while bought:
+				bought = false
+				for i in Skills.node_count(h):
+					if Skills.buy_block(h, Game.hero_xp[h], Game.hero_skills[h], i) == "":
+						Game.hero_skills[h][i] += 1
+						bought = true
 	if _env("AUTOPLAY_SUPER", "") != "":
 		_super_test = true
 	# AUTOPLAY_COSMETICS=1 unlocks every trophy and dresses each hero in a

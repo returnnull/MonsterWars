@@ -128,10 +128,7 @@ func _reset_heroes() -> void:
 	hero_skills = []
 	for i in Content.HEROES.size():
 		hero_xp.append(0)
-		var ranks := []
-		ranks.resize(Skills.NODE_COUNT)
-		ranks.fill(0)
-		hero_skills.append(ranks)
+		hero_skills.append(Skills.empty_ranks(i))
 
 
 func hero_level(hero: int) -> int:
@@ -139,7 +136,7 @@ func hero_level(hero: int) -> int:
 
 
 func free_points(hero: int) -> int:
-	return Skills.points_total(hero_xp[hero]) - Skills.points_spent(hero_skills[hero])
+	return Skills.points_total(hero_xp[hero]) - Skills.points_spent(hero, hero_skills[hero])
 
 
 ## Gives a hero XP and returns how many levels it gained.
@@ -153,10 +150,10 @@ func add_xp(hero: int, amount: int) -> int:
 
 
 func buy_skill(hero: int, idx: int) -> bool:
-	if Skills.buy_block(hero_xp[hero], hero_skills[hero], idx) != "":
+	if Skills.buy_block(hero, hero_xp[hero], hero_skills[hero], idx) != "":
 		return false
 	hero_skills[hero][idx] += 1
-	if Skills.node(hero, idx)[3] == 3:
+	if Skills.is_capstone(hero, idx):
 		track("branch_ends")
 	save_progress()
 	return true
@@ -425,7 +422,7 @@ func save_progress() -> void:
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify({"unlocked": unlocked, "best": best_scores, "party": party,
-			"hero_xp": hero_xp, "hero_skills": hero_skills, "stats": stats, "trophies": trophies.keys(),
+			"hero_xp": hero_xp, "hero_skills": hero_skills, "skill_ver": Skills.SAVE_VERSION, "stats": stats, "trophies": trophies.keys(),
 			"outfits": outfits}))
 		# Closing flushes the file (and on the web syncs it to IndexedDB).
 		f.close()
@@ -448,9 +445,12 @@ func load_progress() -> void:
 		var sk = data.get("hero_skills", [])
 		for i in mini(xp.size(), hero_xp.size()):
 			hero_xp[i] = int(xp[i])
+		# Older saves used one tree shape for every hero: their points are refunded.
+		if int(data.get("skill_ver", 1)) != Skills.SAVE_VERSION:
+			sk = []
 		for i in mini(sk.size(), hero_skills.size()):
-			for j in mini(sk[i].size(), Skills.NODE_COUNT):
-				hero_skills[i][j] = clampi(int(sk[i][j]), 0, Skills.max_rank(j))
+			for j in mini(sk[i].size(), Skills.node_count(i)):
+				hero_skills[i][j] = clampi(int(sk[i][j]), 0, Skills.max_rank(i, j))
 		var st = data.get("stats", {})
 		if st is Dictionary:
 			for k in st:
