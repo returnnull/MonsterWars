@@ -44,7 +44,7 @@ Tryk **F9** i menuen for at låse alle baner op, hvis du vil teste.
 | Rage Strike | R + Y / L + J | 25 | Kaster sig frem med et hårdt slag |
 | War Roar | R + B / L + mellemrum | 35 | Brøl der slår fjender tilbage og giver medspillere tæt på 15 rage |
 | Rage-angreb | R + X / L + K | 50 | Heltens Atomic Beam, Nova Burst eller Earthquake |
-| Rage-tilstand | Tryk kort på R / L | 30+ | Kaijuen gløder, slår 30 % hårdere, er 20 % hurtigere, tager mindre skade og kan ikke slås ud af balance. Bruger 10 rage i sekundet og slukkes med et nyt tryk eller når baren er tom |
+| Rage-tilstand | Tryk kort på R / L | 30+ | Kaijuen gløder, slår 30 % hårdere, er 20 % hurtigere, tager mindre skade og kan ikke slås ud af balance. Angrebene bliver til ild: let angreb spytter ildkugler langt frem (tredje i comboen er en stor en), og tungt angreb får kaijuen til at stå stille og sprøjte en flammestråle frem, der gør mest skade. Bruger 10 rage i sekundet og slukkes med et nyt tryk eller når baren er tom |
 
   Har du ikke nok rage, blinker baren rødt. De hvide streger i baren viser, hvornår du har råd til hver evne. I rage-tilstand får du kun halvt så meget rage.
 - **Rage i skilltræet.** Alle helte har evner, der ændrer hvor meget rage de får, eller hvordan de får den: mere rage fra alt, mere rage når man bliver ramt, rage for hver besejret fjende, billigere rage-evner og rage-tilstand, en større rage-bar, og grene-ender som Overdrive (rage fylder sig selv), Blood Pact (Noctyr: betal manglende rage med liv) og Tidal Fury (Coralis: halvdelen af den brugte rage fylder super-måleren).

@@ -29,10 +29,17 @@ const SUPER_TIME := 3.2
 ##   mode    special tapped:  rage mode, drains RAGE_MODE_DRAIN per second
 const RAGE_SKILLS := {"strike": 25.0, "roar": 35.0, "attack": 50.0, "mode": 30.0}
 const RAGE_MODE_DRAIN := 10.0
-## In rage mode normal attacks play this much faster and burst into flames
-## for FIRE_DMG of their damage around the point of impact (see _fire_burst).
+## In rage mode attacks play this much faster and turn to fire: light spits
+## fireballs (fire1-3, see Fireball) and heavy stops to spray a stream of
+## flame ahead (flame, see _flame_tick) that does the most damage. Weapon
+## swings burst into flames for FIRE_DMG of their damage (see _fire_burst).
 const RAGE_ATTACK_SPEED := 1.25
 const FIRE_DMG := 0.6
+## The heavy flame stream: how far it reaches, how wide it gets at the end,
+## and how often it hurts what it touches.
+const FLAME_LEN := 12.0
+const FLAME_WIDTH := 2.4
+const FLAME_TICK := 0.1
 ## A special press held longer than this without a combo does nothing.
 const SPECIAL_TAP := 0.45
 
@@ -57,6 +64,16 @@ const ATTACKS := {
 		"pose": "jab_r", "shake": 0.5, "bdmg": 60.0, "next": "", "lunge": 30.0, "rage": true},
 	"roar": {"dur": 0.75, "active": 0.25, "dmg": 12.0, "kb": Vector3(18, 9, 0), "reach": 0.0, "radius": 9.0,
 		"pose": "roar", "shake": 0.45, "bdmg": 10.0, "next": "", "lunge": 0.0, "rage": true},
+	# Rage mode fire. "shot" spits a Fireball of that size for "dmg"; "stream"
+	# sprays flame for that long, hurting for "dmg" every FLAME_TICK.
+	"fire1": {"dur": 0.34, "active": 0.12, "dmg": 10.0, "kb": Vector3.ZERO, "reach": 0.0, "radius": 0.0,
+		"pose": "spit_r", "shake": 0.0, "bdmg": 0.0, "next": "fire2", "lunge": 1.0, "shot": 1.0},
+	"fire2": {"dur": 0.34, "active": 0.12, "dmg": 10.0, "kb": Vector3.ZERO, "reach": 0.0, "radius": 0.0,
+		"pose": "spit_l", "shake": 0.0, "bdmg": 0.0, "next": "fire3", "lunge": 1.0, "shot": 1.0},
+	"fire3": {"dur": 0.55, "active": 0.2, "dmg": 18.0, "kb": Vector3.ZERO, "reach": 0.0, "radius": 0.0,
+		"pose": "spit", "shake": 0.0, "bdmg": 0.0, "next": "", "lunge": 0.0, "shot": 1.7},
+	"flame": {"dur": 1.5, "active": 0.28, "dmg": 5.5, "kb": Vector3.ZERO, "reach": 0.0, "radius": 0.0,
+		"pose": "flame", "shake": 0.0, "bdmg": 0.0, "next": "", "lunge": 0.0, "stream": 1.0},
 }
 const GRAB_RANGE := 4.5
 ## Button pressed with special held -> buffered rage skill.
@@ -110,6 +127,10 @@ var _aura_t := 0.0
 var weapon := ""
 var weapon_uses := 0
 var _held: Node3D
+## The heavy flame stream while it burns (see _flame_tick).
+var _flame_fx: GPUParticles3D
+var _flame_light: OmniLight3D
+var _flame_ticks := 0
 
 
 func _ready() -> void:
@@ -317,7 +338,7 @@ func _roar() -> void:
 
 
 ## Rage mode: the kaiju glows, hits 30% harder, attacks 25% faster with
-## fire blasts (see _fire_burst), moves 20% faster, takes
+## fire (light spits fireballs, heavy sprays flame), moves 20% faster, takes
 ## less damage and can't be staggered. It drains rage every second and ends
 ## when the bar is empty or special is tapped again.
 func _enter_rage_mode() -> void:
@@ -406,6 +427,8 @@ func _passives(delta: float) -> void:
 
 
 func _set_state(s: S) -> void:
+	if _flame_fx:
+		_stop_flame()
 	state = s
 	state_t = 0.0
 
@@ -459,6 +482,8 @@ func _state_free(input: Vector2) -> Vector3:
 				pass
 			elif weapon != "":
 				_start_attack("swing1" if b == "light" else "throw")
+			elif raging:
+				_start_attack("fire1" if b == "light" else "flame")
 			else:
 				_start_attack("light1" if b == "light" else "heavy")
 			return Vector3.ZERO
@@ -507,15 +532,21 @@ func _state_attack() -> Vector3:
 	if not _atk_done and state_t >= active:
 		_atk_done = true
 		_do_hit()
-	if state_t >= active:
+	# The flame stream holds the kaiju in place until it has burnt out.
+	var streaming: bool = atk.has("stream") and state_t < active + float(atk["stream"])
+	if streaming and state_t >= active:
+		_flame_update()
+	elif _flame_fx:
+		_stop_flame()
+	if state_t >= active and not streaming:
 		var next: String = atk["next"]
 		var armed := weapon != ""
 		if _buffered == "light" and next != "" and (armed or atk["pose"] != "swing"):
 			_consume()
 			_start_attack(next)
-		elif _buffered == "heavy" and atk["pose"] != "slam" and atk["pose"] != "throw" and not atk.get("rage", false):
+		elif _buffered == "heavy" and not atk["pose"] in ["slam", "throw", "flame"] and not atk.get("rage", false):
 			_consume()
-			_start_attack("throw" if armed else "heavy")
+			_start_attack("throw" if armed else ("flame" if raging else "heavy"))
 		elif _buffered.begins_with("rage_") and not atk.get("rage", false):
 			# Rage skills cut the recovery of a normal attack short.
 			_set_state(S.FREE)
@@ -607,6 +638,12 @@ func _do_hit() -> void:
 		if weapon != "":
 			_swing_weapon(global_position)
 		return
+	if atk.has("shot"):
+		_spit_fireball(float(atk["shot"]), atk["dmg"] * power * _boost())
+		return
+	if atk.has("stream"):
+		_start_flame()
+		return
 	var reach: float = atk["reach"]
 	var center := global_position + Vector3(facing * reach, 3.2, 0)
 	if atk["pose"] == "spin" or atk["pose"] == "roar":
@@ -660,6 +697,89 @@ func _fire_burst(center: Vector3, radius: float, dmg: float, finisher: bool) -> 
 	if finisher:
 		Game.shake(0.25)
 	return hits
+
+
+## Light attack in rage mode: a fireball flies from the mouth (see Fireball).
+func _spit_fireball(size: float, dmg: float) -> void:
+	var mouth := to_global(_mouth_pos()) + Vector3(facing * 0.8, 0, 0)
+	var fb := Fireball.new()
+	fb.shooter = self
+	fb.dir = facing
+	fb.damage = dmg
+	fb.size = size
+	fb.splash = 2.4 * size
+	get_parent().add_child(fb)
+	fb.global_position = mouth
+	FX.fire_muzzle(mouth, Vector3(facing, 0, 0), size)
+	rumble(0.25, 0.1 * size, 0.08)
+	if size > 1.2:
+		Game.shake(0.15)
+
+
+## Heavy attack in rage mode: the kaiju plants its feet and sprays flame.
+func _start_flame() -> void:
+	_flame_ticks = 0
+	_flame_fx = FX.fire_stream(Vector3(facing, -0.22, 0).normalized(), 30.0, 7.0, 3.2, 0.42, 220, true)
+	if _flame_fx:
+		_flame_light = OmniLight3D.new()
+		_flame_light.light_color = Color(1.0, 0.5, 0.15)
+		_flame_light.omni_range = 16.0
+		_flame_fx.add_child(_flame_light)
+	FX.fire_muzzle(to_global(_mouth_pos()), Vector3(facing, 0, 0), 1.6)
+	Game.shake(0.25)
+
+
+## Keeps the flame at the mouth and hurts what it touches every FLAME_TICK.
+func _flame_update() -> void:
+	var mouth := to_global(_mouth_pos()) + Vector3(facing * 0.6, 0, 0)
+	if _flame_fx and is_instance_valid(_flame_fx):
+		_flame_fx.global_position = mouth
+		_flame_light.position = Vector3(facing * FLAME_LEN * 0.45, -1.0, 0)
+		_flame_light.light_energy = 9.0 + sin(state_t * 53.0) * 2.0 + sin(state_t * 31.0) * 1.5
+	var ticks := int(float(atk["stream"]) / FLAME_TICK)
+	while _flame_ticks < ticks and state_t >= float(atk["active"]) + _flame_ticks * FLAME_TICK:
+		_flame_ticks += 1
+		_flame_tick(mouth)
+	rumble(0.35, 0.2, 0.1)
+
+
+## One burst of flame damage along the stream: it widens and dips with
+## distance from the mouth, like the flames do.
+func _flame_tick(mouth: Vector3) -> void:
+	var dmg: float = atk["dmg"] * power * _boost()
+	var hits := 0
+	for t in get_tree().get_nodes_in_group("enemies"):
+		if t.dead:
+			continue
+		var tc: Vector3 = t.hit_center()
+		var r: float = t.hit_radius
+		var along := (tc.x - mouth.x) * facing
+		var k := clampf(along / FLAME_LEN, 0.0, 1.0)
+		var flame_y := mouth.y - along * 0.22
+		if along > -r - 1.0 and along < FLAME_LEN + r and absf(tc.z - mouth.z) < 0.8 + FLAME_WIDTH * k + r \
+				and absf(tc.y - flame_y) < 2.2 + FLAME_WIDTH * k + r:
+			if deal(t, dmg, Vector3(facing * 1.5, 0.4, 0)):
+				hits += 1
+				t.apply_burn(dmg * 0.4, 2.5)
+				if _flame_ticks % 3 == 1:
+					FX.fire_muzzle(Vector3(tc.x - facing * r, tc.y, tc.z), Vector3(0, 1, 0), 0.7)
+	if _flame_ticks % 2 == 1:
+		for b in get_tree().get_nodes_in_group("buildings"):
+			b.try_beam(Vector3(mouth.x, mouth.y - 2.0, mouth.z), facing, FLAME_LEN, dmg * 2.0 * _bdmg())
+	if _flame_ticks % 3 == 0:
+		var end := Vector3(mouth.x + facing * FLAME_LEN * 0.85, 0.6, mouth.z)
+		FX.fire_muzzle(end, Vector3(facing * 0.3, 1, 0), 1.0)
+	# Fire hits count for the combo but, like all rage fire, give no rage.
+	for i in hits:
+		Game.register_hit()
+	if hits > 0:
+		Game.shake(0.08)
+
+
+func _stop_flame() -> void:
+	FX.stop_stream(_flame_fx)
+	_flame_fx = null
+	_flame_light = null
 
 
 func _bdmg() -> float:
@@ -943,6 +1063,26 @@ func _animate(delta: float) -> void:
 				"throw":
 					ar = lerpf(0.5, 3.2, p) if after == 0.0 else lerpf(3.2, 1.2, minf(after * 3.0, 1.0))
 					lean = -0.2 if after == 0.0 else 0.35
+				"spit_r", "spit_l":
+					var thrust := lerpf(-0.3, 1.6, p * p) if after == 0.0 else lerpf(1.6, 0.3, after)
+					if atk["pose"] == "spit_r":
+						ar = thrust
+					else:
+						al = thrust
+					jaw = p if after == 0.0 else lerpf(1.0, 0.0, minf(after * 2.0, 1.0))
+					lean = lerpf(-0.15, 0.3, p) if after == 0.0 else lerpf(0.3, 0.0, after)
+				"spit":
+					ar = lerpf(0.4, 2.0, p) if after == 0.0 else lerpf(2.0, 0.4, after)
+					al = ar
+					jaw = p if after == 0.0 else lerpf(1.0, 0.0, minf(after * 2.0, 1.0))
+					lean = lerpf(-0.35, 0.4, p * p) if after == 0.0 else lerpf(0.4, 0.0, after)
+				"flame":
+					# Rears back, then braces and pours fire out with a shudder.
+					var pour := state_t >= active and state_t < active + float(atk["stream"])
+					jaw = p if after == 0.0 else (1.0 if pour else lerpf(1.0, 0.0, minf((state_t - active - float(atk["stream"])) * 4.0, 1.0)))
+					lean = lerpf(0.0, -0.4, p) if after == 0.0 else (0.25 + sin(state_t * 40.0) * 0.04 if pour else lerpf(0.25, 0.0, after))
+					ar = 1.1 if pour else 0.6
+					al = ar
 				"roar":
 					jaw = 1.0 if after < 0.7 else lerpf(1.0, 0.0, (after - 0.7) / 0.3)
 					ar = 2.2

@@ -37,19 +37,102 @@ static func explosion(pos: Vector3, size: float = 1.0) -> void:
 ## Rage-mode punch: a ball of flame with a burning ring on the ground.
 static func fire_burst(pos: Vector3, radius: float) -> void:
 	var s := radius / 4.0
-	var fire_ramp := _ramp([Color(1.8, 0.9, 0.2, 1.0), Color(1.4, 0.32, 0.03, 0.95), Color(0.8, 0.1, 0.01, 0.6), Color(0.2, 0.03, 0.01, 0.0)])
+	var fire_ramp := _flame_ramp()
 	var fire := _pm(Vector3.UP, 180.0, 5.0 * s, 13.0 * s, 6.0, 2.6 * s, 4.8 * s, 3.5, 1.0 * s)
 	fire.color_ramp = fire_ramp
 	fire.scale_curve = _grow_curve()
-	_emit(pos, 48, 0.8, _billboard("fire", 1.0, true, Color.WHITE), fire)
+	_emit(pos, 48, 0.8, _billboard("flame", 1.0, false, Color.WHITE), fire)
+	var core := _pm(Vector3.UP, 180.0, 1.0 * s, 4.0 * s, 0.0, 2.0 * s, 3.2 * s, 3.0, 0.4 * s)
+	core.scale_curve = _shrink_curve()
+	_emit(pos, 6, 0.25, _billboard("fire_core", 1.0, true, Color(1.0, 0.75, 0.35)), core)
 	var ground := Vector3(pos.x, 0.5, pos.z)
 	var ring := _pm(Vector3.UP, 20.0, 3.0, 9.0, 6.0, 2.0 * s, 3.6 * s, 2.0, radius * 0.85)
 	ring.color_ramp = fire_ramp
 	ring.scale_curve = _grow_curve()
-	_emit(ground, 40, 0.9, _billboard("fire", 1.0, true, Color.WHITE), ring)
+	_emit(ground, 40, 0.9, _billboard("flame", 1.0, false, Color.WHITE), ring)
 	shockwave(ground, radius, Color(1.6, 0.5, 0.08))
 	smoke(pos + Vector3(0, 1.5, 0), s, Color(0.16, 0.11, 0.09))
 	light_flash(pos, Color(1.0, 0.45, 0.1), 12.0 * s, 14.0 * s, 0.45)
+
+
+## Rage-fire colours: white-hot core fading through orange and red to soot.
+static func _flame_ramp() -> GradientTexture1D:
+	if not _cache.has("flame_ramp"):
+		_cache["flame_ramp"] = _ramp([Color(1.0, 0.95, 0.65, 1.0), Color(1.0, 0.62, 0.12, 1.0), Color(0.95, 0.3, 0.03, 0.95),
+			Color(0.55, 0.08, 0.02, 0.7), Color(0.12, 0.05, 0.04, 0.0)])
+	return _cache["flame_ramp"]
+
+
+## A continuous flame emitter in the world: the fireball trail and the heavy
+## fire spray. Flames leave along `dir` and stay where they were emitted, so
+## the caller moves the node each frame and ends it with stop_stream().
+static func fire_stream(dir: Vector3, speed: float, spread: float, size: float, lifetime: float, amount: int, hot_core := false) -> GPUParticles3D:
+	var w := _world()
+	if w == null:
+		return null
+	var pm := _pm(dir, spread, speed * 0.75, speed, 2.5, size * 0.6, size * 1.2, 1.5, 0.25 * size)
+	pm.color_ramp = _flame_ramp()
+	pm.scale_curve = _grow_curve()
+	var p := GPUParticles3D.new()
+	p.amount = amount
+	p.lifetime = lifetime
+	p.local_coords = false
+	# Emit every frame so a fast-moving stream leaves no gaps.
+	p.fixed_fps = 60
+	p.process_material = pm
+	# Blended, not additive: stacked flames stay orange instead of turning white.
+	p.draw_pass_1 = _billboard("flame", 1.0, false, Color.WHITE)
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	p.visibility_aabb = AABB(Vector3(-25, -10, -25), Vector3(50, 40, 50))
+	w.add_child(p)
+	# Embers: small sparks thrown out of the flames that fall as they cool.
+	var em := _pm(dir, spread * 1.6, speed * 0.5, speed * 1.1, -9.0, 0.25, 0.5, 0.6, 0.3 * size)
+	em.particle_flag_align_y = true
+	em.scale_curve = _shrink_curve()
+	var embers := GPUParticles3D.new()
+	embers.amount = maxi(amount / 3, 4)
+	embers.lifetime = lifetime * 1.4
+	embers.local_coords = false
+	embers.process_material = em
+	embers.draw_pass_1 = _spark_mesh()
+	embers.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	embers.visibility_aabb = p.visibility_aabb
+	p.add_child(embers)
+	if hot_core:
+		# A white-hot, glowing inner jet in the first part of the flames.
+		var cm := _pm(dir, spread * 0.5, speed * 0.8, speed, 0.0, size * 0.35, size * 0.6, 2.0, 0.1 * size)
+		cm.scale_curve = _shrink_curve()
+		var core := GPUParticles3D.new()
+		core.amount = maxi(amount / 2, 4)
+		core.lifetime = lifetime * 0.45
+		core.local_coords = false
+		core.fixed_fps = 60
+		core.process_material = cm
+		core.draw_pass_1 = _billboard("fire_core", 1.0, true, Color(1.0, 0.75, 0.35))
+		core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		core.visibility_aabb = p.visibility_aabb
+		p.add_child(core)
+	return p
+
+
+## Lets a fire_stream's last flames burn out, then frees it.
+static func stop_stream(p: GPUParticles3D) -> void:
+	if p == null or not is_instance_valid(p):
+		return
+	p.emitting = false
+	for c in p.get_children():
+		if c is GPUParticles3D:
+			c.emitting = false
+	p.get_tree().create_timer(p.lifetime * 1.5 + 0.2, false).timeout.connect(p.queue_free)
+
+
+## Small fiery flash where the rage fire leaves the mouth.
+static func fire_muzzle(pos: Vector3, dir: Vector3, size: float = 1.0) -> void:
+	var pm := _pm(dir, 35.0, 6.0 * size, 14.0 * size, 2.0, 1.2 * size, 2.2 * size, 4.0, 0.3 * size)
+	pm.color_ramp = _flame_ramp()
+	pm.scale_curve = _shrink_curve()
+	_emit(pos, 14, 0.3, _billboard("flame", 1.0, false, Color.WHITE), pm)
+	light_flash(pos, Color(1.0, 0.5, 0.12), 6.0 * size, 9.0 * size, 0.18)
 
 
 static func smoke(pos: Vector3, size: float = 1.0, color: Color = Color(0.55, 0.5, 0.45)) -> void:
