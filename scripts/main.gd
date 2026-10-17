@@ -175,12 +175,28 @@ func _start_wave() -> void:
 			FX.dust(Vector3(p.global_position.x, 0.3, p.global_position.z), 1.2)
 	hud.show_go(false)
 	hud.show_message(w["title"], 1.6)
-	var kinds: Array = w["spawn"].duplicate()
+	var kinds := party_spawns(w["spawn"], Game.players.size())
 	if Game.players.size() >= 3 and w["title"] != "BOSS":
 		kinds.append("brute")
 	_alive = kinds.size()
 	for i in kinds.size():
 		_spawn(kinds[i], cx, half, i)
+
+
+## Each player beyond the first brings 20% more enemies, picked from the
+## wave's own (non-boss) kinds, so the wave keeps its mix whatever the
+## level data puts in it.
+const EXTRA_ENEMIES_PER_PLAYER := 0.2
+
+
+static func party_spawns(spawn: Array, players: int) -> Array:
+	var kinds: Array = spawn.duplicate()
+	var pool: Array = spawn.filter(func(k: String) -> bool: return k != "boss")
+	var extra := roundi(pool.size() * EXTRA_ENEMIES_PER_PLAYER * maxi(players - 1, 0))
+	pool.shuffle()
+	for i in extra:
+		kinds.append(pool[i % pool.size()])
+	return kinds
 
 
 ## Enemy health scales with the level and the number of players.

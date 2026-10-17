@@ -276,8 +276,8 @@ Fjenderne bliver stærkere bane for bane, og bosserne bliver større og hårdere
 - Spiller 1 bruger tastatur eller den første controller.
 - Spiller 2-4 vælger kaiju i menuen eller hopper ind midt i en bane ved at trykke **B** (Switch) / **A** (Xbox) på deres egen controller.
 - Alle deler én skærm. Kameraet zoomer ud når I spreder jer, og I kan højst være ca. én skærmbredde fra hinanden.
-- Fjenderne får mere liv jo flere I er, og med 3-4 spillere kommer der en ekstra fjende i hver bølge.
-- Bliver en spiller slået ud, kommer vedkommende tilbage med halvt liv, når bølgen er klaret. Det er først game over, når alle er nede.
+- Fjenderne får mere liv jo flere I er, og for hver spiller ud over den første kommer der 20% flere fjender i hver bølge (2 spillere: 120%, 4 spillere: 160%). Med 3-4 spillere kommer der desuden en ekstra brute i hver bølge.
+- Bliver en spiller slået ud, viser en ring på jorden og **REVIVE** over vedkommende. Stil dig inde i ringen i 3 sekunder for at genoplive din ven med 40% liv (to hjælpere går dobbelt så hurtigt). Går du væk, falder måleren langsomt igen. Ellers kommer man tilbage med halvt liv, når bølgen er klaret. Det er først game over, når alle er nede.
 
 ## Styring
 
@@ -358,6 +358,7 @@ AUTOPLAY_LEVELS=all AUTOPLAY_SECONDS=0 godot --headless --path . res://tests/aut
 AUTOPLAY_SKILLS=1 AUTOPLAY_SUPER=1 godot --headless --path . res://tests/autoplay.tscn   # alle evner og supers i brug
 KAIJU_TOUCH=1 godot --headless --path . res://tests/touch_test.tscn   # touch-knapperne
 godot --headless --path . res://tests/difficulty_test.tscn   # sværhedsgraderne
+godot --headless --path . res://tests/coop_test.tscn   # revive og flere fjender pr. spiller
 godot --headless --path . res://tests/trophy_test.tscn   # trofæer, kroner og kosmetik
 godot --headless --path . res://tests/skill_tree_test.tscn   # alle færdighedstræer følger reglerne
 xvfb-run godot --path . --write-movie /tmp/lab.avi --fixed-fps 30 res://tests/anim_lab.tscn   # optag heltens animationer (gang, løb, vending, hop, angreb)
