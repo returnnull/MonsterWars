@@ -271,6 +271,8 @@ func _boost() -> float:
 		b *= 1.0 + _m("killrush") / 100.0
 	if _has("berserk") and hp < max_hp * 0.4:
 		b *= 1.35
+	if _has("overcharge") and rage >= rage_max:
+		b *= 1.2
 	return b
 
 
@@ -472,6 +474,8 @@ func _enter_rage_mode() -> void:
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud and Game.players.size() == 1:
 		hud.show_message("RAGE MODE!", 1.2)
+	if _m("adrenaline") > 0.0:
+		heal(max_hp * _m("adrenaline") / 100.0)
 	if _has("meltdown"):
 		FX.shockwave(global_position, 11.0, Color(0.5, 1.0, 0.6))
 		FX.light_flash(global_position + Vector3(0, 3, 0), Color(0.5, 1.0, 0.6), 16.0, 12.0, 0.3)
@@ -536,6 +540,8 @@ func _passives(delta: float) -> void:
 	_kill_rush_t = maxf(_kill_rush_t - delta, 0.0)
 	if _m("regen") > 0.0 and hp < max_hp:
 		heal(max_hp * _m("regen") / 100.0 * delta)
+	if raging and _has("warm_blood") and hp < max_hp:
+		heal(max_hp * 0.02 * delta)
 	if _has("overdrive"):
 		add_rage(3.0 * delta)
 		add_super(1.2 * delta)
@@ -660,7 +666,7 @@ func _state_free(input: Vector2) -> Vector3:
 				_dodge_dir = Vector3(input.x, 0, input.y).normalized()
 				if _dodge_dir == Vector3.ZERO:
 					_dodge_dir = Vector3(-facing, 0, 0)
-				invuln = 0.4
+				invuln = 0.8 if _has("guardian") else 0.4
 				Game.track("dodges")
 				_dodge_cd = 0.6 * (1.0 - minf(_m("swift"), 40.0) / 100.0)
 				FX.dust(global_position, 0.6)
@@ -798,7 +804,7 @@ func _set_weapon(kind: String) -> void:
 func _swing_weapon(center: Vector3) -> void:
 	var w: Dictionary = Weapon.KINDS[weapon]
 	var reach_c := global_position + Vector3(facing * (atk["reach"] + w["reach"]), 3.0, 0)
-	var dmg: float = atk["dmg"] * w["dmg"] * power * _boost()
+	var dmg: float = atk["dmg"] * w["dmg"] * power * _boost() * (1.0 + _m("hurler") / 100.0)
 	if raging:
 		var fire_hits := _fire_burst(reach_c, atk["radius"], dmg, atk["next"] == "")
 		for i in fire_hits:
@@ -824,7 +830,7 @@ func _throw_weapon() -> void:
 	var vel := Vector3(facing * 34.0, 0.0, 0.0)
 	if weapon == "slab":
 		vel = Vector3(facing * 24.0, 11.0, 0.0)
-	w.launch(self, vel, float(Weapon.KINDS[weapon]["throw_dmg"]) * power * _boost())
+	w.launch(self, vel, float(Weapon.KINDS[weapon]["throw_dmg"]) * power * _boost() * (1.0 + _m("hurler") / 100.0))
 	get_parent().add_child(w)
 	w.global_position = global_position + Vector3(facing * 2.5, 4.5, 0)
 	_set_weapon("")
@@ -1430,7 +1436,7 @@ func _beam_damage() -> void:
 		b.try_beam(origin, facing, BEAM_LEN, 14.0 * _bdmg())
 
 
-## Barrier, Armor, rage mode and Second Wind.
+## Barrier, Evasion, Armor, Last Stand, rage mode and Second Wind.
 func _incoming(dmg: float, _from: Node3D) -> float:
 	# Supers and the rage attack root the hero to the spot, so nothing gets through.
 	if state == S.SUPER or state == S.BEAM:
@@ -1442,7 +1448,13 @@ func _incoming(dmg: float, _from: Node3D) -> float:
 		FX.shockwave(global_position + Vector3(0, 2, 0), 4.0, Color(0.6, 0.9, 1.0))
 		invuln = 0.3
 		return 0.0
+	if _m("evasion") > 0.0 and randf() * 100.0 < minf(_m("evasion"), 40.0):
+		FX.energy(global_position + Vector3(0, 3, 0), Color(0.85, 0.95, 1.0))
+		invuln = 0.2
+		return 0.0
 	dmg *= 1.0 - minf(_m("armor"), 60.0) / 100.0
+	if _m("last_stand") > 0.0 and hp < max_hp * 0.35:
+		dmg *= 1.0 - minf(_m("last_stand"), 60.0) / 100.0
 	if raging:
 		dmg *= 0.5 if _has("bulwark") else 0.75
 	if dmg >= hp and _has("second_wind") and not _second_wind_used:
@@ -1459,12 +1471,19 @@ func _incoming(dmg: float, _from: Node3D) -> float:
 	return dmg
 
 
-## Crits and Execute.
+## Crits, Execute, First Strike, Titan Slayer and Momentum.
 func _modify_damage(target: Node, dmg: float) -> float:
-	if _m("execute") > 0.0 and "max_hp" in target and target.hp < target.max_hp * 0.3:
-		dmg *= 1.0 + _m("execute") / 100.0
+	if "max_hp" in target:
+		if _m("execute") > 0.0 and target.hp < target.max_hp * 0.3:
+			dmg *= 1.0 + _m("execute") / 100.0
+		if _m("first_strike") > 0.0 and target.hp >= target.max_hp * 0.9:
+			dmg *= 1.0 + _m("first_strike") / 100.0
+	if _m("titan_slayer") > 0.0 and target.has_method("is_heavy") and target.is_heavy():
+		dmg *= 1.0 + _m("titan_slayer") / 100.0
+	if _m("momentum") > 0.0:
+		dmg *= 1.0 + _m("momentum") / 100.0 * floorf(minf(Game.combo, 50.0) / 10.0)
 	if _m("crit") > 0.0 and randf() * 100.0 < _m("crit"):
-		dmg *= 2.0
+		dmg *= 2.0 + _m("brutal") / 100.0
 		FX.light_flash(target.hit_center(), Color(1.0, 1.0, 0.6), 8.0, 8.0, 0.15)
 	return dmg
 

@@ -459,7 +459,7 @@ func load_progress() -> void:
 		var sk = data.get("hero_skills", [])
 		for i in mini(xp.size(), hero_xp.size()):
 			hero_xp[i] = int(xp[i])
-		# Older saves used one tree shape for every hero: their points are refunded.
+		# Saves from an older tree layout get their skill points refunded.
 		if int(data.get("skill_ver", 1)) != Skills.SAVE_VERSION:
 			sk = []
 		for i in mini(sk.size(), hero_skills.size()):
