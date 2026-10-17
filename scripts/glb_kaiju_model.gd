@@ -55,6 +55,9 @@ const COSMETIC_ANCHORS := {
 	"back": ["Shoulders", Vector3(1.1, 3.75, 0), 0.0],
 	"tail": ["Tail5", Vector3(-5.2, 2.95, 0), 0.0],
 }
+## Where a carried building piece is clamped between the jaws: same format
+## as COSMETIC_ANCHORS, a spot just behind the front teeth.
+const BITE_SPOT := ["Head", Vector3(3.45, 4.12, 0), 0.0]
 
 var _inst: Node3D
 var _lean: Node3D
@@ -156,10 +159,13 @@ func build_glb(path: String, spike: Color) -> void:
 	if _anim:
 		_build_tree()
 	_collect_materials(_inst)
-	# Pivots the player uses: the right hand holds weapons, the snout fires beams.
+	# Pivots the player uses: the jaws carry weapons, the snout fires beams.
 	var hand := _attach(skel, "FrontFoot.R")
 	_mouth = _attach(skel, "Head_end")
 	parts = {"arm_r_fore": hand, "hips": _lean}
+	var bite := _anchor(BITE_SPOT)
+	if bite:
+		parts["bite"] = bite
 	if hand and hand.get_parent() is Node3D:
 		# Undo the rig's scale so held weapons keep their size.
 		var s := (hand.get_parent() as Node3D).global_basis.get_scale().x
@@ -172,7 +178,12 @@ func build_glb(path: String, spike: Color) -> void:
 ## Hangs the anchor on its bone so that, in the rest pose, it sits at the
 ## model-space spot in COSMETIC_ANCHORS; from then on it moves with the bone.
 func cosmetic_anchor(slot: String) -> Node3D:
-	var spot: Array = COSMETIC_ANCHORS.get(slot, [])
+	return _anchor(COSMETIC_ANCHORS.get(slot, []))
+
+
+## A node on the spot's bone at its model-space rest position (see
+## COSMETIC_ANCHORS), or null if the rig lacks that bone.
+func _anchor(spot: Array) -> Node3D:
 	var skel := _find(_inst, "Skeleton3D") as Skeleton3D if _inst else null
 	if spot.is_empty() or skel == null or skel.find_bone(spot[0]) < 0:
 		return null
