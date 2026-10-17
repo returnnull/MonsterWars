@@ -17,7 +17,7 @@ Al grafik er original og genereres i kode (primitive meshes, procedurale shaders
 1. **Sværhedsgrad:** EASY (fjender har 70 % liv og 60 % skade), NORMAL eller HARD (140 % liv, 150 % skade, +30 % XP). Valget huskes og kan skiftes under Settings, også i pausemenuen.
 2. **Vælg kaiju:** hver spiller trykker B på sin controller for at være med, vælger kaiju med venstre/højre og trykker B igen for klar. Når alle er klar, går I videre.
 3. **Verdenskort:** vælg land. Et land låses op, når bossen i landet før er besejret.
-4. **Banevalg:** 10 baner pr. land. Bane 10 er altid bossen. Bane 5 og 8 slutter med en elite-kaiju.
+4. **Banevalg:** 10 baner pr. land. Hver bane har mindst 6 bølger (bossen tæller som den sidste). Bane 10 er altid bossen. Bane 5 og 8 slutter med en elite-kaiju.
 5. Efter en bane: B for næste bane (eller prøv igen), A for verdenskortet. Fremskridt, XP, færdighedspoint, holdet, bedste score og indstillinger gemmes automatisk mellem spil (`user://save.json` og `user://settings.json`; i browseren i IndexedDB). XP gemmes også efter hver bølge og når spillet lægges i baggrunden, så intet går tabt, hvis telefonen lukker appen.
 
 Tryk **F9** i menuen for at låse alle baner op, hvis du vil teste.
@@ -65,6 +65,8 @@ Tryk **F9** i menuen for at låse alle baner op, hvis du vil teste.
 
   Har du ikke nok rage, blinker baren rødt. De hvide streger i baren viser, hvornår du har råd til hver evne. I rage-tilstand får du kun halvt så meget rage.
 - **Rage i skilltræet.** Alle helte har evner, der ændrer hvor meget rage de får, eller hvordan de får den: mere rage fra alt, mere rage når man bliver ramt, rage for hver besejret fjende, billigere rage-evner og rage-tilstand, en større rage-bar, og grene-ender som Overdrive (rage fylder sig selv), Blood Pact (Noctyr: betal manglende rage med liv) og Tidal Fury (Coralis: halvdelen af den brugte rage fylder super-måleren).
+- **Liv tilbage.** Alle helte kan lære livsstjæl allerede i træets anden række: Voltra, Glacior, Solar Rex og Rustfang heler en del af al skade de gør (*leech*), mens Gorrax, Magmos, Sylvara, Terraxa, Noctyr og Coralis heler af skaden fra rage-angreb, rage-tilstand og super (*ability leech*).
+- **Udødelig under super og rage-angreb.** Mens en super eller et rage-angreb (rage + tung) kører, tager helten ingen skade, heller ikke fra brand, og er urørlig et øjeblik efter.
 - **Super** er en ekstra måler, der fyldes langsomt når du gør skade og besejrer fjender. Når den er fuld, trykker du **ZL** for heltens unikke super-special. Alle supers starter med en glødende runecirkel og en lyssøjle i heltens farve:
 
 | Helt | Super-special |
@@ -361,6 +363,7 @@ godot --headless --path . res://tests/difficulty_test.tscn   # sværhedsgraderne
 godot --headless --path . res://tests/coop_test.tscn   # revive og flere fjender pr. spiller
 godot --headless --path . res://tests/trophy_test.tscn   # trofæer, kroner og kosmetik
 godot --headless --path . res://tests/skill_tree_test.tscn   # alle færdighedstræer følger reglerne
+godot --headless --path . res://tests/sustain_test.tscn   # mindst 6 waves, tidlig livsstjæl, udødelig super
 xvfb-run godot --path . --write-movie /tmp/lab.avi --fixed-fps 30 res://tests/anim_lab.tscn   # optag heltens animationer (gang, løb, vending, hop, angreb)
 COSMETIC_IDS=gold_crown,halo godot --path . res://tests/cosmetic_shots.tscn   # billeder af tingene på kaijuerne
 godot --headless --path . res://tests/hero_rage_test.tscn   # hver helts rage-angreb og super
