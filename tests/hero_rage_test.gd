@@ -20,12 +20,18 @@ func _ready() -> void:
 		"%d names, %d kinds" % [attacks.size(), specials.size()])
 	var lights := {}
 	var shots := {}
+	var moves := {}
+	var jets := {}
 	for st in RageStyle.STYLES:
 		lights[st["light"]] = true
 		shots[st["shot"] + st["jet"]] = true
+		moves[st["move"]] = true
+		jets[st["jet"]] = true
 	_check("every hero has its own rage attacks", RageStyle.STYLES.size() == Content.HEROES.size()
 		and lights.size() == Content.HEROES.size() and shots.size() == Content.HEROES.size(),
 		"%d styles, %d names, %d looks" % [RageStyle.STYLES.size(), lights.size(), shots.size()])
+	_check("every hero's light attack moves its own way", moves.size() == Content.HEROES.size(), "%d moves" % moves.size())
+	_check("every hero's breath looks its own way", jets.size() == Content.HEROES.size(), "%d breaths" % jets.size())
 	var ids: Array = range(Content.HEROES.size())
 	if OS.get_environment("HEROES") != "":
 		ids = Array(OS.get_environment("HEROES").split(",")).map(func(x) -> int: return int(x))
@@ -78,7 +84,7 @@ func _hero(h: int) -> void:
 			_check("%s throws up" % tag, far.knock.y > 5.0, "knock up %.1f" % far.knock.y)
 		"shock":
 			_check("%s chains lightning" % tag, beside.hp < hp_b, "second enemy dmg %.0f" % (hp_b - beside.hp))
-	if st["move"] == "pierce":
+	if st["move"] in ["ring", "lash", "roll", "boomerang", "wave"]:
 		_check("%s cuts through both" % tag, beside.hp < hp_b, "second enemy dmg %.0f" % (hp_b - beside.hp))
 	far.queue_free()
 	beside.queue_free()
