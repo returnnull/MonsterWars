@@ -186,6 +186,13 @@ var _super := {}
 var _super_tick := 0.0
 var _super_step := 0
 var _super_targets: Array = []
+## Picked super tree effects ({effect: true}, see SuperTree), the length of
+## the running super, one-shot events already set off in it, and whether a
+## hit being dealt now comes from the super (for the riders).
+var sup := {}
+var _super_len := SUPER_TIME
+var _super_once := {}
+var _super_hits := 0
 ## Per-super effect nodes (ice blocks of ABSOLUTE ZERO).
 var _super_fx = null
 var _super_ice: Array = []
@@ -218,6 +225,7 @@ func _ready() -> void:
 	level = Game.hero_level(hero)
 	sk = Skills.mods(hero, Game.hero_skills[hero])
 	_super = Skills.super_def(hero)
+	sup = SuperTree.mods(hero, Game.hero_supers[hero], level)
 	rage_style = RageStyle.for_hero(hero)
 	moves = HeroMoves.for_hero(hero)
 	# Each level above 1 adds 3% health and 2% damage on top of the skill tree.
@@ -1450,6 +1458,8 @@ func _modify_damage(target: Node, dmg: float) -> float:
 ## Life leech, burn, frost and super meter gain.
 func _on_strike_hit(target: Node, dmg: float) -> void:
 	add_super(dmg * (0.12 if state != S.SUPER else 0.0))
+	if _super_hits > 0:
+		_super_rider(target, dmg)
 	if _m("leech") > 0.0:
 		heal(dmg * _m("leech") / 100.0)
 	if _m("ability_leech") > 0.0 and _rage_hit():
@@ -1792,6 +1802,9 @@ func _make_barrier() -> MeshInstance3D:
 
 ## Every hero has one super special (Skills.TREES[hero]["super"]). It needs
 ## a full super meter, which fills from damage dealt and defeated enemies.
+## The picks in the hero's super tree (SuperTree, in `sup`) change how it
+## plays: riders on every hit, what happens where it lands, and the shape of
+## the super itself.
 func _start_super() -> void:
 	if raging:
 		_exit_rage_mode()
@@ -1801,8 +1814,11 @@ func _start_super() -> void:
 	_super_tick = 0.0
 	_super_step = 0
 	_super_targets = []
+	_super_once = {}
+	# Turning round gives each side about the beam a plain breath has.
+	_super_len = SUPER_TIME * (1.4 if _sup("long") or _sup("beam_turn") else 1.0) + (0.8 if _sup("wave_whirlpool") else 0.0)
 	_set_state(S.SUPER)
-	rumble(1.0, 1.0, SUPER_TIME)
+	rumble(1.0, 1.0, _super_len)
 	Game.shake(0.8)
 	Game.hitstop(0.25)
 	FX.shockwave(global_position, 12.0, color())
@@ -1810,17 +1826,39 @@ func _start_super() -> void:
 	FX.light_flash(global_position + Vector3(0, 6, 0), color(), 14.0, 30.0, 0.8)
 	SuperFX.charge(global_position, rage_style, 0.6)
 	_super_fx = null
+	if _sup("pull"):
+		for e in _enemies_near(32.0):
+			if e is Kaiju:
+				var d: float = global_position.x + facing * 4.0 - e.global_position.x
+				e.knock = Vector3(clampf(d * 2.5, -28.0, 28.0), 4.0, 0)
+				e.hitstun = 0.6
+		FX.shockwave(global_position, 30.0, color())
 	match String(_super["pattern"]):
 		"storm":
-			SuperFX.storm_cloud(global_position, facing, SUPER_TIME)
+			SuperFX.storm_cloud(global_position, facing, _super_len)
 		"supernova":
 			SuperFX.sun(global_position, rage_style, SUPER_TIME - 0.3)
 		"wave":
-			# Rolls in step with the wave's hits in _state_super.
-			SuperFX.tidal_wave(global_position + Vector3(-facing * 7.0, 0, 0), facing, 12 * 3.5, 12 * 0.15, 0.5)
+			# Rolls in step with the wave's hits in _super_wave.
+			var size := 1.6 if _sup("wave_tsunami") else 1.0
+			SuperFX.tidal_wave(global_position + Vector3(-facing * 7.0, 0, 0), facing, 12 * 3.5, 12 * 0.15, 0.5, size)
+			if _sup("wave_double"):
+				SuperFX.tidal_wave(global_position + Vector3(facing * 7.0, 0, 0), -facing, 12 * 3.5, 12 * 0.15, 0.5, size)
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud:
 		hud.show_message(_super["name"], 1.6)
+
+
+func _sup(effect: String) -> bool:
+	return sup.has(effect)
+
+
+## True the first time it is asked for `key` during one super.
+func _once(key: String) -> bool:
+	if _super_once.has(key):
+		return false
+	_super_once[key] = true
+	return true
 
 
 func _enemies_near(r: float) -> Array:
@@ -1829,177 +1867,608 @@ func _enemies_near(r: float) -> Array:
 
 
 func _super_hit(t: Node, dmg: float, kb: Vector3) -> void:
+	_super_hits += 1
 	if deal(t, dmg, kb):
 		Game.register_hit()
 		FX.hit_spark(t.hit_center(), dmg)
+	_super_hits -= 1
+
+
+## A super's area hit: counts the hits, carries the super tree's riders and,
+## with `impact`, its impact effects (shards, zones, chains) at `center`.
+func _super_strike(center: Vector3, radius: float, dmg: float, kb: Vector3, building_dmg := 0.0, impact := true) -> int:
+	_super_hits += 1
+	var hits := strike(center, radius, dmg, kb, "enemies", building_dmg)
+	_super_hits -= 1
+	for i in hits:
+		Game.register_hit()
+	if impact:
+		# A wide blast lands on the enemies it hits rather than at its middle.
+		var at: Array = [center]
+		if radius > 6.0:
+			at = get_tree().get_nodes_in_group("enemies").filter(func(e) -> bool:
+				return e.hit_center().distance_to(center) <= radius + e.hit_radius).slice(0, 3).map(func(e) -> Vector3:
+					return e.hit_center())
+		for q in at:
+			_impact(q, dmg)
+	return hits
+
+
+## Riders from the super tree's first tier, on every super hit.
+func _super_rider(target: Node, dmg: float) -> void:
+	if _sup("leech"):
+		heal(dmg * 0.1)
+	if _sup("rage"):
+		add_rage(3.0)
+	if target is Kaiju:
+		if _sup("burn"):
+			target.apply_burn(power * 6.0, 4.0)
+		if _sup("venom"):
+			target.apply_burn(power * 4.0, 8.0)
+		if _sup("chill"):
+			target.apply_slow(0.5, 3.0)
+		if _sup("stun"):
+			target.frozen_t = maxf(target.frozen_t, 0.8)
+
+
+## Where a super lands: shards fly out, a zone keeps hurting, or lightning
+## arcs on (the super tree's second tier). These follow-ups set off no more.
+func _impact(p: Vector3, dmg: float) -> void:
+	if _sup("shatter"):
+		for i in 4:
+			var a := TAU * (i + randf() * 0.6) / 4.0
+			var q := Vector3(p.x + cos(a) * randf_range(4.0, 7.0), 0.3, clampf(p.z + sin(a) * 3.0, z_min, z_max))
+			var d := dmg * 0.22
+			SuperFX.lob(Vector3(p.x, maxf(p.y, 1.0), p.z), q, rage_style, 0.6, 0.35, 3.0, func() -> void:
+				if is_inside_tree():
+					_super_strike(q + Vector3(0, 1.0, 0), 2.4, d, Vector3(3, 6, 0), 0.0, false))
+	if _sup("erupt"):
+		var g := Vector3(p.x, 0.0, p.z)
+		RageFX.ground(g, rage_style, 1.8, 2.4)
+		var d := dmg * 0.12
+		var tw := create_tween()
+		for i in 5:
+			tw.tween_interval(0.45)
+			tw.tween_callback(func() -> void:
+				_super_strike(g + Vector3(0, 1.0, 0), 3.0, d, Vector3.ZERO, 0.0, false))
+	if _sup("chain"):
+		var src := p
+		var foes: Array = get_tree().get_nodes_in_group("enemies").filter(func(e) -> bool:
+			return not e.dead and e.hit_center().distance_to(p) < 14.0)
+		foes.sort_custom(func(a, b) -> bool:
+			return a.hit_center().distance_to(p) < b.hit_center().distance_to(p))
+		for e in foes.slice(0, 2):
+			RageFX.bolt(src, e.hit_center(), rage_style, 1.0)
+			_super_hit(e, dmg * 0.4, Vector3(facing * 3.0, 2.0, 0))
+			src = e.hit_center()
+
+
+## Damage of this super, with the super tree's power pick.
+func _super_power() -> float:
+	return _special_power() * (1.25 if _sup("power") else 1.0)
 
 
 func _state_super(delta: float) -> void:
 	invuln = 0.2
-	var sp := _special_power()
+	var sp := _super_power()
 	var pattern: String = _super["pattern"]
 	_super_tick -= delta
 	match pattern:
 		"mega_beam":
-			if state_t >= 0.5 and state_t < SUPER_TIME - 0.2:
-				_beam.visible = true
-				_beam.position = _mouth_pos()
-				_beam.rotation.y = 0.0 if facing > 0.0 else PI
-				var f := 1.0 + sin(state_t * 70.0) * 0.15
-				_beam.scale = Vector3(1.4, 3.2 * f, 3.2 * f)
-				_beam_light.light_energy = 14.0 * f
-				if _super_fx == null:
-					_super_fx = RageFX.jet(rage_style, Vector3(facing, 0, 0))
-				RageFX.jet_update(_super_fx, rage_style, to_global(_mouth_pos()), facing, state_t)
-				if _super_tick <= 0.0:
-					_super_tick = 0.1
-					_super_step += 1
-					Game.shake(0.25)
-					var origin := global_position + Vector3(facing * 2.2, 4.85, 0)
-					SuperFX.mega_beam_tick(to_global(_mouth_pos()), facing, BEAM_LEN * 1.2, rage_style, _super_step)
-					for t in get_tree().get_nodes_in_group("enemies"):
-						if t.dead:
-							continue
-						var along: float = (t.hit_center().x - origin.x) * facing
-						if along > -2.0 and along < BEAM_LEN * 1.4 and absf(t.hit_center().z - origin.z) < 6.0 + t.hit_radius:
-							_super_hit(t, 9.0 * sp, Vector3(facing * 6.0, 1.0, 0))
-					for b in get_tree().get_nodes_in_group("buildings"):
-						b.try_beam(origin, facing, BEAM_LEN * 1.4, 40.0)
-			else:
-				_beam.visible = false
-				if _super_fx is GPUParticles3D:
-					FX.stop_stream(_super_fx)
-				_super_fx = null
+			_super_beam(sp)
 		"storm", "meteors", "scrap":
-			if state_t >= 0.5 and state_t < SUPER_TIME - 0.4 and _super_tick <= 0.0:
-				_super_tick = 0.16
-				var foes := _enemies_near(34.0)
-				var target := global_position + Vector3(facing * randf_range(4.0, 24.0), 0, randf_range(-4.0, 2.0))
-				if not foes.is_empty():
-					var e: Node3D = foes[_super_step % foes.size()]
-					target = Vector3(e.global_position.x, 0.0, e.global_position.z) + Vector3(randf_range(-1.5, 1.5), 0, randf_range(-1.0, 1.0))
-				_super_step += 1
-				if pattern == "storm":
-					SuperFX.lightning_strike(target, rage_style)
-					var hits := strike(target + Vector3(0, 2.0, 0), 3.5, 16.0 * sp, Vector3(4, 10, 0), "enemies", 30.0)
-					for i in hits:
-						Game.register_hit()
-					Game.shake(0.2)
-				else:
-					var dmg := 18.0 * sp
-					SuperFX.falling(target, rage_style, pattern == "scrap", 0.45, func() -> void:
-						if is_inside_tree():
-							var hits := strike(target + Vector3(0, 1.5, 0), 3.8, dmg, Vector3(8, 14, 0), "enemies", dmg * _bdmg())
-							Game.shake(0.3)
-							for i in hits:
-								Game.register_hit())
+			_super_rain(sp, pattern)
 		"vortex":
-			var c := global_position + Vector3(facing * 6.0, 3.0, 0)
-			if state_t >= 0.4 and _super_fx == null:
-				_super_fx = true
-				SuperFX.singularity(c, rage_style, 1.9)
-			if state_t >= 0.4 and state_t < 2.3:
-				for e in _enemies_near(30.0):
-					if e is Kaiju:
-						var d: Vector3 = c - e.global_position
-						d.y = 0.0
-						e.knock = d.normalized() * minf(d.length() * 2.0, 18.0)
-						e.hitstun = 0.2
-				if _super_tick <= 0.0:
-					_super_tick = 0.25
-					FX.shockwave(Vector3(c.x, 0.3, c.z), 9.0, color())
-					FX.energy(c, color())
-					strike(c, 6.0, 3.0 * sp, Vector3.ZERO, "enemies")
-			elif state_t >= 2.3 and _super_step == 0:
-				_super_step = 1
-				var hits := strike(c, 11.0, 70.0 * sp, Vector3(22, 16, 0), "enemies", 80.0)
-				for i in hits:
-					Game.register_hit()
-				FX.explosion(c, 2.2)
-				FX.shockwave(Vector3(c.x, 0.3, c.z), 16.0, color())
-				Game.shake(1.0)
-				Game.hitstop(0.12)
+			_super_vortex(sp)
 		"freeze":
-			if state_t >= 0.5 and _super_step == 0:
-				_super_step = 1
-				_super_ice.clear()
-				for e in _enemies_near(34.0):
-					if e is Kaiju:
-						e.frozen_t = 2.4
-					_super_targets.append(e)
-					_super_ice.append(SuperFX.encase(e, clampf(e.hit_radius / 1.6, 0.7, 2.0)))
-				SuperFX.freeze_wave(global_position, 30.0, rage_style)
-				Game.shake(0.5)
-			elif state_t >= 2.6 and _super_step == 1:
-				_super_step = 2
-				for b in _super_ice:
-					SuperFX.shatter(b)
-				_super_ice.clear()
-				for e in _super_targets:
-					if is_instance_valid(e) and not e.dead:
-						_super_hit(e, 75.0 * sp, Vector3(facing * 10.0, 14.0, 0))
-						FX.debris_burst(e.hit_center(), 1.4)
-						FX.shockwave(e.global_position, 5.0, Color(0.8, 1.0, 1.0))
-				Game.shake(0.9)
-				Game.hitstop(0.12)
+			_super_freeze(sp)
 		"frenzy":
-			if state_t >= 0.4 and _super_step < 9 and _super_tick <= 0.0:
-				_super_tick = 0.28
-				var foes := _enemies_near(34.0)
-				_super_step += 1
-				if foes.is_empty():
+			_super_frenzy(sp)
+		"rift":
+			_super_rift(sp)
+		"wave":
+			_super_wave(sp)
+		"supernova":
+			_super_nova(sp)
+	if state_t >= _super_len:
+		_end_super(sp)
+
+
+## After the super: the super tree's third tier and any lingering effect.
+func _end_super(sp: float) -> void:
+	if _super_fx is GPUParticles3D:
+		FX.stop_stream(_super_fx)
+	_super_fx = null
+	for b in _super_ice:
+		SuperFX.shatter(b)
+	_super_ice.clear()
+	_beam.visible = false
+	_beam.scale = Vector3.ONE
+	_set_state(S.FREE)
+	if _sup("finale"):
+		var c := global_position + Vector3(0, 3.0, 0)
+		_super_strike(c, 12.0, 30.0 * sp, Vector3(16, 12, 0), 50.0, false)
+		RageFX.burst(c, 12.0, rage_style)
+		Game.shake(0.7)
+	if _sup("shield"):
+		_barrier_up = true
+		_barrier_fx.visible = true
+		heal(max_hp * 0.15)
+	if _sup("refund"):
+		super_meter = SUPER_MAX * 0.3
+		super_changed.emit(super_meter, SUPER_MAX)
+	if _sup("rage_full"):
+		add_rage(rage_max)
+	if _sup("nova_corona"):
+		var tw := create_tween()
+		for i in 12:
+			tw.tween_interval(0.5)
+			tw.tween_callback(func() -> void:
+				if dead:
 					return
-				var e: Node3D = foes[_super_step % foes.size()]
-				var side := -1.0 if _super_step % 2 == 0 else 1.0
-				var from := global_position
-				global_position = Vector3(e.global_position.x - side * 3.2, global_position.y, clampf(e.global_position.z, z_min, z_max))
-				facing = side
-				model.spin = TAU * 0.5
-				_super_hit(e, 20.0 * sp, Vector3(side * 8.0, 6.0, 0))
-				SuperFX.slash(from, e.hit_center(), side, rage_style)
-				Game.shake(0.3)
-		"rift", "wave", "supernova":
-			if state_t >= 0.5 and _super_step < 12 and _super_tick <= 0.0:
-				_super_tick = 0.15
-				_super_step += 1
-				var k := _super_step
-				match pattern:
-					"rift":
-						for dir in [-1.0, 1.0]:
-							var p := Vector3(global_position.x + dir * k * 3.2, 1.5, global_position.z)
-							strike(p, 3.4, 12.0 * sp, Vector3(4, 16, 0), "enemies", 40.0)
-							SuperFX.rift_step(p, rage_style)
-							FX.dust(p, 1.2)
-							FX.shockwave(Vector3(p.x, 0, p.z), 3.0, color())
-						Game.shake(0.3)
-					"wave":
-						var p := Vector3(global_position.x + facing * (k * 3.5 - 6.0), 2.5, global_position.z - 1.0)
-						for e in get_tree().get_nodes_in_group("enemies"):
-							if not e.dead and absf(e.global_position.x - p.x) < 3.5 + e.hit_radius:
-								_super_hit(e, 13.0 * sp, Vector3(facing * 18.0, 6.0, 0))
-						for b in get_tree().get_nodes_in_group("buildings"):
-							b.try_hit(Vector3(p.x, 2.0, -7.0), 4.0, 30.0)
-						RageFX.splash(Vector3(p.x, 0.5, p.z), rage_style, 1.4)
-						if k % 2 == 0:
-							RageFX.ground(Vector3(p.x, 0, p.z), rage_style, 2.0, 2.0)
-						Game.shake(0.25)
-					"supernova":
-						if k % 4 == 1:
-							var c := global_position + Vector3(0, 3.0, 0)
-							var hits := strike(c, 18.0, 35.0 * sp, Vector3(18, 12, 0), "enemies", 60.0)
-							for i in hits:
-								Game.register_hit()
-							SuperFX.nova_blast(global_position, 18.0, rage_style)
-							FX.explosion(c, 1.6)
-							FX.light_flash(c, color(), 20.0, 40.0, 0.5)
-							Game.shake(0.8)
-	if state_t >= SUPER_TIME:
+				var c := global_position + Vector3(0, 2.5, 0)
+				_super_strike(c, 12.0, 7.0 * sp, Vector3(4, 3, 0), 10.0, false)
+				SuperFX.nova_blast(global_position, 12.0, rage_style))
+
+
+## OMEGA BREATH: a giant beam from the mouth. The super tree can turn it
+## round halfway, make it a ray from the sky, or end it in an atomic blast.
+func _super_beam(sp: float) -> void:
+	var t1 := _super_len - 0.2
+	if _sup("beam_core") and state_t >= t1 and _once("core"):
+		var c := global_position + Vector3(0, 3.0, 0)
+		_super_strike(c, 16.0, 70.0 * sp, Vector3(22, 16, 0), 100.0)
+		SuperFX.nova_blast(global_position, 16.0, rage_style)
+		FX.explosion(c, 2.4)
+		FX.light_flash(c, color(), 24.0, 40.0, 0.6)
+		Game.shake(1.0)
+		Game.hitstop(0.12)
+	if _sup("beam_sky"):
+		# The ray sweeps from the hero's feet to far down the street.
+		if state_t >= 0.5 and state_t < t1 and _super_tick <= 0.0:
+			_super_tick = 0.12
+			_super_step += 1
+			var k := (state_t - 0.5) / maxf(t1 - 0.5, 0.1)
+			var p := Vector3(global_position.x + facing * lerpf(3.0, 34.0, k), 0.0, global_position.z - 1.0)
+			if _super_step % 2 == 1:
+				SuperFX.pillar(p, rage_style, 0.5, 3.5)
+			RageFX.ground(p, rage_style, 1.6, 2.0)
+			_super_strike(p + Vector3(0, 2.0, 0), 4.5, 26.0 * sp, Vector3(4, 12, 0), 40.0, _super_step % 3 == 0)
+			Game.shake(0.25)
+		return
+	if state_t >= 0.5 and state_t < t1:
+		if _sup("beam_turn") and state_t >= (0.5 + t1) * 0.5 and _once("turn"):
+			facing = -facing
+			model.spin = TAU * 0.5
+			if _super_fx is GPUParticles3D:
+				FX.stop_stream(_super_fx)
+			_super_fx = null
+		_beam.visible = true
+		_beam.position = _mouth_pos()
+		_beam.rotation.y = 0.0 if facing > 0.0 else PI
+		var f := 1.0 + sin(state_t * 70.0) * 0.15
+		_beam.scale = Vector3(1.4, 3.2 * f, 3.2 * f)
+		_beam_light.light_energy = 14.0 * f
+		if _super_fx == null:
+			_super_fx = RageFX.jet(rage_style, Vector3(facing, 0, 0))
+		RageFX.jet_update(_super_fx, rage_style, to_global(_mouth_pos()), facing, state_t)
+		if _super_tick <= 0.0:
+			_super_tick = 0.1
+			_super_step += 1
+			Game.shake(0.25)
+			var origin := global_position + Vector3(facing * 2.2, 4.85, 0)
+			SuperFX.mega_beam_tick(to_global(_mouth_pos()), facing, BEAM_LEN * 1.2, rage_style, _super_step)
+			var hit := 0
+			for t in get_tree().get_nodes_in_group("enemies"):
+				if t.dead:
+					continue
+				var along: float = (t.hit_center().x - origin.x) * facing
+				if along > -2.0 and along < BEAM_LEN * 1.4 and absf(t.hit_center().z - origin.z) < 6.0 + t.hit_radius:
+					_super_hit(t, 9.0 * sp, Vector3(facing * 6.0, 1.0, 0))
+					# Impact effects every few ticks, on a few of the enemies burnt.
+					if _super_step % 4 == 0 and hit < 4:
+						hit += 1
+						_impact(t.hit_center(), 9.0 * sp * 3.0)
+			for b in get_tree().get_nodes_in_group("buildings"):
+				b.try_beam(origin, facing, BEAM_LEN * 1.4, 40.0)
+	else:
+		_beam.visible = false
 		if _super_fx is GPUParticles3D:
 			FX.stop_stream(_super_fx)
 		_super_fx = null
-		for b in _super_ice:
-			SuperFX.shatter(b)
-		_super_ice.clear()
-		_beam.visible = false
-		_beam.scale = Vector3.ONE
-		_set_state(S.FREE)
+
+
+## A spot near an enemy ahead of the hero for the next bolt or rock.
+func _rain_target() -> Vector3:
+	var foes := _enemies_near(34.0)
+	var target := global_position + Vector3(facing * randf_range(4.0, 24.0), 0, randf_range(-4.0, 2.0))
+	if not foes.is_empty():
+		var e: Node3D = foes[_super_step % foes.size()]
+		target = Vector3(e.global_position.x, 0.0, e.global_position.z) + Vector3(randf_range(-1.5, 1.5), 0, randf_range(-1.0, 1.0))
+	return target
+
+
+## THUNDERSTORM, MAGMA RAIN and SCRAP BARRAGE: bolts or rocks rain on the
+## enemies. The super tree changes how many and how big, splits or bounces
+## the rocks, or turns the rain into one giant rock or bolt.
+func _super_rain(sp: float, pattern: String) -> void:
+	var scrap := pattern == "scrap"
+	if pattern != "storm" and _sup("giant"):
+		if state_t >= 0.5 and _once("giant"):
+			var target := _rain_target()
+			SuperFX.target_ring(target, 12.0, rage_style, 1.5)
+			_rain_rock(target, scrap, 4.0, 180.0 * sp, 12.0, 1.5, target + Vector3(-18.0, 34.0, -6.0))
+		return
+	if pattern == "storm" and _sup("bolt_giant") and state_t >= _super_len - 0.6 and _once("giant"):
+		var target := _rain_target()
+		SuperFX.pillar(target, rage_style, 0.7, 6.0)
+		for i in 4:
+			RageFX.bolt(target + Vector3(randf_range(-6, 6), 22.0, -3.0), target + Vector3(randf_range(-2, 2), 0.3, 0), rage_style, 4.0)
+		_super_strike(target + Vector3(0, 2.0, 0), 12.0, 90.0 * sp, Vector3(14, 18, 0), 120.0)
+		FX.light_flash(target + Vector3(0, 10, 0), rage_style["glow"], 30.0, 50.0, 0.4)
+		FX.shockwave(target, 14.0, color())
+		Game.shake(1.1)
+		Game.hitstop(0.12)
+	var tick := 0.16
+	var size := 1.0
+	var mul := 1.0
+	var radius := 3.5 if pattern == "storm" else 3.8
+	if _sup("rain_more"):
+		tick = 0.08
+		size = 0.7
+		mul = 0.6
+		radius *= 0.8
+	elif _sup("rain_big") or _sup("bolt_big"):
+		tick = 0.32
+		size = 1.7
+		mul = 2.2
+		radius *= 1.6
+	elif _sup("storm_all"):
+		tick = 0.4
+	if state_t < 0.5 or state_t >= _super_len - 0.4 or _super_tick > 0.0:
+		return
+	_super_tick = tick
+	if pattern == "storm" and _sup("storm_all"):
+		for e in _enemies_near(34.0):
+			_rain_bolt(Vector3(e.global_position.x, 0.0, e.global_position.z), 1.0, 12.0 * sp, 2.8)
+		_super_step += 1
+		return
+	var target := _rain_target()
+	_super_step += 1
+	if pattern == "storm":
+		_rain_bolt(target, size, 16.0 * sp * mul, radius)
+	else:
+		_rain_rock(target, scrap, size, 18.0 * sp * mul, radius)
+
+
+func _rain_bolt(target: Vector3, size: float, dmg: float, radius: float) -> void:
+	SuperFX.lightning_strike(target, rage_style)
+	if size > 1.2:
+		RageFX.bolt(target + Vector3(randf_range(-3, 3), 19.0, -3.0), target + Vector3(0, 0.3, 0), rage_style, 3.5)
+		FX.shockwave(target, radius, color())
+	_super_strike(target + Vector3(0, 2.0, 0), radius, dmg, Vector3(4, 10, 0), 30.0)
+	Game.shake(0.2 * size)
+
+
+## One falling rock or hunk of scrap. With the super tree it may first drag
+## enemies in (magnet) or split in mid-air (frag_air).
+func _rain_rock(target: Vector3, scrap: bool, size: float, dmg: float, radius: float, fall := 0.45, start := Vector3.INF) -> void:
+	if _sup("magnet"):
+		for e in get_tree().get_nodes_in_group("enemies"):
+			if e is Kaiju and not e.dead and absf(e.global_position.x - target.x) < 10.0:
+				e.knock = Vector3(clampf((target.x - e.global_position.x) * 3.0, -20.0, 20.0), 2.0, 0)
+				e.hitstun = 0.4
+		FX.shockwave(target, 10.0, color())
+	if start == Vector3.INF:
+		start = target + Vector3(-12.0, 36.0, -4.0) * clampf(size, 1.0, 2.0)
+	if _sup("frag_air"):
+		var mid := start.lerp(target, 0.55)
+		SuperFX.falling(mid, rage_style, scrap, fall * 0.55, func() -> void:
+			if not is_inside_tree():
+				return
+			Game.shake(0.15)
+			for i in 3:
+				var q := Vector3(target.x + (i - 1) * 3.2 * size + randf_range(-0.6, 0.6), 0.0,
+					clampf(target.z + randf_range(-1.5, 1.5), z_min, z_max))
+				SuperFX.falling(q, rage_style, scrap, fall * 0.5, func() -> void:
+					_rock_land(q, radius * 0.75, dmg * 0.5, size * 0.55), size * 0.55, mid), size, start, true)
+		return
+	SuperFX.falling(target, rage_style, scrap, fall, func() -> void:
+		_rock_land(target, radius, dmg, size), size, start)
+
+
+## A rock lands. With the bounce pick it hops on along the street twice.
+func _rock_land(p: Vector3, radius: float, dmg: float, size: float, bounces := 2) -> void:
+	if not is_inside_tree():
+		return
+	_super_strike(p + Vector3(0, 1.5, 0), radius, dmg, Vector3(8, 14, 0), dmg * _bdmg())
+	Game.shake(minf(0.3 * size, 1.2))
+	if size >= 2.5:
+		FX.shockwave(p, radius * 1.5, color())
+		FX.light_flash(p + Vector3(0, 6, 0), rage_style["glow"], 24.0, 50.0, 0.5)
+		RageFX.ground(p, rage_style, size, 4.0)
+		Game.hitstop(0.15)
+	if _sup("bounce") and bounces > 0:
+		var q := Vector3(p.x + facing * randf_range(5.0, 7.0) * clampf(size, 1.0, 2.0), 0.0, p.z)
+		SuperFX.lob(p + Vector3(0, 1.0, 0), q, rage_style, 1.2 * size, 0.4, 4.0 * clampf(size, 1.0, 2.0), func() -> void:
+			_rock_land(q, radius * 0.85, dmg * 0.6, size * 0.8, bounces - 1))
+
+
+## SINGULARITY: a black hole pulls enemies in, then blows up. The super tree
+## opens two, lets it drift, makes it far bigger or makes it burst again and
+## again.
+func _super_vortex(sp: float) -> void:
+	var big := _sup("vortex_collapse")
+	var t := clampf((state_t - 0.4) / 1.9, 0.0, 1.0)
+	var centers: Array = []
+	if _sup("vortex_twin"):
+		centers = [global_position + Vector3(facing * 8.0, 3.0, 0), global_position + Vector3(-facing * 8.0, 3.0, 0)]
+	elif _sup("vortex_drift"):
+		centers = [global_position + Vector3(facing * lerpf(5.0, 22.0, t), 3.0, 0)]
+	else:
+		centers = [global_position + Vector3(facing * (8.0 if big else 6.0), 3.0, 0)]
+	if state_t >= 0.4 and _once("open"):
+		for c in centers:
+			var drift := Vector3(facing * 17.0, 0, 0) if _sup("vortex_drift") else Vector3.ZERO
+			SuperFX.singularity(c, rage_style, 1.9, 1.6 if big else (0.75 if centers.size() > 1 else 1.0), drift)
+	var reach := 42.0 if big else 30.0
+	if state_t >= 0.4 and state_t < 2.3:
+		for e in _enemies_near(reach):
+			if e is Kaiju:
+				var best: Vector3 = centers[0]
+				for c in centers:
+					if absf(c.x - e.global_position.x) < absf(best.x - e.global_position.x):
+						best = c
+				var d: Vector3 = best - e.global_position
+				d.y = 0.0
+				e.knock = d.normalized() * minf(d.length() * 2.0, 18.0)
+				e.hitstun = 0.2
+		if _super_tick <= 0.0:
+			_super_tick = 0.45 if _sup("vortex_pulse") else 0.25
+			_super_step += 1
+			for c in centers:
+				FX.shockwave(Vector3(c.x, 0.3, c.z), 9.0, color())
+				FX.energy(c, color())
+				if _sup("vortex_pulse"):
+					_super_strike(c, 8.0, 22.0 * sp, Vector3(6, 8, 0), 20.0)
+					RageFX.burst(c, 8.0, rage_style)
+					Game.shake(0.4)
+				else:
+					_super_strike(c, 6.0, 3.0 * sp, Vector3.ZERO, 0.0, false)
+	elif state_t >= 2.3 and _once("blast") and not _sup("vortex_pulse"):
+		var r := 18.0 if big else 11.0
+		var dmg := (110.0 if big else 70.0) * (0.8 if centers.size() > 1 else 1.0) * sp
+		for c in centers:
+			_super_strike(c, r, dmg, Vector3(22, 16, 0), 80.0)
+			FX.explosion(c, 2.2 * (1.6 if big else 1.0))
+			FX.shockwave(Vector3(c.x, 0.3, c.z), r * 1.5, color())
+		Game.shake(1.0)
+		Game.hitstop(0.12)
+
+
+## ABSOLUTE ZERO: every enemy around is frozen in ice, then shattered. The
+## super tree can freeze twice, freeze deeper, rain hail on the ice or
+## freeze the whole screen.
+func _super_freeze(sp: float) -> void:
+	var phases: Array = [[0.5, 1.5], [1.7, 2.7]] if _sup("freeze_twice") else [[0.5, 2.6]]
+	var reach := 60.0 if _sup("freeze_age") else 34.0
+	var dmg := 75.0 * sp
+	if _sup("freeze_twice"):
+		dmg *= 0.65
+	if _sup("freeze_deep"):
+		dmg *= 1.4
+	if _sup("freeze_age"):
+		dmg *= 1.3
+	for i in phases.size():
+		var ph: Array = phases[i]
+		if state_t >= ph[0] and _once("freeze%d" % i):
+			_super_ice.clear()
+			_super_targets.clear()
+			for e in _enemies_near(reach):
+				if e is Kaiju:
+					e.frozen_t = ph[1] - ph[0] + 0.2
+				_super_targets.append(e)
+				_super_ice.append(SuperFX.encase(e, clampf(e.hit_radius / 1.6, 0.7, 2.0)))
+			SuperFX.freeze_wave(global_position, reach * 0.9, rage_style)
+			Game.shake(0.5)
+		elif state_t >= ph[1] and _once("shatter%d" % i):
+			for b in _super_ice:
+				SuperFX.shatter(b)
+			_super_ice.clear()
+			for e in _super_targets:
+				if is_instance_valid(e) and not e.dead:
+					_super_hit(e, dmg, Vector3(facing * 10.0, 14.0, 0))
+					_impact(e.hit_center(), dmg)
+					if _sup("freeze_deep") and e is Kaiju:
+						e.apply_slow(0.6, 4.0)
+					FX.debris_burst(e.hit_center(), 1.4)
+					FX.shockwave(e.global_position, 5.0, Color(0.8, 1.0, 1.0))
+			Game.shake(0.9)
+			Game.hitstop(0.12)
+	# Hail pounds the frozen enemies while they are stuck in the ice.
+	if _sup("freeze_hail") and not _super_ice.is_empty() and _super_tick <= 0.0:
+		_super_tick = 0.18
+		var e = _super_targets[_super_step % _super_targets.size()]
+		_super_step += 1
+		if is_instance_valid(e) and not e.dead:
+			var to: Vector3 = e.hit_center() + Vector3(randf_range(-1.0, 1.0), 1.0, 0)
+			var d := 7.0 * sp
+			SuperFX.lob(to + Vector3(-4.0, 18.0, -2.0), to, rage_style, 0.9, 0.3, 0.0, func() -> void:
+				if is_inside_tree():
+					_super_strike(to, 2.6, d, Vector3.ZERO, 10.0, false))
+
+
+## SHADOW FRENZY: the hero blinks from enemy to enemy, slashing. The super
+## tree trades number of slashes for power, adds clones that strike again or
+## a last slash that cuts everyone.
+func _super_frenzy(sp: float) -> void:
+	var count := 9
+	var tick := 0.28
+	var dmg := 20.0
+	var kb := 8.0
+	if _sup("slash_more"):
+		count = 15
+		tick = 0.17
+		dmg = 13.0
+	elif _sup("slash_heavy"):
+		count = 6
+		tick = 0.42
+		dmg = 36.0
+		kb = 16.0
+	if _sup("slash_clones") and _super_step >= count and state_t >= 0.6 + count * tick and _once("clones"):
+		for e in _super_targets:
+			if is_instance_valid(e) and not e.dead:
+				var side := -1.0 if randf() < 0.5 else 1.0
+				SuperFX.slash(e.global_position + Vector3(-side * 3.2, 0, 0), e.hit_center(), side, rage_style)
+				_super_hit(e, 25.0 * sp, Vector3(side * 8.0, 8.0, 0))
+		Game.shake(0.6)
+	if state_t < 0.4 or _super_step >= count or _super_tick > 0.0:
+		return
+	_super_tick = tick
+	var foes := _enemies_near(34.0)
+	_super_step += 1
+	if foes.is_empty():
+		return
+	var e: Node3D = foes[_super_step % foes.size()]
+	if not e in _super_targets:
+		_super_targets.append(e)
+	var side := -1.0 if _super_step % 2 == 0 else 1.0
+	var from := global_position
+	global_position = Vector3(e.global_position.x - side * 3.2, global_position.y, clampf(e.global_position.z, z_min, z_max))
+	facing = side
+	model.spin = TAU * 0.5
+	_super_hit(e, dmg * sp, Vector3(side * kb, 6.0, 0))
+	_impact(e.hit_center(), dmg * sp)
+	SuperFX.slash(from, e.hit_center(), side, rage_style)
+	Game.shake(0.3 if kb < 10.0 else 0.6)
+	if _sup("slash_eclipse") and _super_step == count:
+		for o in _enemies_near(34.0):
+			SuperFX.slash(o.hit_center() + Vector3(-side * 3.0, 0, 0), o.hit_center(), side, rage_style)
+			_super_hit(o, 40.0 * sp, Vector3(side * 12.0, 10.0, 0))
+		FX.light_flash(global_position + Vector3(0, 6, 0), Color(0.6, 0.05, 0.1), 20.0, 40.0, 0.4)
+		Game.shake(0.9)
+		Game.hitstop(0.12)
+
+
+## TECTONIC RIFT: a crack runs out both ways from the hero. The super tree
+## sends it only forward, closes it again, raises pillars or splits the
+## whole street at the end.
+func _super_rift(sp: float) -> void:
+	var steps := 24 if _sup("rift_return") else 12
+	var tick := 0.11 if _sup("rift_return") else 0.15
+	if _sup("rift_split") and state_t >= 2.5 and _once("split"):
+		for x in range(-34, 35, 5):
+			SuperFX.rift_step(Vector3(global_position.x + x, 1.5, global_position.z), rage_style)
+		for e in _enemies_near(36.0):
+			_super_hit(e, 55.0 * sp, Vector3(facing * 4.0, 22.0, 0))
+			FX.dust(e.global_position, 1.6)
+		FX.shockwave(global_position, 36.0, color())
+		Game.shake(1.1)
+		Game.hitstop(0.12)
+	if state_t < 0.5 or _super_step >= steps or _super_tick > 0.0:
+		return
+	_super_tick = tick
+	_super_step += 1
+	var k := _super_step if _super_step <= 12 else 25 - _super_step
+	var forward := _sup("rift_forward")
+	var dirs := [facing] if forward else [-1.0, 1.0]
+	for dir in dirs:
+		var p := Vector3(global_position.x + dir * k * (4.4 if forward else 3.2), 1.5, global_position.z)
+		_super_strike(p, 3.4, (22.0 if forward else 12.0) * sp, Vector3(4, 16, 0), 40.0)
+		SuperFX.rift_step(p, rage_style)
+		FX.dust(p, 1.2)
+		FX.shockwave(Vector3(p.x, 0, p.z), 3.0, color())
+	Game.shake(0.3)
+	# A stone pillar under one more enemy every third step.
+	if _sup("rift_pillars") and _super_step % 3 == 0:
+		for e in _enemies_near(34.0):
+			if not e in _super_targets:
+				_super_targets.append(e)
+				var at := Vector3(e.global_position.x, 0.0, e.global_position.z)
+				RageFX.spike(at, rage_style, 2.6)
+				FX.debris_burst(at + Vector3(0, 1, 0), 1.2)
+				_super_hit(e, 30.0 * sp, Vector3(0, 22.0, 0))
+				break
+
+
+## TIDAL WAVE: a wall of water rolls down the street. The super tree adds
+## one rolling the other way, makes it drag enemies back, makes it a
+## tsunami or ends it in a whirlpool.
+func _super_wave(sp: float) -> void:
+	var big := _sup("wave_tsunami")
+	var mid := global_position + Vector3(facing * 18.0, 0, -1.0)
+	if _sup("wave_whirlpool") and state_t >= 2.4 and state_t < _super_len - 0.1:
+		if _once("pool"):
+			RageFX.ground(Vector3(mid.x, 0, mid.z), rage_style, 4.0, 2.0)
+		for e in get_tree().get_nodes_in_group("enemies"):
+			if e is Kaiju and not e.dead and absf(e.global_position.x - mid.x) < 22.0:
+				var d: Vector3 = mid - e.global_position
+				d.y = 0.0
+				e.knock = d.normalized() * minf(d.length() * 2.5, 18.0)
+				e.hitstun = 0.2
+		if _super_tick <= 0.0:
+			_super_tick = 0.2
+			_super_strike(mid + Vector3(0, 1.5, 0), 6.0, 9.0 * sp, Vector3.ZERO, 0.0, false)
+			RageFX.splash(mid, rage_style, 1.6)
+			FX.shockwave(Vector3(mid.x, 0.3, mid.z), 7.0, color())
+			Game.shake(0.3)
+	if state_t < 0.5 or _super_step >= 12 or _super_tick > 0.0:
+		return
+	_super_tick = 0.15
+	_super_step += 1
+	var k := _super_step
+	var reach := 6.0 if big else 3.5
+	var dmg := (20.0 if big else 13.0) * sp
+	var dirs := [facing, -facing] if _sup("wave_double") else [facing]
+	for dir in dirs:
+		var p := Vector3(global_position.x + dir * (k * 3.5 - 6.0), 2.5, global_position.z - 1.0)
+		var kb := Vector3(-dir * 12.0, 5.0, 0) if _sup("wave_undertow") else Vector3(dir * 18.0, 6.0, 0)
+		for e in get_tree().get_nodes_in_group("enemies"):
+			if not e.dead and absf(e.global_position.x - p.x) < reach + e.hit_radius:
+				_super_hit(e, dmg, kb)
+		if k % 3 == 0:
+			_impact(p, dmg * 2.0)
+		for b in get_tree().get_nodes_in_group("buildings"):
+			b.try_hit(Vector3(p.x, 2.0, -7.0), reach + 0.5, 30.0)
+		RageFX.splash(Vector3(p.x, 0.5, p.z), rage_style, 1.4 * (1.5 if big else 1.0))
+		if k % 2 == 0:
+			RageFX.ground(Vector3(p.x, 0, p.z), rage_style, 2.0, 2.0)
+	Game.shake(0.25)
+
+
+## SUPERNOVA: a sun swells over the hero and blasts the street around it.
+## The super tree pulses it more often, adds flares down the street, makes
+## the last blast giant, or leaves a corona burning after it.
+func _super_nova(sp: float) -> void:
+	if state_t < 0.5 or _super_step >= 12 or _super_tick > 0.0:
+		return
+	_super_tick = 0.15
+	_super_step += 1
+	var k := _super_step
+	var pulse := _sup("nova_pulse")
+	if k % (2 if pulse else 4) != 1:
+		return
+	var last := k == (11 if pulse else 9)
+	var c := global_position + Vector3(0, 3.0, 0)
+	var r := 14.0 if pulse else 18.0
+	var dmg := (22.0 if pulse else 35.0) * sp
+	if last and _sup("nova_bang"):
+		r = 32.0
+		dmg = 80.0 * sp
+		FX.light_flash(c, Color.WHITE, 40.0, 60.0, 0.6)
+		Game.hitstop(0.15)
+	_super_strike(c, r, dmg, Vector3(18, 12, 0), 60.0)
+	SuperFX.nova_blast(global_position, r, rage_style)
+	FX.explosion(c, 1.6 * r / 18.0)
+	FX.light_flash(c, color(), 20.0, 40.0, 0.5)
+	Game.shake(0.8)
+	if _sup("nova_flare"):
+		for i in 4:
+			var dir := -1.0 if i % 2 == 0 else 1.0
+			var q := Vector3(global_position.x + dir * randf_range(16.0, 30.0), 0.3,
+				clampf(global_position.z + randf_range(-3.0, 2.0), z_min, z_max))
+			var d := 18.0 * sp
+			SuperFX.lob(c + Vector3(0, 6.0, 0), q, rage_style, 1.0, 0.5, 6.0, func() -> void:
+				if is_inside_tree():
+					_super_strike(q + Vector3(0, 1.0, 0), 3.5, d, Vector3(6, 10, 0), 30.0, false)
+					RageFX.ground(q, rage_style, 1.4, 1.6))

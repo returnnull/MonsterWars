@@ -323,7 +323,8 @@ func _give_xp(p: Player, xp: int) -> void:
 	var gained := Game.add_xp(p.hero, xp)
 	if gained > 0:
 		var lv := Game.hero_level(p.hero)
-		hud.show_message("%s  LV %d!" % [p.display_name(), lv], 1.4)
+		var tier := SuperTree.tiers_open(lv) > SuperTree.tiers_open(lv - gained)
+		hud.show_message("%s  LV %d!%s" % [p.display_name(), lv, "  NEW SUPER PICK" if tier else ""], 1.4)
 		FX.energy(p.global_position + Vector3(0, 4, 0), Color(1.0, 0.95, 0.5))
 		FX.shockwave(p.global_position, 6.0, Color(1.0, 0.95, 0.5))
 

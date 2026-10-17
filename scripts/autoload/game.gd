@@ -70,6 +70,8 @@ var best_scores := {}
 ## Per hero: total XP and the ranks bought in each of the 10 skill tree nodes.
 var hero_xp: Array = []
 var hero_skills: Array = []
+## Per hero: the option picked in each tier of its super tree (-1 for none).
+var hero_supers: Array = []
 ## XP each hero earned in the level being played (for the end screen).
 var xp_gained := {}
 ## Player options, saved separately from progress so a reset keeps them.
@@ -126,9 +128,11 @@ func difficulty() -> Dictionary:
 func _reset_heroes() -> void:
 	hero_xp = []
 	hero_skills = []
+	hero_supers = []
 	for i in Content.HEROES.size():
 		hero_xp.append(0)
 		hero_skills.append(Skills.empty_ranks(i))
+		hero_supers.append(SuperTree.empty_picks())
 
 
 func hero_level(hero: int) -> int:
@@ -155,6 +159,16 @@ func buy_skill(hero: int, idx: int) -> bool:
 	hero_skills[hero][idx] += 1
 	if Skills.is_capstone(hero, idx):
 		track("branch_ends")
+	save_progress()
+	return true
+
+
+## Picks one option in a tier of a hero's super tree, replacing the tier's
+## earlier pick. False while the tier is still locked.
+func pick_super(hero: int, tier: int, idx: int) -> bool:
+	if tier >= SuperTree.tiers_open(hero_level(hero)):
+		return false
+	hero_supers[hero][tier] = idx
 	save_progress()
 	return true
 
@@ -422,7 +436,7 @@ func save_progress() -> void:
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify({"unlocked": unlocked, "best": best_scores, "party": party,
-			"hero_xp": hero_xp, "hero_skills": hero_skills, "skill_ver": Skills.SAVE_VERSION, "stats": stats, "trophies": trophies.keys(),
+			"hero_xp": hero_xp, "hero_skills": hero_skills, "hero_supers": hero_supers, "skill_ver": Skills.SAVE_VERSION, "stats": stats, "trophies": trophies.keys(),
 			"outfits": outfits}))
 		# Closing flushes the file (and on the web syncs it to IndexedDB).
 		f.close()
@@ -451,6 +465,14 @@ func load_progress() -> void:
 		for i in mini(sk.size(), hero_skills.size()):
 			for j in mini(sk[i].size(), Skills.node_count(i)):
 				hero_skills[i][j] = clampi(int(sk[i][j]), 0, Skills.max_rank(i, j))
+		var sp = data.get("hero_supers", [])
+		if sp is Array:
+			for i in mini(sp.size(), hero_supers.size()):
+				if sp[i] is Array:
+					for t in mini(sp[i].size(), SuperTree.TIERS):
+						var n := SuperTree.options(i, t).size()
+						var v := int(sp[i][t])
+						hero_supers[i][t] = v if v >= 0 and v < n else -1
 		var st = data.get("stats", {})
 		if st is Dictionary:
 			for k in st:

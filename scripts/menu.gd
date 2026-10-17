@@ -3,7 +3,7 @@ extends Control
 ## -> world map (10 countries) -> level select (10 levels each). Any controller can navigate; in hero
 ## select every controller drives its own slot, and can open its kaiju's skill tree or wardrobe.
 
-enum Screen { TITLE, SETTINGS, DIFFICULTY, HEROES, MAP, LEVELS, SKILLS, WARDROBE, TROPHIES }
+enum Screen { TITLE, SETTINGS, DIFFICULTY, HEROES, MAP, LEVELS, SKILLS, SUPERS, WARDROBE, TROPHIES }
 
 const SLOT_W := 460.0
 
@@ -28,6 +28,11 @@ var _sk_hero := 0
 var _sk_sel := 0
 var _sk_cards: Array[Panel] = []
 var _sk_return: Array = []
+## Super tree: selected tier and option, and the option cards ([tier, option] in _st_keys).
+var _st_tier := 0
+var _st_opt := 0
+var _st_cards: Array[Panel] = []
+var _st_keys: Array = []
 # Title and settings: vertical menu items and the 3D backdrop.
 var _items: Array[Dictionary] = []
 var _item_actions: Array = []
@@ -110,6 +115,8 @@ func _process(delta: float) -> void:
 			_levels_input()
 		Screen.SKILLS:
 			_skills_input()
+		Screen.SUPERS:
+			_supers_input()
 		Screen.WARDROBE:
 			_wardrobe_input(delta)
 		Screen.TROPHIES:
@@ -687,7 +694,11 @@ func _set_hero(slot: int, hero: int) -> void:
 		HeroMoves.combo_name(hero, "pound").capitalize(), Content.attack_name(hero),
 		String(rs["light"]).capitalize(), String(rs["heavy"]).capitalize(), String(Skills.super_def(hero)["name"]).capitalize()]
 	var pts := Game.free_points(hero)
-	d["lvl"].text = "LV %d%s" % [Game.hero_level(hero), ("   -   %d skill points  [X]" % pts) if pts > 0 else ""]
+	var lvl := Game.hero_level(hero)
+	var picks: Array = Game.hero_supers[hero]
+	var new_pick := range(SuperTree.tiers_open(lvl)).any(func(t: int) -> bool: return int(picks[t]) < 0)
+	d["lvl"].text = "LV %d%s%s" % [lvl, ("   -   %d skill points  [X]" % pts) if pts > 0 else "",
+		"   -   super pick  [X]" if new_pick and pts <= 0 else ""]
 
 
 func _refresh_slot(slot: int) -> void:
@@ -945,9 +956,9 @@ func _build_skills() -> void:
 	var sel_block := Skills.buy_block(_sk_hero, xp, ranks, _sk_sel)
 	var hint := _label(_root, "" if sel_block == "MAXED" else sel_block, Vector2(150, 935), 26, Color(1.0, 0.5, 0.4))
 	hint.size.x = 1620
-	_hint("Move: choose    B / Space: learn    Y / J: reset all points    A / Shift: back",
-		"MOVE: choose    LEARN: buy skill    RESET: refund all points    BACK: back",
-		{"JUMP": "LEARN", "DODGE": "BACK", "LIGHT": "RESET"})
+	_hint("Move: choose    B / Space: learn    Y / J: reset all points    X / K: super tree    A / Shift: back",
+		"MOVE: choose    LEARN: buy skill    RESET: refund all points    SUPER: super tree    BACK: back",
+		{"JUMP": "LEARN", "DODGE": "BACK", "LIGHT": "RESET", "HEAVY": "SUPER"})
 	_highlight(_sk_cards, _sk_sel)
 
 
@@ -1038,8 +1049,114 @@ func _skills_input() -> void:
 	elif Input.is_action_just_pressed(pre + "light"):
 		Game.reset_skills(_sk_hero)
 		_build_skills()
+	elif Input.is_action_just_pressed(pre + "heavy"):
+		_show_supers()
 	elif Input.is_action_just_pressed(pre + "dodge"):
 		_show_heroes(_sk_return)
+
+
+# --- super tree ------------------------------------------------------------
+
+## Tiers top to bottom, one option card per pick.
+const ST_X0 := 300.0
+const ST_DX := 500.0
+const ST_Y0 := 160.0
+const ST_DY := 150.0
+const ST_CARD := Vector2(470, 132)
+
+
+## The hero's super tree, opened from its skill tree: one row per tier, a
+## tier opening every SuperTree.TIER_EVERY levels, one pick per tier.
+func _show_supers() -> void:
+	_st_tier = 0
+	var picks: Array = Game.hero_supers[_sk_hero]
+	_st_opt = maxi(int(picks[0]), 0)
+	_build_supers()
+
+
+func _build_supers() -> void:
+	_clear()
+	screen = Screen.SUPERS
+	var h := Content.hero(_sk_hero)
+	var accent: Color = Color(h["accent"]).lerp(Color.WHITE, 0.3)
+	var lvl := Game.hero_level(_sk_hero)
+	var open := SuperTree.tiers_open(lvl)
+	var picks: Array = Game.hero_supers[_sk_hero]
+	_label(_root, "%s  SUPER TREE" % h["name"], Vector2(60, 30), 56, accent)
+	_label(_root, "P%d" % (_sk_slot + 1), Vector2(60, 100), 26, Color(1, 1, 1, 0.6))
+	var info := _label(_root, "%s    LV %d / %d" % [Skills.super_def(_sk_hero)["name"], lvl, Skills.MAX_LEVEL],
+		Vector2(1060, 36), 32, Color(1.0, 0.95, 0.6))
+	info.size.x = 800
+	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	var sub := _label(_root, "A new tier every %d levels. Pick one option per tier." % SuperTree.TIER_EVERY,
+		Vector2(1060, 80), 26, Color(0.6, 1.0, 0.7))
+	sub.size.x = 800
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_st_cards = []
+	_st_keys = []
+	for t in SuperTree.TIERS:
+		var y := ST_Y0 + t * ST_DY
+		var unlocked := t < open
+		var gl := _label(_root, "LV %d" % SuperTree.tier_level(t), Vector2(60, y + 46), 30,
+			Color(0.6, 1.0, 0.7) if unlocked else Color(1, 1, 1, 0.35))
+		gl.size.x = 200
+		gl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		for o in SuperTree.options(_sk_hero, t).size():
+			var op := SuperTree.option(_sk_hero, t, o)
+			var picked := int(picks[t]) == o
+			var card := Panel.new()
+			card.position = Vector2(ST_X0 + o * ST_DX, y)
+			card.size = ST_CARD
+			_root.add_child(card)
+			if picked:
+				card.set_meta("tint", Color(0.1, 0.2, 0.14, 0.94))
+			_label(card, op["name"], Vector2(14, 8), 24, accent if picked else Color(1, 1, 1, 0.9))
+			var d := _label(card, op["desc"], Vector2(14, 44), 18, Color(1, 1, 1, 0.75))
+			d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			d.custom_minimum_size = Vector2(ST_CARD.x - 28, 0)
+			d.size = Vector2(ST_CARD.x - 28, 80)
+			if picked:
+				var tag := _label(card, "PICKED", Vector2(ST_CARD.x - 110, 10), 18, Color(0.6, 1.0, 0.7))
+				tag.size.x = 96
+				tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			if not unlocked:
+				card.modulate = Color(0.5, 0.5, 0.55)
+			_st_cards.append(card)
+			_st_keys.append([t, o])
+	var hint := _label(_root, "" if _st_tier < open else "OPENS AT LV %d" % SuperTree.tier_level(_st_tier),
+		Vector2(300, 935), 26, Color(1.0, 0.5, 0.4))
+	hint.size.x = 1500
+	_hint("Move: choose    B / Space: pick    X / K or A / Shift: back to skill tree",
+		"MOVE: choose    PICK: pick option    BACK: skill tree",
+		{"JUMP": "PICK", "DODGE": "BACK"})
+	_highlight(_st_cards, _st_keys.find([_st_tier, _st_opt]))
+
+
+func _supers_input() -> void:
+	var pre := "p%d_" % _sk_slot
+	var tier := _st_tier
+	var opt := _st_opt
+	if Input.is_action_just_pressed(pre + "move_down"):
+		tier = mini(tier + 1, SuperTree.TIERS - 1)
+	elif Input.is_action_just_pressed(pre + "move_up"):
+		tier = maxi(tier - 1, 0)
+	elif Input.is_action_just_pressed(pre + "move_left"):
+		opt -= 1
+	elif Input.is_action_just_pressed(pre + "move_right"):
+		opt += 1
+	opt = clampi(opt, 0, SuperTree.options(_sk_hero, tier).size() - 1)
+	if tier != _st_tier or opt != _st_opt:
+		_st_tier = tier
+		_st_opt = opt
+		_build_supers()
+	if Input.is_action_just_pressed(pre + "jump"):
+		if Game.pick_super(_sk_hero, _st_tier, _st_opt):
+			_build_supers()
+			var card := _st_cards[_st_keys.find([_st_tier, _st_opt])]
+			card.scale = Vector2.ONE * 1.12
+			card.create_tween().tween_property(card, "scale", Vector2.ONE * 1.06, 0.2)
+	elif Input.is_action_just_pressed(pre + "heavy") or Input.is_action_just_pressed(pre + "dodge"):
+		_build_skills()
 
 
 # --- wardrobe --------------------------------------------------------------
