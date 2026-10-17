@@ -21,6 +21,9 @@ const BEAM_TIME := 2.6
 const BEAM_CHARGE := 0.4
 const SUPER_MAX := 100.0
 const SUPER_TIME := 3.2
+## Untouchable this long after a super or rage attack, so enemies that
+## waited it out can't punish the hero the moment it ends.
+const AFTER_SUPER_INVULN := 0.8
 ## Rage works like mana: dealing and taking damage fills the bar, and rage
 ## skills spend it. Hold special and press another button to use one; tap
 ## special on its own to switch rage mode on or off.
@@ -543,6 +546,8 @@ func _set_state(s: S) -> void:
 		_beam.visible = false
 	elif state == S.STOMP and s != S.STOMP:
 		_attack_cd = ATTACK_RECOVERY["stomp"]
+	if (state == S.SUPER or state == S.BEAM) and s != state:
+		invuln = maxf(invuln, AFTER_SUPER_INVULN)
 	state = s
 	state_t = 0.0
 
@@ -1209,6 +1214,7 @@ func _start_beam() -> void:
 ## How it works comes from Content "special", how it looks and what it
 ## does to enemies from the hero's RageStyle.
 func _state_beam(delta: float) -> void:
+	invuln = 0.2
 	match _special:
 		"nova":
 			_state_nova()
@@ -1390,7 +1396,8 @@ func _beam_damage() -> void:
 
 ## Barrier, Armor, rage mode and Second Wind.
 func _incoming(dmg: float, _from: Node3D) -> float:
-	if state == S.SUPER:
+	# Supers and the rage attack root the hero to the spot, so nothing gets through.
+	if state == S.SUPER or state == S.BEAM:
 		return 0.0
 	if _barrier_up:
 		_barrier_up = false
@@ -1431,6 +1438,8 @@ func _on_strike_hit(target: Node, dmg: float) -> void:
 	add_super(dmg * (0.12 if state != S.SUPER else 0.0))
 	if _m("leech") > 0.0:
 		heal(dmg * _m("leech") / 100.0)
+	if _m("ability_leech") > 0.0 and _rage_hit():
+		heal(dmg * _m("ability_leech") / 100.0)
 	if target is Kaiju:
 		if _m("burn") > 0.0 or _m("venom") > 0.0:
 			var dot := (_m("burn") + _m("venom")) * power * (1.0 + _m("inferno") / 100.0)
@@ -1442,6 +1451,11 @@ func _on_strike_hit(target: Node, dmg: float) -> void:
 		_arcing = true
 		_chain_shock(target, power * 1.5 * _boost(), [target])
 		_arcing = false
+
+
+## True while the hero's hits come from a rage attack, rage mode or a super.
+func _rage_hit() -> bool:
+	return raging or state == S.BEAM or state == S.SUPER or (state == S.ATTACK and atk.get("rage", false))
 
 
 func _on_hurt(dmg: float, from: Node3D) -> void:

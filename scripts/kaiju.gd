@@ -122,6 +122,9 @@ func _tick_status(delta: float) -> void:
 	frozen_t = maxf(frozen_t - delta, 0.0)
 	if burn_t > 0.0 and not dead:
 		burn_t -= delta
+		# Fire still burns out while untouchable, it just does no harm.
+		if invuln > 0.0:
+			return
 		hp = maxf(hp - burn_dps * delta, 0.0)
 		health_changed.emit(hp, max_hp)
 		if hp <= 0.0:

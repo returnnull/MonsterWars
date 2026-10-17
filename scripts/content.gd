@@ -4,6 +4,8 @@ extends RefCounted
 ## landmark and boss) and a deterministic generator for the 100 levels.
 
 const LEVELS_PER_COUNTRY := 10
+## Fewest waves (fights between gates) in any level; the boss fight counts.
+const MIN_WAVES := 6
 
 # special: how the hero's rage attack works (named and coloured by RageStyle "attack"):
 # "beam" (straight breath beam), "lightning" (forked bolts into enemies ahead and from the sky),
@@ -240,18 +242,19 @@ static func level(country_idx: int, level_idx: int) -> Dictionary:
 	var theme := "mixed"
 	if not is_boss and level_idx > 0:
 		theme = ["mixed", "armor", "air", "infantry"][(level_idx + country_idx * 3) % 4]
-	# Some levels are a long gauntlet of small fights, others a few big ones.
-	var wave_count := 3 if is_boss else 2 + level_idx / 4
+	# Every level has at least MIN_WAVES fights (the boss counts as one).
+	# Some are a long gauntlet of small fights, others fewer, bigger ones.
+	var wave_count := MIN_WAVES + level_idx / 4
 	var budget_mul := 1.0
 	match (level_idx * 7 + country_idx * 3) % 5:
 		0:
 			if not is_boss and level_idx > 0:
 				wave_count += 2
-				budget_mul = 0.65
+				budget_mul = 0.7
 		1:
-			if not is_boss and wave_count > 2:
+			if not is_boss and wave_count > MIN_WAVES:
 				wave_count -= 1
-				budget_mul = 1.35
+				budget_mul = 1.25
 	var waves: Array = []
 	var x := rng.randf_range(32.0, 45.0)
 	var pool := Enemies.pool(country_idx, level_idx)
@@ -267,7 +270,7 @@ static func level(country_idx: int, level_idx: int) -> Dictionary:
 		else:
 			# Spend a threat budget on enemies from this level's pool. The
 			# types this level introduces are guaranteed in wave 1.
-			var budget := minf(1.5 * (2.0 + d / 18.0 + rng.randf() + w * 0.5), 11.0) * budget_mul
+			var budget := minf(1.5 * (2.0 + d / 18.0 + rng.randf() + w * 0.3), 11.0) * budget_mul
 			if w == 0:
 				for id in Enemies.introduced(country_idx, level_idx):
 					budget -= _add(spawn, id)
