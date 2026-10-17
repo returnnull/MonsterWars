@@ -125,6 +125,12 @@ const ATTACKS := {
 const GRAB_RANGE := 4.5
 ## Button pressed with special held -> buffered rage skill.
 const RAGE_BUTTONS := {"light": "rage_strike", "jump": "rage_roar", "heavy": "rage_attack"}
+## A downed player gets back up after a teammate has stood next to them for
+## REVIVE_TIME seconds (two helpers do it twice as fast). Progress drains
+## slowly while nobody is close.
+const REVIVE_RANGE := 4.5
+const REVIVE_TIME := 3.0
+const REVIVE_HP := 0.4
 
 var slot := 0
 var hero := 0
@@ -162,6 +168,9 @@ var _rage_announced := false
 var _special_held := -1.0
 var _special_combo := false
 var _death_tween: Tween
+var revive_progress := 0.0
+var _revive_label: Label3D
+var _revive_ring: MeshInstance3D
 var _h: Dictionary
 var _special := "beam"
 var _special_step := 0
@@ -233,6 +242,7 @@ func _ready() -> void:
 	_barrier_fx = _make_barrier()
 	_barrier_fx.visible = _barrier_up
 	add_child(_barrier_fx)
+	_make_revive_marker()
 	Game.players.append(self)
 
 
@@ -273,14 +283,18 @@ func color() -> Color:
 	return _h["accent"]
 
 
-## Brings a downed player back between waves.
-func revive() -> void:
+## Brings a downed player back: between waves at half health, or by a
+## teammate mid-wave (REVIVE_HP).
+func revive(hp_frac: float = 0.5) -> void:
 	if not dead:
 		return
 	if _death_tween:
 		_death_tween.kill()
 	dead = false
-	hp = max_hp * 0.5
+	revive_progress = 0.0
+	_revive_label.visible = false
+	_revive_ring.visible = false
+	hp = max_hp * hp_frac
 	health_changed.emit(hp, max_hp)
 	invuln = 2.0
 	model.rotation.z = 0.0
@@ -493,7 +507,7 @@ func _physics_process(delta: float) -> void:
 			if hitstun <= 0.0:
 				_set_state(S.FREE)
 		S.DEAD:
-			pass
+			_tick_revive(delta)
 		S.SUPER:
 			_state_super(delta)
 	move_body(delta, move)
@@ -1494,6 +1508,71 @@ func _on_death() -> void:
 		Game.shake(0.8))
 	tw.tween_interval(1.0)
 	tw.tween_callback(func() -> void: died.emit(self))
+
+
+## Teammates standing close to a downed player fill its revive meter.
+func _tick_revive(delta: float) -> void:
+	if not dead:
+		return
+	var helpers := 0
+	for q in Game.living_players():
+		var d: Vector3 = q.global_position - global_position
+		if Vector2(d.x, d.z).length() <= REVIVE_RANGE:
+			helpers += 1
+	if helpers > 0:
+		revive_progress += delta * helpers / REVIVE_TIME
+	else:
+		revive_progress = maxf(revive_progress - delta * 0.25 / REVIVE_TIME, 0.0)
+	_revive_label.visible = true
+	_revive_ring.visible = true
+	_revive_label.text = "REVIVE  %d%%" % int(minf(revive_progress, 1.0) * 100.0) if revive_progress > 0.0 else "REVIVE!"
+	var mat: StandardMaterial3D = _revive_ring.material_override
+	var c := color()
+	mat.albedo_color = Color(c.r, c.g, c.b, 0.25 + 0.6 * revive_progress)
+	mat.emission_energy_multiplier = 0.5 + 2.5 * revive_progress
+	_revive_ring.scale = Vector3.ONE * (1.0 + 0.04 * sin(Time.get_ticks_msec() * 0.008))
+	if revive_progress >= 1.0:
+		revive(REVIVE_HP)
+		Game.track("revives")
+		FX.shockwave(global_position, 5.0, c)
+		var hud = Game.world.get("hud") if Game.world else null
+		if hud:
+			hud.show_message("%s IS BACK!" % display_name(), 1.2)
+
+
+## The "REVIVE" tag over a downed player and the ring on the ground that
+## shows where a teammate has to stand.
+func _make_revive_marker() -> void:
+	_revive_label = Label3D.new()
+	_revive_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_revive_label.no_depth_test = true
+	_revive_label.render_priority = 10
+	_revive_label.pixel_size = 0.012
+	_revive_label.font_size = 64
+	_revive_label.outline_size = 18
+	_revive_label.modulate = color().lerp(Color.WHITE, 0.5)
+	_revive_label.outline_modulate = Color(0.05, 0.03, 0.02, 0.9)
+	_revive_label.position = Vector3(0, 6.5 * _h["size"], 0)
+	_revive_label.visible = false
+	add_child(_revive_label)
+	var torus := TorusMesh.new()
+	torus.inner_radius = REVIVE_RANGE - 0.25
+	torus.outer_radius = REVIVE_RANGE
+	torus.rings = 48
+	torus.ring_segments = 6
+	_revive_ring = MeshInstance3D.new()
+	_revive_ring.mesh = torus
+	_revive_ring.scale = Vector3.ONE
+	_revive_ring.position = Vector3(0, 0.08, 0)
+	_revive_ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.emission_enabled = true
+	mat.emission = color()
+	_revive_ring.material_override = mat
+	_revive_ring.visible = false
+	add_child(_revive_ring)
 
 
 func _animate(delta: float) -> void:
