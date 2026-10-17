@@ -1,6 +1,7 @@
 extends Node3D
 ## Dev check: every hero's skill tree is well formed and plays by the rules.
-## Each tree has its own shape, hangs together, has a rage modifier, only
+## Each tree has its own shape, at least two start nodes, hangs together,
+## has a rage modifier and its own mix of skill kinds, only
 ## some nodes take several ranks, rows open by points spent in the whole
 ## tree, and one straight line down can't reach the bottom row.
 ## Run: godot --headless --path . res://tests/skill_tree_test.tscn
@@ -15,11 +16,13 @@ func _ready() -> void:
 	var max_points := Skills.MAX_LEVEL * Skills.POINTS_PER_LEVEL
 	var shapes := {}
 	var signatures := {}
+	var kind_sets := []
 	for h in Content.HEROES.size():
 		var hn: String = Content.HEROES[h]["name"]
 		var cells := {}
 		var kinds := {}
 		var multi := 0
+		var starts := 0
 		for i in Skills.node_count(h):
 			var n := Skills.node(h, i)
 			var cell := "%d,%d" % [n["row"], n["col"]]
@@ -34,10 +37,14 @@ func _ready() -> void:
 				multi += 1
 			kinds[n["kind"]] = true
 			if n["row"] == 0:
+				starts += 1
 				_check(n["parents"].is_empty(), "%s: top row %s needs nothing" % [hn, n["name"]])
 			else:
 				_check(Skills.parents(h, i).size() == n["parents"].size() and not n["parents"].is_empty(),
 					"%s: %s hangs from real nodes" % [hn, n["name"]])
+		_check(starts >= 2, "%s: tree has at least two start nodes (has %d)" % [hn, starts])
+		_check(kinds.size() >= 15, "%s: tree has at least 15 kinds of skills (has %d)" % [hn, kinds.size()])
+		kind_sets.append(kinds)
 		shapes[cells.keys().reduce(func(a, c): return a + c + ";", "")] = true
 		_check(Skills.node_count(h) >= 16, "%s: tree has at least 16 skills" % hn)
 		_check(multi > 0 and multi < Skills.node_count(h) - 3, "%s: only some skills take several ranks" % hn)
@@ -49,6 +56,17 @@ func _ready() -> void:
 				signatures[k] = signatures.get(k, []) + [h]
 		_check_rules(h, hn, max_points)
 	_check(shapes.size() == Content.HEROES.size(), "every hero's tree has its own shape")
+	# No two heroes share most of their skill kinds.
+	for a in kind_sets.size():
+		for b in range(a + 1, kind_sets.size()):
+			var shared: int = kind_sets[a].keys().filter(func(k): return kind_sets[b].has(k)).size()
+			_check(shared * 4 <= mini(kind_sets[a].size(), kind_sets[b].size()) * 3,
+				"%s and %s share at most 3/4 of their skill kinds (%d)" % [Content.HEROES[a]["name"], Content.HEROES[b]["name"], shared])
+	var used := {}
+	for ks in kind_sets:
+		used.merge(ks)
+	for k in Skills.KINDS:
+		_check(used.has(k), "skill kind %s is used by some hero" % k)
 	for k in signatures:
 		_check(signatures[k].size() == 1, "signature %s belongs to one hero" % k)
 	_check(signatures.size() == Content.HEROES.size(), "every hero has a signature skill")
@@ -61,7 +79,9 @@ func _ready() -> void:
 func _check_rules(h: int, hn: String, max_points: int) -> void:
 	var xp := 999999
 	var ranks := Skills.empty_ranks(h)
-	_check(Skills.buy_block(h, xp, ranks, Skills.node_count(h) - 1) != "", "%s: bottom row starts locked" % hn)
+	for i in Skills.node_count(h):
+		if Skills.is_capstone(h, i):
+			_check(Skills.buy_block(h, xp, ranks, i) != "", "%s: bottom row starts locked" % hn)
 	# One line: always the first node of the next row that hangs from the last.
 	var cur := -1
 	for row in Skills.ROWS:
