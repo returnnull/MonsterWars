@@ -43,6 +43,11 @@ var walk_speed := 1.0
 var arm_r := 0.25
 var arm_l := 0.25
 var jaw := 0.0
+## A bite, set by the owner while one is under way (-1 when not biting):
+## 0-1 rears back with the mouth opening, 1-1.3 snaps it shut with the head
+## thrust forward (the hit lands at 1), 1.3-2 recovers. GlbKaijuModel plays
+## its Attack clip in step with it; KaijuModel leaves it to jaw and lean.
+var bite := -1.0
 var lean := 0.0
 var spin := 0.0
 ## Jumping: crouch (0-1) is the takeoff squat, airborne is set while off

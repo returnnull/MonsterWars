@@ -55,6 +55,8 @@ const FLAME_MAX := 4.0
 const FLAME_DRAIN := 8.0
 ## A special press held longer than this without a combo does nothing.
 const SPECIAL_TAP := 0.45
+## Light attacks (light1, light2) are bites: the kaiju rears back with its
+## jaws open and snaps them shut on the hit (see KaijuModel.bite, FX.bite).
 ## Combos. "next" is the attack a light press chains into, "next_h" the one
 ## a heavy press chains into, and "combo" names a combo special (shown over
 ## the kaiju when it starts):
@@ -83,9 +85,9 @@ const JUMP_SQUAT := 0.07
 
 const ATTACKS := {
 	"light1": {"dur": 0.30, "active": 0.11, "dmg": 7.0, "kb": Vector3(4, 0, 0), "reach": 2.6, "radius": 2.3,
-		"pose": "jab_r", "shake": 0.12, "bdmg": 10.0, "next": "light2", "next_h": "heavy"},
+		"pose": "bite", "shake": 0.12, "bdmg": 10.0, "next": "light2", "next_h": "heavy"},
 	"light2": {"dur": 0.30, "active": 0.11, "dmg": 7.0, "kb": Vector3(4, 0, 0), "reach": 2.6, "radius": 2.3,
-		"pose": "jab_l", "shake": 0.12, "bdmg": 10.0, "next": "light3", "next_h": "rush"},
+		"pose": "bite", "shake": 0.12, "bdmg": 10.0, "next": "light3", "next_h": "rush"},
 	"light3": {"dur": 0.55, "active": 0.24, "dmg": 15.0, "kb": Vector3(15, 8, 0), "reach": 0.0, "radius": 5.2,
 		"pose": "spin", "shake": 0.35, "bdmg": 18.0, "next": "", "next_h": "heavy", "combo": "TAIL SPIN"},
 	"heavy": {"dur": 0.72, "active": 0.38, "dmg": 22.0, "kb": Vector3(14, 10, 0), "reach": 3.0, "radius": 3.0,
@@ -881,6 +883,9 @@ func _do_hit() -> void:
 		RageFX.pop(center, rage_style, 0.4)
 	if finisher and hits > 0 and _m("shock") > 0.0:
 		_chain_lightning(center, _m("shock") * power * _boost())
+	if atk["pose"] == "bite":
+		# Where the jaws end up once they have snapped shut.
+		FX.bite(center + Vector3(facing * 0.9, -0.4, 0), facing, rage_style["glow"], model.scale.x)
 	if atk["pose"] == "jab_r" and rage_skill:
 		# Rage strike: the blow bursts into the hero's element.
 		FX.shockwave(center - Vector3(0, 3.2, 0), 4.0, color())
@@ -1588,6 +1593,7 @@ func _animate(delta: float) -> void:
 	var jaw := 0.0
 	var lean := 0.0
 	model.spin = 0.0
+	model.bite = -1.0
 	match state:
 		S.FREE:
 			if not on_floor:
@@ -1599,11 +1605,14 @@ func _animate(delta: float) -> void:
 			var p := clampf(state_t / active, 0.0, 1.0)
 			var after := clampf((state_t - active) / maxf(dur - active, 0.01), 0.0, 1.0)
 			match atk["pose"]:
+				"bite":
+					# Rears back with the jaws open, then lunges and snaps
+					# them shut on the hit.
+					model.bite = p if after == 0.0 else 1.0 + after
+					jaw = 1.3 * p if after == 0.0 else lerpf(1.3, 0.0, minf(after * 4.0, 1.0))
+					lean = lerpf(-0.1, -0.25, p) if after == 0.0 else lerpf(0.5, 0.1, after)
 				"jab_r":
 					ar = lerpf(-0.5, 1.8, p * p) if after == 0.0 else lerpf(1.8, 0.3, after)
-					lean = 0.25
-				"jab_l":
-					al = lerpf(-0.5, 1.8, p * p) if after == 0.0 else lerpf(1.8, 0.3, after)
 					lean = 0.25
 				"spin":
 					model.spin = -TAU * clampf(state_t / (active * 1.6), 0.0, 1.0)
