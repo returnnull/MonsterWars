@@ -19,6 +19,7 @@ var _shell: MeshInstance3D
 
 
 func _ready() -> void:
+	add_to_group("telegraphs")
 	_ring_mat = StandardMaterial3D.new()
 	_ring_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_ring_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -63,6 +64,11 @@ func _ready() -> void:
 		_shell.material_override = m
 		_shell.visible = false
 		add_child(_shell)
+
+
+## True while the warning ring covers a point on the ground.
+func covers(p: Vector3) -> bool:
+	return Vector2(p.x - global_position.x, p.z - global_position.z).length() <= radius + 1.0
 
 
 func _process(delta: float) -> void:
