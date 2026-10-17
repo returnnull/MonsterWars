@@ -995,27 +995,100 @@ func _chain_shock(from: Node, dmg: float, skip: Array) -> void:
 		src = e.hit_center()
 
 
-## Light attack in rage mode: the hero's shot flies from the mouth (see
-## Fireball). RUSTFANG's spray fires three smaller ones side by side.
+## Light attack in rage mode: the hero's own shot (see Fireball for how
+## each one moves). VOLTRA's lightning needs no shot, GLACIOR's icicles fall
+## from the sky onto enemies ahead and RUSTFANG rattles off a burst of rivets.
 func _spit_fireball(size: float, dmg: float) -> void:
 	var mouth := to_global(_mouth_pos()) + Vector3(facing * 0.8, 0, 0)
-	var spread: bool = rage_style["move"] == "spread"
-	for z in ([-1.3, 0.0, 1.3] if spread else [0.0]):
-		var fb := Fireball.new()
-		fb.shooter = self
-		fb.style = rage_style
-		fb.dir = facing
-		fb.damage = dmg * (0.45 if spread else 1.0)
-		fb.size = size * (0.7 if spread else 1.0)
-		fb.splash = 2.4 * size * (0.7 if spread else 1.0)
-		get_parent().add_child(fb)
-		fb.global_position = mouth + Vector3(-absf(z) * facing * 0.6, absf(z) * 0.3, z)
-	RageFX.muzzle(mouth, Vector3(facing, 0, 0), rage_style, size)
+	var move: String = rage_style["move"]
+	match move:
+		"bolt":
+			_spit_bolt(mouth, size, dmg)
+		"drop":
+			# One icicle per enemy ahead (three on the big shot), or onto the
+			# street ahead when there is nobody to drop it on.
+			var n := 3 if size > 1.2 else 1
+			var ahead := _enemies_ahead(mouth, 24.0, 5.0)
+			for i in n:
+				var t: Node3D = ahead[i] if i < ahead.size() else null
+				var x := mouth.x + facing * (10.0 + i * 3.5)
+				var z := mouth.z + (i - 1) * 1.2 * float(n > 1)
+				if t:
+					x = t.global_position.x
+					z = t.global_position.z
+				_add_shot(Vector3(x, 11.0 + i * 2.0, z), dmg * (0.6 if n > 1 else 1.0), size * (0.75 if n > 1 else 1.0), t)
+			FX.light_flash(mouth + Vector3(0, 4, 0), rage_style["glow"], 6.0, 10.0, 0.2)
+		"burst":
+			var n := 7 if size > 1.2 else 4
+			for i in n:
+				var fb := _add_shot(mouth, dmg * 0.34, 0.45 * (1.15 if size > 1.2 else 1.0), null)
+				fb.splash = 1.2
+				fb.delay = i * 0.06
+		_:
+			_add_shot(mouth, dmg, size, null)
+	if move != "bolt":
+		RageFX.muzzle(mouth, Vector3(facing, 0, 0), rage_style, size)
 	Game.track("fireballs")
 	rumble(0.25, 0.1 * size, 0.08)
 	if size > 1.2:
 		rage_shake(0.15)
 		FX.callout(global_position + Vector3(0, 7.5, 0), rage_style["light"], rage_style["glow"])
+
+
+func _add_shot(pos: Vector3, dmg: float, size: float, target: Node3D) -> Fireball:
+	var fb := Fireball.new()
+	fb.shooter = self
+	fb.style = rage_style
+	fb.dir = facing
+	fb.damage = dmg
+	fb.size = size
+	fb.splash = 2.4 * size
+	fb.target = target
+	get_parent().add_child(fb)
+	fb.global_position = pos
+	return fb
+
+
+## Living enemies in front of `from` within `reach` (and `side` of the
+## lane), closest first.
+func _enemies_ahead(from: Vector3, reach: float, side: float) -> Array:
+	var ahead: Array = get_tree().get_nodes_in_group("enemies").filter(func(e) -> bool:
+		var along: float = (e.global_position.x - from.x) * facing
+		return not e.dead and along > -1.0 and along < reach and absf(e.global_position.z - from.z) < side)
+	ahead.sort_custom(func(a, b) -> bool:
+		return absf(a.global_position.x - from.x) < absf(b.global_position.x - from.x))
+	return ahead
+
+
+## VOLTRA: a bolt of lightning cracks from the mouth straight into the
+## closest enemy ahead and jumps on from there (two more, four on the big
+## shot). With nobody ahead it strikes the street.
+func _spit_bolt(mouth: Vector3, size: float, dmg: float) -> void:
+	var ahead := _enemies_ahead(mouth, 24.0, 4.0)
+	var end := Vector3(mouth.x + facing * 14.0, 0.3, mouth.z)
+	if not ahead.is_empty():
+		var t: Node3D = ahead[0]
+		end = t.hit_center()
+		if deal(t, dmg, Vector3(facing * 4.0, 3.0, 0)):
+			Game.register_hit()
+			FX.hit_spark(end, dmg)
+			_rage_effect(t, dmg, false)
+		_chain_shock(t, dmg * 0.6, [t])
+		if size > 1.2:
+			# The big shot forks on to more of them.
+			for e in ahead.slice(1, 3):
+				RageFX.bolt(end, e.hit_center(), rage_style, 0.8)
+				if deal(e, dmg * 0.5, Vector3(facing * 3.0, 2.0, 0)):
+					Game.register_hit()
+					_rage_effect(e, dmg, false)
+	for b in get_tree().get_nodes_in_group("buildings"):
+		if b.try_hit(end, 1.6 * size, dmg * _bdmg()):
+			Game.register_hit()
+	RageFX.bolt(mouth, end, rage_style, 1.3 * size)
+	RageFX.bolt(mouth, end, rage_style, 0.7 * size)
+	RageFX.pop(end, rage_style, 0.7 * size)
+	RageFX.ground(Vector3(end.x, 0.1, end.z), rage_style, 0.7 * size, 1.0)
+	FX.light_flash(mouth, rage_style["glow"], 8.0 * size, 12.0, 0.15)
 
 
 ## Heavy attack in rage mode: the kaiju plants its feet and pours out its

@@ -39,11 +39,12 @@ func _ready() -> void:
 
 func _light() -> void:
 	var e := _enemy(16.0)
+	var e2 := _enemy(22.0)
 	_rage()
 	var n := 0
 	for a in ["fire1", "fire2", "fire3"]:
 		p._start_attack(a)
-		for f in 4:
+		for f in (8 if a == "fire3" else 4):
 			await _wait(0.09)
 			_shot("light", n)
 			n += 1
@@ -51,6 +52,7 @@ func _light() -> void:
 			await get_tree().physics_frame
 	await _wait(1.0)
 	e.queue_free()
+	e2.queue_free()
 
 
 func _heavy() -> void:

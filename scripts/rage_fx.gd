@@ -9,6 +9,7 @@ extends RefCounted
 const JET := {
 	"flame": {"speed": 32.0, "spread": 8.0, "size": 3.4, "life": 0.42, "grav": 3.0},
 	"beam": {"speed": 42.0, "spread": 3.0, "size": 1.8, "life": 0.3, "grav": 0.0},
+	"sunray": {"speed": 30.0, "spread": 11.0, "size": 2.4, "life": 0.42, "grav": 0.0},
 	"lightning": {"speed": 40.0, "spread": 9.0, "size": 1.3, "life": 0.3, "grav": 0.0},
 	"spikes": {"speed": 26.0, "spread": 14.0, "size": 2.2, "life": 0.45, "grav": -8.0},
 	"mist": {"speed": 17.0, "spread": 17.0, "size": 4.4, "life": 0.85, "grav": 1.0},
@@ -125,7 +126,7 @@ static func jet(st: Dictionary, dir: Vector3) -> GPUParticles3D:
 			e_grav = -30.0
 			e_spread = 26.0
 			e_amount = 170
-		"lightning", "beam":
+		"lightning", "beam", "sunray":
 			e_grav = 0.0
 	var em := FX._pm(dir, e_spread, speed * 0.6, speed * 1.2, e_grav, 0.3, 0.7, 0.5, 0.4 * size)
 	em.particle_flag_align_y = true
@@ -133,6 +134,8 @@ static func jet(st: Dictionary, dir: Vector3) -> GPUParticles3D:
 	p.add_child(FX._stream_part(e_amount, life * 1.5, em, spark_mesh(st["spark"]), aabb))
 	if kind == "beam":
 		p.add_child(_beam_mesh(st, dir))
+	elif kind == "sunray":
+		p.add_child(_sun_mesh(st, dir))
 	var l := OmniLight3D.new()
 	l.name = "light"
 	l.light_color = st["glow"]
@@ -142,13 +145,13 @@ static func jet(st: Dictionary, dir: Vector3) -> GPUParticles3D:
 	return p
 
 
-## A solid ray along the breath (GORRAX, SOLAR REX): white-hot core in a
-## coloured glow, a ball of light at the mouth.
+## A solid ray along the breath (GORRAX): white-hot core in a coloured
+## glow, a ball of light at the mouth.
 static func _beam_mesh(st: Dictionary, dir: Vector3) -> Node3D:
 	var root := Node3D.new()
 	root.name = "beam"
 	root.rotation.z = atan2(-dir.x, dir.y)
-	var wide := 1.35 if st["shot"] == "sun" else 1.0
+	var wide := 1.0
 	var c: Color = st["core"]
 	var g: Color = st["glow"]
 	for layer in [[0.24 * wide, 0.3 * wide, Color(c, 1.0), false], [0.6 * wide, 0.85 * wide, Color(g.lightened(0.25), 0.6), false],
@@ -168,6 +171,50 @@ static func _beam_mesh(st: Dictionary, dir: Vector3) -> Node3D:
 	return root
 
 
+## SOLAR REX's breath: a small sun blazes in front of the jaws and throws
+## a widening cone of sunbeams ahead, like light through a gap in clouds.
+static func _sun_mesh(st: Dictionary, dir: Vector3) -> Node3D:
+	var root := Node3D.new()
+	root.name = "beam"
+	root.rotation.z = atan2(-dir.x, dir.y)
+	var c: Color = st["core"]
+	var g: Color = st["glow"]
+	var rays := Node3D.new()
+	rays.name = "rays"
+	root.add_child(rays)
+	var ray_mat := glow_mat(Color(g.lightened(0.35), 0.4), true)
+	var core_mat := glow_mat(Color(c, 0.9))
+	for i in 7:
+		var pivot := Node3D.new()
+		rays.add_child(pivot)
+		if i > 0:
+			# Six rays fanned out round the middle one.
+			var a := (i - 1) * TAU / 6.0
+			pivot.rotation = Vector3(cos(a) * 0.17, 0, sin(a) * 0.17)
+		var cyl := CylinderMesh.new()
+		cyl.bottom_radius = 0.18 if i == 0 else 0.1
+		cyl.top_radius = 0.9 if i == 0 else 0.55
+		cyl.height = BEAM_LEN
+		cyl.radial_segments = 8
+		cyl.rings = 1
+		var mi := _mesh(pivot, cyl, core_mat if i == 0 else ray_mat)
+		mi.position.y = BEAM_LEN * 0.5
+	for layer in [[0.9, Color(c, 1.0)], [1.5, Color(g.lightened(0.3), 0.55)], [2.3, Color(g, 0.2)]]:
+		var sph := SphereMesh.new()
+		sph.radius = layer[0]
+		sph.height = layer[0] * 2.0
+		_mesh(root, sph, glow_mat(layer[1]))
+	# Spikes of the corona round the sun.
+	var corona := Node3D.new()
+	corona.name = "corona"
+	root.add_child(corona)
+	for i in 6:
+		var q := QuadMesh.new()
+		q.size = Vector2(0.3, 5.0)
+		_mesh(corona, q, glow_mat(Color(g.lightened(0.5), 0.75), true)).rotation.y = i * PI / 6.0
+	return root
+
+
 ## Keeps the breath at the mouth and makes it flicker.
 static func jet_update(p: GPUParticles3D, st: Dictionary, mouth: Vector3, facing: float, t: float) -> void:
 	if p == null or not is_instance_valid(p):
@@ -181,6 +228,10 @@ static func jet_update(p: GPUParticles3D, st: Dictionary, mouth: Vector3, facing
 	var b := p.get_node_or_null("beam") as Node3D
 	if b:
 		b.scale = Vector3(f, 1.0, f)
+		var rays := b.get_node_or_null("rays") as Node3D
+		if rays:
+			rays.rotation.y = t * 2.5
+			b.get_node("corona").rotation.y = -t * 4.0
 
 
 ## What the breath does along its length every tick, on top of the cone:
@@ -195,12 +246,16 @@ static func jet_tick(st: Dictionary, mouth: Vector3, facing: float, length: floa
 				ground(end, st, 1.0, 1.4)
 		"beam":
 			if tick % 2 == 0:
-				if st["shot"] == "sun":
-					_flare(mouth + Vector3(facing * 0.5, 0, 0.3), st, 1.4)
-				else:
-					_ring(mouth + Vector3(facing * 1.5, -0.3, 0), facing, st)
+				_ring(mouth + Vector3(facing * 1.5, -0.3, 0), facing, st)
 			if tick % 4 == 0:
 				ground(Vector3(mouth.x + facing * length * randf_range(0.6, 0.95), 0.1, z), st, 0.9, 1.2)
+		"sunray":
+			# Glints of sunlight flash up along the cone and set the street
+			# on fire where the beams come down.
+			var k := randf_range(0.3, 1.0)
+			_flare(mouth + Vector3(facing * length * k, -length * k * 0.22 + randf_range(-1.5, 1.5), randf_range(-1.2, 1.2)), st, 0.8 + k)
+			if tick % 3 == 0:
+				ground(Vector3(mouth.x + facing * length * randf_range(0.55, 0.95), 0.1, z + randf_range(-1.2, 1.2)), st, 1.1, 1.6)
 		"lightning":
 			var tip := mouth + Vector3(facing * length * randf_range(0.6, 1.0), randf_range(-3.5, 0.5), randf_range(-1.5, 1.5))
 			bolt(mouth, tip, st)
@@ -483,14 +538,14 @@ static func trail(st: Dictionary, size: float, dir: float) -> GPUParticles3D:
 	var speed := 6.0
 	var life := 0.38
 	match kind:
-		"shard", "crescent", "scrap":
+		"icicle", "crescent", "scrap":
 			spread = 6.0
 			life = 0.25
-		"bubble":
+		"wave":
 			spread = 40.0
 			speed = 3.0
 			life = 0.6
-		"venom", "glob":
+		"glob":
 			life = 0.5
 		"rock":
 			speed = 3.0
@@ -500,10 +555,10 @@ static func trail(st: Dictionary, size: float, dir: float) -> GPUParticles3D:
 	pm.scale_curve = FX._grow_curve()
 	var p := FX._stream_part(int(110 * size), life, pm, _soft(false), AABB(Vector3(-25, -10, -25), Vector3(50, 40, 50)))
 	w.add_child(p)
-	var em := FX._pm(Vector3(-dir, 0.3, 0), 50.0, 3.0, 8.0, -9.0 if kind != "bubble" else 2.0, 0.25, 0.5, 0.6, 0.5 * size)
-	em.particle_flag_align_y = kind != "bubble"
+	var em := FX._pm(Vector3(-dir, 0.3, 0), 50.0, 3.0, 8.0, -9.0 if kind != "wave" else 2.0, 0.25, 0.5, 0.6, 0.5 * size)
+	em.particle_flag_align_y = kind != "wave"
 	em.scale_curve = FX._shrink_curve()
-	var mesh := _bubble_mesh(st["glow"]) if kind == "bubble" else spark_mesh(st["spark"])
+	var mesh := _bubble_mesh(st["glow"]) if kind == "wave" else spark_mesh(st["spark"])
 	p.add_child(FX._stream_part(maxi(int(40 * size), 6), life * 1.6, em, mesh, p.visibility_aabb))
 	return p
 
@@ -569,18 +624,18 @@ static func pop(pos: Vector3, st: Dictionary, size: float) -> void:
 	FX.shockwave(Vector3(pos.x, 0.2, pos.z), 2.5 * size, st["glow"])
 	FX.light_flash(pos, st["glow"], 5.0 * size, 9.0 * size, 0.25)
 	match String(st["shot"]):
-		"bubble":
+		"wave":
 			splash(pos, st, 0.8 * size)
-		"shard":
+		"icicle":
 			ice(Vector3(pos.x, 0.0, pos.z), st, 0.6 * size)
 		"rock":
 			FX.debris_burst(pos, 1.0 * size)
 			FX.dust(Vector3(pos.x, 0.0, pos.z), 1.0 * size)
-		"venom":
+		"vine":
 			cloud(pos, st, 0.7 * size)
 		"sun":
 			_flare(pos, st, 1.2 * size)
-		"glob", "orb":
+		"glob", "ring":
 			FX.smoke(pos + Vector3(0, 1.0, 0), 0.5 * size, Color(0.16, 0.11, 0.09) if st["shot"] == "glob" else Color(0.1, 0.15, 0.3))
 		"crescent":
 			FX.smoke(pos, 0.5 * size, st["smoke"])
