@@ -28,6 +28,12 @@ const RUN_TO := 8.5
 ## The player's full speed; walk_amount 1 means this many units/s.
 const FULL_SPEED := 9.5
 const ATTACK_SPEED := 1.4
+## Times in the Attack clip that `bite` maps onto: the head rears back with
+## the mouth wide open, snaps shut thrust forward, and is back in its stance.
+const BITE_OPEN := 0.22
+const BITE_SNAP := 0.47
+const BITE_SHUT := 0.58
+const BITE_END := 0.85
 ## How fast (1/s) each layer fades in and out.
 const FADE := {"move": [14.0, 8.0], "jump": [30.0, 10.0], "atk": [26.0, 9.0]}
 ## Springs for the secondary motion: frequency (rad/s) and damping ratio.
@@ -231,9 +237,16 @@ func _process(delta: float) -> void:
 ## Sets the time of each animation and the weight of each layer (moving,
 ## running, jumping, attacking), then poses the tree.
 func _pick_animation(delta: float) -> void:
-	var striking: bool = arm_r > 1.3 or arm_l > 1.3 or jaw > 0.5
+	var striking: bool = arm_r > 1.3 or arm_l > 1.3 or jaw > 0.5 or bite >= 0.0
 	var jump_t := -1.0
-	if striking:
+	if bite >= 0.0:
+		# The bite drives the clip itself, so the jaws close on the hit.
+		_land_t = -1.0
+		var t := _bite_time(bite)
+		if not _striking or t < _atk_t[_atk_slot] - 0.1:
+			_atk_slot = 1 - _atk_slot if _wt["atk"] > 0.05 else _atk_slot
+		_atk_t[_atk_slot] = t
+	elif striking:
 		_land_t = -1.0
 		var alen: float = _len.get("Attack", 1.0)
 		if not _striking or _atk_t[_atk_slot] >= alen:
@@ -301,6 +314,15 @@ func _pick_animation(delta: float) -> void:
 		# body already flies through the air.
 		var lift: float = _body_y(_skel.get_bone_global_pose(_body_bone).origin) - _body_rest
 		_inst.position.y = -maxf(lift, 0.0)
+
+
+## Attack clip time for a bite phase (see KaijuModel.bite).
+func _bite_time(b: float) -> float:
+	if b <= 1.0:
+		return lerpf(BITE_OPEN, BITE_SNAP, b)
+	if b <= 1.3:
+		return lerpf(BITE_SNAP, BITE_SHUT, (b - 1.0) / 0.3)
+	return lerpf(BITE_SHUT, BITE_END, minf((b - 1.3) / 0.7, 1.0))
 
 
 ## Height of a skeleton-space point in the space _inst sits in.

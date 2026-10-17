@@ -337,6 +337,46 @@ static func shockwave(pos: Vector3, radius: float, color: Color = Color(0.6, 0.9
 	tw.chain().tween_callback(mi.queue_free)
 
 
+## A bite: two rows of glowing fangs slam together at pos (on the side the
+## kaiju faces) and fade.
+static func bite(pos: Vector3, facing: float, color: Color, size: float = 1.0) -> void:
+	var w := _world()
+	if w == null:
+		return
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.no_depth_test = true
+	mat.albedo_color = Color(1.0, 0.97, 0.9).lerp(color, 0.25) * 1.6
+	var fang := PrismMesh.new()
+	fang.size = Vector3(0.34, 0.75, 0.05)
+	var root := Node3D.new()
+	w.add_child(root)
+	root.global_position = pos
+	root.scale = Vector3(facing, 1.0, 1.0) * size
+	var tw := root.create_tween().set_parallel(true)
+	for jaw in [1.0, -1.0]:
+		var row := Node3D.new()
+		root.add_child(row)
+		row.position.y = 1.1 * jaw
+		# Fangs curve along the jaw line, longest at the front.
+		for i in 5:
+			var mi := MeshInstance3D.new()
+			mi.mesh = fang
+			mi.material_override = mat
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			var x := -0.85 + i * 0.4 + (0.2 if jaw < 0.0 else 0.0)
+			mi.position = Vector3(x, -absf(x) * 0.18 * jaw, 0)
+			mi.rotation.z = PI if jaw > 0.0 else 0.0
+			mi.scale = Vector3.ONE * (0.75 + i * 0.08)
+			row.add_child(mi)
+		tw.tween_property(row, "position:y", 0.12 * jaw, 0.07).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
+	tw.tween_property(root, "scale", Vector3(facing * 1.25, 0.8, 1.0) * size, 0.12).set_delay(0.07)
+	tw.tween_property(mat, "albedo_color:a", 0.0, 0.18).set_delay(0.1)
+	tw.chain().tween_callback(root.queue_free)
+
+
 ## The name of a combo special popping up over the kaiju that used it.
 static func callout(pos: Vector3, text: String, color: Color) -> void:
 	var w := _world()
