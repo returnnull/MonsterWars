@@ -9,10 +9,13 @@ extends Node3D
 ##   slab    concrete block: heavy hits, thrown it lands with an explosion
 ##   spire   antenna mast: longest reach, thrown it pierces every enemy
 
+## grip: where along the piece (mesh units) a kaiju bites it, near one end;
+## tilt: how far (radians) it points down from the jaws. The slab is bitten
+## by its rebar and hangs below the head.
 const KINDS := {
-	"girder": {"name": "STEEL GIRDER", "dmg": 1.8, "reach": 1.6, "uses": 8, "throw_dmg": 38.0},
-	"slab": {"name": "CONCRETE SLAB", "dmg": 2.2, "reach": 0.8, "uses": 6, "throw_dmg": 46.0},
-	"spire": {"name": "ANTENNA SPIRE", "dmg": 1.6, "reach": 2.8, "uses": 7, "throw_dmg": 30.0},
+	"girder": {"name": "STEEL GIRDER", "dmg": 1.8, "reach": 1.6, "uses": 8, "throw_dmg": 38.0, "grip": 0.1, "tilt": 0.55},
+	"slab": {"name": "CONCRETE SLAB", "dmg": 2.2, "reach": 0.8, "uses": 6, "throw_dmg": 46.0, "grip": 3.35, "tilt": -1.5},
+	"spire": {"name": "ANTENNA SPIRE", "dmg": 1.6, "reach": 2.8, "uses": 7, "throw_dmg": 30.0, "grip": 0.3, "tilt": 0.55},
 }
 
 var kind := "girder"

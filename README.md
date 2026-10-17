@@ -190,7 +190,7 @@ Når en bygning vælter, ligger der ofte et stykke tilbage i ruinerne med en gyl
 - **Betonblok**: slår hårdest. Kastet lander den med en eksplosion.
 - **Antennemast**: længst rækkevidde. Kastet borer den sig gennem alle fjender på rækken.
 
-Med våben i hånden er let angreb et sving (2-hits combo) og tungt angreb et kast. Våbnet går i stykker efter nogle slag.
+Kaijuen bærer stykket i munden: bjælken og masten stikker frem mellem kæberne, og betonblokken hænger i sit armeringsjern. Med våben i munden er let angreb et sving (2-hits combo) og tungt angreb et kast. Våbnet går i stykker efter nogle slag.
 
 ## Helte
 

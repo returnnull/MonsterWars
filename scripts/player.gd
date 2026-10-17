@@ -770,10 +770,19 @@ func _set_weapon(kind: String) -> void:
 	weapon_uses = Weapon.KINDS[kind]["uses"]
 	_held = Weapon.make_mesh(kind)
 	_held.scale = Vector3.ONE * 0.85
-	var hand: Node3D = model.parts.get("arm_r_fore", model)
-	hand.add_child(_held)
-	_held.position = Vector3(0.1, -1.3, 0)
-	_held.rotation.z = -PI / 2
+	var jaws: Node3D = model.parts.get("bite")
+	if jaws:
+		# One end clamped between the teeth, the rest jutting forward and
+		# down out of the jaws, so it is plain the kaiju carries it in its mouth.
+		jaws.add_child(_held)
+		var w: Dictionary = Weapon.KINDS[kind]
+		_held.rotation = Vector3(0, 0.3, -w["tilt"])
+		_held.position = _held.basis * Vector3(-w["grip"] * 0.85, 0, 0)
+	else:
+		var hand: Node3D = model.parts.get("arm_r_fore", model)
+		hand.add_child(_held)
+		_held.position = Vector3(0.1, -1.3, 0)
+		_held.rotation.z = -PI / 2
 
 
 func _swing_weapon(center: Vector3) -> void:
