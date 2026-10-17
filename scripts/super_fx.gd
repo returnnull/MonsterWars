@@ -157,8 +157,10 @@ static func lightning_strike(target: Vector3, st: Dictionary) -> void:
 
 ## A burning rock (MAGMA RAIN) or a red-hot hunk of scrap (SCRAP BARRAGE)
 ## that streaks down trailing fire and smoke onto `target`, then calls
-## `on_land`.
-static func falling(target: Vector3, st: Dictionary, scrap: bool, fall_time: float, on_land: Callable) -> void:
+## `on_land`. `size` scales it, `start` sets where it falls from (default:
+## high up behind) and `air` bursts it in mid-air (no crater).
+static func falling(target: Vector3, st: Dictionary, scrap: bool, fall_time: float, on_land: Callable,
+		size := 1.0, start := Vector3.INF, air := false) -> void:
 	var w := FX._world()
 	if w == null:
 		return
@@ -194,10 +196,12 @@ static func falling(target: Vector3, st: Dictionary, scrap: bool, fall_time: flo
 		glow.radius = 1.8
 		glow.height = 3.6
 		RageFX._mesh(root, glow, RageFX.glow_mat(Color(1.0, 0.45, 0.1, 0.35)))
-	var start := target + Vector3(-12.0, 36.0, -4.0)
+	if start == Vector3.INF:
+		start = target + Vector3(-12.0, 36.0, -4.0) * clampf(size, 1.0, 2.0)
 	root.global_position = start
+	root.scale = Vector3.ONE * size
 	var fire_st: Dictionary = RageStyle.for_hero(2)
-	var trail := RageFX.trail(fire_st, 1.6, 1.0)
+	var trail := RageFX.trail(fire_st, 1.6 * size, 1.0)
 	var spin := Vector3(randf_range(4, 9), randf_range(4, 9), 0)
 	var tw := root.create_tween()
 	tw.tween_method(func(k: float) -> void:
@@ -207,10 +211,13 @@ static func falling(target: Vector3, st: Dictionary, scrap: bool, fall_time: flo
 			trail.global_position = root.global_position, 0.0, 1.0, fall_time)
 	tw.tween_callback(func() -> void:
 		FX.stop_stream(trail)
-		FX.explosion(target, 1.0)
-		RageFX.ground(target, st, 1.5, 2.5)
-		if scrap:
-			FX.debris_burst(target + Vector3(0, 1, 0), 1.2)
+		FX.explosion(target, size)
+		if air:
+			RageFX.pop(target, st, 1.4 * size)
+		else:
+			RageFX.ground(target, st, 1.5 * size, 2.5)
+		if scrap and not air:
+			FX.debris_burst(target + Vector3(0, 1, 0), 1.2 * size)
 			var pm := FX._pm(Vector3.UP, 70.0, 10.0, 22.0, -30.0, 0.4, 0.9, 0.3, 0.6)
 			pm.particle_flag_align_y = true
 			pm.scale_curve = FX._shrink_curve()
@@ -219,9 +226,58 @@ static func falling(target: Vector3, st: Dictionary, scrap: bool, fall_time: flo
 		root.queue_free())
 
 
+## A small glowing chunk (shard, ball lightning, bouncing rock, flare) that
+## arcs from `from` to `to`, then calls `on_land`.
+static func lob(from: Vector3, to: Vector3, st: Dictionary, size: float, time: float, height: float, on_land: Callable) -> void:
+	var w := FX._world()
+	if w == null:
+		return
+	var root := Node3D.new()
+	w.add_child(root)
+	root.global_position = from
+	var s := SphereMesh.new()
+	s.radius = 0.5 * size
+	s.height = 1.0 * size
+	s.radial_segments = 6
+	s.rings = 3
+	RageFX._mesh(root, s, RageFX.glow_mat(Color(st["core"], 1.0)))
+	var g := SphereMesh.new()
+	g.radius = 1.0 * size
+	g.height = 2.0 * size
+	RageFX._mesh(root, g, RageFX.glow_mat(Color(st["glow"], 0.35)))
+	var tw := root.create_tween()
+	tw.tween_method(func(k: float) -> void:
+		root.global_position = from.lerp(to, k) + Vector3(0, sin(k * PI) * height, 0), 0.0, 1.0, time)
+	tw.tween_callback(func() -> void:
+		RageFX.pop(to + Vector3(0, 0.4, 0), st, 0.8 * size + 0.4)
+		on_land.call()
+		root.queue_free())
+
+
+## A glowing ring on the street that warns where something huge will land
+## within `time`.
+static func target_ring(pos: Vector3, radius: float, st: Dictionary, time: float) -> void:
+	var w := FX._world()
+	if w == null:
+		return
+	var t := TorusMesh.new()
+	t.inner_radius = radius - 0.5
+	t.outer_radius = radius
+	t.rings = 48
+	t.ring_segments = 4
+	var mat := RageFX.glow_mat(Color(st["glow"], 0.0))
+	var mi := RageFX._mesh(w, t, mat)
+	mi.global_position = Vector3(pos.x, 0.15, pos.z)
+	mi.scale = Vector3(1.6, 0.05, 1.6)
+	var tw := mi.create_tween().set_parallel(true)
+	tw.tween_property(mi, "scale", Vector3(1.0, 0.05, 1.0), time)
+	tw.tween_property(mat, "albedo_color:a", 0.85, time)
+	tw.chain().tween_callback(mi.queue_free)
+
+
 ## SINGULARITY: a black hole forms ahead of the hero, a swirling disc of
 ## purple matter is pulled into it, and it blows up at the end.
-static func singularity(center: Vector3, st: Dictionary, pull_time: float) -> void:
+static func singularity(center: Vector3, st: Dictionary, pull_time: float, size := 1.0, drift := Vector3.ZERO) -> void:
 	var w := FX._world()
 	if w == null:
 		return
@@ -271,9 +327,11 @@ static func singularity(center: Vector3, st: Dictionary, pull_time: float) -> vo
 	root.add_child(p)
 	root.scale = Vector3.ONE * 0.1
 	var tw := root.create_tween()
-	tw.tween_property(root, "scale", Vector3.ONE, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(root, "scale", Vector3.ONE * size, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tw.parallel().tween_property(disc, "rotation:y", TAU * 4.0, pull_time)
 	tw.parallel().tween_property(hole, "scale", Vector3.ONE * 1.4, pull_time)
+	if drift != Vector3.ZERO:
+		tw.parallel().tween_property(root, "global_position", center + drift, pull_time)
 	tw.tween_property(root, "scale", Vector3.ONE * 0.05, 0.12).set_ease(Tween.EASE_IN)
 	tw.tween_callback(func() -> void:
 		FX.stop_stream(p)
@@ -387,7 +445,7 @@ static func slash(from: Vector3, at: Vector3, side: float, st: Dictionary) -> vo
 
 ## TIDAL WAVE: a wall of water with a foaming crest rolls along the street.
 ## It rises during `delay`, then rolls `travel` along the street in `duration`.
-static func tidal_wave(start: Vector3, facing: float, travel: float, duration: float, delay: float) -> void:
+static func tidal_wave(start: Vector3, facing: float, travel: float, duration: float, delay: float, size := 1.0) -> void:
 	var w := FX._world()
 	if w == null:
 		return
@@ -428,11 +486,11 @@ static func tidal_wave(start: Vector3, facing: float, travel: float, duration: f
 	var spray := FX._stream_part(120, 0.6, base, RageFX._soft(false), crest.visibility_aabb)
 	spray.position = Vector3(facing * 1.0, 0.4, -1.0)
 	root.add_child(spray)
-	root.scale = Vector3(1.0, 0.1, 1.0)
+	root.scale = Vector3(size, 0.1, 1.0)
 	var tw := root.create_tween()
-	tw.tween_property(root, "scale", Vector3.ONE, delay).set_ease(Tween.EASE_OUT)
+	tw.tween_property(root, "scale", Vector3(size, size, 1.0), delay).set_ease(Tween.EASE_OUT)
 	tw.tween_property(root, "global_position:x", start.x + facing * travel, duration)
-	tw.tween_property(root, "scale", Vector3(1.0, 0.05, 1.0), 0.4).set_ease(Tween.EASE_IN)
+	tw.tween_property(root, "scale", Vector3(size, 0.05, 1.0), 0.4).set_ease(Tween.EASE_IN)
 	tw.parallel().tween_property(water, "albedo_color:a", 0.0, 0.4)
 	tw.tween_callback(func() -> void:
 		FX.stop_stream(crest)
