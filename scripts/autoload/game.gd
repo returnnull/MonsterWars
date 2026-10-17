@@ -22,6 +22,8 @@ const SETTINGS_PATH := "user://settings.json"
 ## Defaults for the options screen. "shake" is a percentage (0-100).
 ## "difficulty" indexes DIFFICULTIES.
 const DEFAULT_SETTINGS := {"difficulty": 1, "rumble": true, "shake": 100, "fullscreen": false, "hints": true}
+## Codes typed on the CHEATS screen in Settings.
+const CHEATS := {"1337": "max_level"}
 const SETTING_NAMES := {"difficulty": "DIFFICULTY", "rumble": "RUMBLE", "shake": "SCREEN SHAKE",
 	"fullscreen": "FULLSCREEN", "hints": "CONTROLS HELP"}
 ## Enemy health and damage multipliers, and the XP bonus for the risk.
@@ -171,6 +173,19 @@ func pick_super(hero: int, tier: int, idx: int) -> bool:
 	hero_supers[hero][tier] = idx
 	save_progress()
 	return true
+
+
+## Runs a cheat code from the CHEATS screen. Returns what it did, or "" for
+## an unknown code.
+func enter_cheat(code: String) -> String:
+	match CHEATS.get(code, ""):
+		"max_level":
+			for i in Content.HEROES.size():
+				hero_xp[i] = maxi(hero_xp[i], Skills.xp_for_level(Skills.MAX_LEVEL))
+			check_trophies()
+			save_progress()
+			return "ALL KAIJU ARE NOW LEVEL %d" % Skills.MAX_LEVEL
+	return ""
 
 
 func reset_skills(hero: int) -> void:
