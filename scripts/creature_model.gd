@@ -38,6 +38,13 @@ func _init() -> void:
 	detail = 1
 
 
+## A hit makes the body flinch back; heavy bodies barely rock.
+func flash() -> void:
+	super.flash()
+	kick("lean", -4.0 / heft)
+	kick("jaw", 3.0)
+
+
 func build(skin: Color, belly: Color, spike: Color, eye: Color, horns: bool = false) -> void:
 	_spike_color = spike
 	_v = _variant(skin, belly, spike)
@@ -707,12 +714,14 @@ func _process(delta: float) -> void:
 	var breathe := sin(_t * 2.0)
 	var sq: float = _cur["squash"]
 	var turn: float = _cur["turn"]
+	# Effort shake building up to a big attack: fast, small and uneven.
+	var shake := Vector3(sin(_t * 47.0), sin(_t * 61.0 + 1.3), sin(_t * 53.0 + 2.1)) * 0.05 * tremble
 
 	match plan:
 		"quad":
 			var pitch := rear * 0.5 - ln * 0.4
 			_body.rotation.z = pitch
-			_body.position.y = _body_y + absf(cos(_phase)) * 0.15 * _walk + breathe * 0.04 + rear * 0.5 - sq * 0.3
+			_body.position = Vector3(shake.x, _body_y + absf(cos(_phase)) * 0.15 * _walk + breathe * 0.04 + rear * 0.5 - sq * 0.3 + shake.y, shake.z)
 			_body.rotation.x = s * 0.05 * _walk
 			_body.rotation.y = s * 0.04 * _walk
 			for l in _legs:
@@ -727,7 +736,7 @@ func _process(delta: float) -> void:
 			_neck[0].rotation.y = turn * 0.08
 			parts["jaw"].rotation.z = -jw * 0.6
 		"insect", "mech":
-			_body.position.y = _body_y + absf(sin(_phase * 2.0)) * 0.06 * _walk + breathe * 0.03 - sq * 0.15
+			_body.position = Vector3(shake.x, _body_y + absf(sin(_phase * 2.0)) * 0.06 * _walk + breathe * 0.03 - sq * 0.15 + shake.y, shake.z)
 			_body.rotation.z = rear * 0.25 - ln * 0.25
 			for l in _legs:
 				var p: float = _phase + l["ph"]
@@ -771,7 +780,7 @@ func _process(delta: float) -> void:
 		_:
 			_body.rotation.z = _body_rest + rear * 0.35 - ln * 0.5 + breathe * 0.02
 			_body.rotation.y = s * 0.07 * _walk
-			parts["hips"].position.y = _body_y + absf(cos(_phase)) * 0.18 * _walk + breathe * 0.04 - sq * 0.3
+			parts["hips"].position = Vector3(shake.x, _body_y + absf(cos(_phase)) * 0.18 * _walk + breathe * 0.04 - sq * 0.3 + shake.y, shake.z)
 			parts["hips"].rotation.x = s * 0.06 * _walk
 			for l in _legs:
 				l["n"].rotation.z = sin(_phase + l["ph"]) * l["swing"] * _walk
@@ -788,9 +797,16 @@ func _process(delta: float) -> void:
 				var side := 1.0 if i == 0 else -1.0
 				_neck[i].rotation.x = side * (0.25 + sin(_t * 6.0) * 0.35 * (0.3 + rear))
 	if plan == "quad":
+		# The tail lifts to stay off the ground when the body rears and
+		# trails behind fast pitches, whipping through after them.
+		var pitch: float = _body.rotation.z
+		var pitch_v: float = _vel.get("lean", 0.0) * 0.4 - (_vel.get("arm_r", 0.0) + _vel.get("arm_l", 0.0)) * 0.1
 		for i in _tail.size():
-			_tail[i].rotation.y = sin(_t * 2.0 - i * 0.7) * 0.12 * (1.0 + _walk) - turn * 0.1 * float(i + 1) / _tail.size()
-			_tail[i].rotation.z = -0.03 + sin(_t * 1.3 - i * 0.5) * 0.04
+			var k := float(i + 1) / _tail.size()
+			_tail[i].rotation.y = sin(_t * 2.0 - i * 0.7) * 0.12 * (1.0 + _walk) - turn * 0.1 * k \
+				+ sin(_phase * 0.5 - i * 0.6) * 0.06 * _walk
+			_tail[i].rotation.z = -0.03 + sin(_t * 1.3 - i * 0.5) * 0.04 - (pitch * 0.75 if i == 0 else pitch * 0.08) \
+				+ clampf(pitch_v * 0.012 * k, -0.12, 0.12) - sq * 0.05
 
 	if _flash > 0.0:
 		_flash = maxf(_flash - delta * 7.0, 0.0)

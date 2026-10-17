@@ -56,6 +56,11 @@ var crouch := 0.0
 var airborne := false
 var glow := 0.0
 var eye_glow := 0.0
+## How heavy the body moves: 1 is hero weight, higher makes every pose spring
+## slower and swingier so big monsters read as massive. Set any time.
+var heft := 1.0
+## 0-1: the body shakes with effort, building up to a big attack.
+var tremble := 0.0
 
 var _body_mats: Array[ShaderMaterial] = []
 var _eye_mat: StandardMaterial3D
@@ -378,6 +383,11 @@ func flash() -> void:
 	_flash = 1.0
 
 
+## Gives a pose channel's spring a shove (a flinch, a recoil).
+func kick(key: String, v: float) -> void:
+	_vel[key] = _vel.get(key, 0.0) + v
+
+
 ## Touchdown after a jump or fall; `hard` (0-1.6) scales the landing squash.
 func land(hard: float) -> void:
 	_vel["squash"] = maxf(_vel.get("squash", 0.0), 2.0 + hard * 3.5)
@@ -457,7 +467,7 @@ func _process(delta: float) -> void:
 ## turning rate, landings) that drive the secondary animation.
 func _pose(delta: float, gait: float = 8.5) -> void:
 	_t += delta
-	_walk = lerpf(_walk, walk_amount, 1.0 - exp(-8.0 * delta))
+	_walk = lerpf(_walk, walk_amount, 1.0 - exp(-8.0 / heft * delta))
 	_phase += delta * gait * walk_speed * maxf(_walk, 0.05)
 	var targets := {"arm_r": arm_r, "arm_l": arm_l, "jaw": jaw, "lean": lean, "squash": crouch * 0.6, "turn": 0.0}
 	var pos := global_position
@@ -478,7 +488,7 @@ func _pose(delta: float, gait: float = 8.5) -> void:
 	var dt := delta / steps
 	for key in targets:
 		var spring: Array = SPRINGS[key]
-		var f: float = spring[0]
+		var f: float = spring[0] / heft
 		var z: float = spring[1]
 		var x: float = _cur.get(key, 0.0)
 		var v: float = _vel.get(key, 0.0)

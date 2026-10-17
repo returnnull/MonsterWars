@@ -5,8 +5,11 @@ extends Kaiju
 ## boss; its moves come from `boss_def`).
 ## Moves: swipe, combo, charge, slam, breath, spit, summon, leap, explode,
 ## burrow, shock, lunge, hurl, plus the bosses' signature moves (SIGNATURES).
-## Every move is telegraphed (wind-up pose +
-## glowing eyes). Every enemy, bosses included, uses a CreatureModel body
+## Every move is telegraphed (a wind-up pose that builds up + glowing eyes).
+## Big enemies (bosses and the large kaiju, see is_heavy()) wind up their
+## direct hits for longer, shake with effort before letting go, stop turning
+## and aiming partway through, and mark the ground they are about to hit
+## (Telegraph), so a player who watches can step out of it. Every enemy, bosses included, uses a CreatureModel body
 ## plan (the def's "body"), never the heroes' upright kaiju model; bosses get
 ## the high-detail meshes. Insects fight hit-and-run,
 ## zigzagging in and hopping back after a bite.
@@ -25,6 +28,17 @@ const WINDUP := {"swipe": 0.55, "charge": 0.9, "slam": 0.9, "breath": 0.7, "summ
 	"spit": 0.6, "combo": 0.45, "explode": 1.1, "burrow": 0.6, "shock": 0.8, "lunge": 0.5, "hurl": 0.75,
 	"barrage": 0.9, "meteor": 1.0, "quake": 0.9, "storm": 0.9, "venom_rain": 0.8, "frenzy": 0.5,
 	"sweep": 0.8, "sandstorm": 0.8, "dive": 0.6}
+## Moves that hit straight off the wind-up. Big enemies wind these up longer
+## and mark them on the ground; the others already drop their own warned
+## hazards (meteor, storm, quake, shock...).
+const DIRECT := ["swipe", "combo", "charge", "slam", "breath", "spit", "leap", "explode", "lunge", "hurl",
+	"sweep", "sandstorm", "dive", "frenzy"]
+## Wind-up multiplier for big enemies' direct hits (bosses get BOSS_WINDUP).
+const HEAVY_WINDUP := 1.6
+const BOSS_WINDUP := 1.75
+## Share of a big enemy's wind-up after which it stops turning and aiming:
+## from then on the marked area stays put.
+const AIM_LOCK := 0.6
 ## Boss-only signature moves; a boss favours its own when it is in range.
 const SIGNATURES := ["barrage", "meteor", "quake", "storm", "venom_rain", "frenzy", "sweep", "sandstorm", "dive"]
 const ELEMENT_COLORS := {"fire": Color(1.0, 0.45, 0.08), "acid": Color(0.45, 1.0, 0.15),
@@ -61,10 +75,32 @@ var _score := 1500
 var _body := "ape"
 ## Height of the body relative to a hero kaiju; places hit boxes and muzzles.
 var _tall := 1.0
+## Where the current move is aimed; frozen once a big enemy locks its aim.
+var _aim := Vector3.ZERO
+var _aim_locked := false
+var _tele: Telegraph
 
 
 func is_boss() -> bool:
 	return kind == "boss"
+
+
+## Bosses and the big kaiju: slow, warned attacks you can get out of.
+func is_heavy() -> bool:
+	return is_boss() or size_mul >= 1.1
+
+
+## How long the current move winds up.
+func wind_time() -> float:
+	var w: float = WINDUP[move] * _windup_mul
+	if is_boss() and move == "swipe":
+		w *= 1.25
+	if move in DIRECT:
+		if is_boss():
+			w *= BOSS_WINDUP
+		elif is_heavy():
+			w *= HEAVY_WINDUP
+	return w
 
 
 func _ready() -> void:
@@ -140,6 +176,8 @@ func _ready() -> void:
 	add_child(model)
 	model.scale = _shape * size_mul
 	model.build(colors[0], colors[1], colors[2], colors[3], horns)
+	# Big bodies move slower and swing further; small bugs are snappy.
+	model.heft = clampf(sqrt(size_mul * maxf(_shape.x, 1.0)), 0.75, 1.7)
 	_z_bias = randf_range(-1.5, 1.5)
 	cooldown = randf_range(0.8, 1.8)
 
@@ -178,15 +216,20 @@ func _physics_process(delta: float) -> void:
 			if p and not p.dead:
 				mv = _approach(p)
 		S.WINDUP:
-			if p:
+			var wind := wind_time()
+			if p and not _aim_locked:
 				face_toward(p.global_position.x - global_position.x)
-			var wind: float = WINDUP[move] * _windup_mul * (1.25 if is_boss() and move == "swipe" else 1.0)
+				_aim = p.global_position
+			if is_heavy() and state_t >= wind * AIM_LOCK:
+				_aim_locked = true
+			_place_telegraph()
 			if state_t >= wind:
 				_begin_act(p)
 		S.ACT:
 			mv = _act(delta, p)
 		S.RECOVER:
-			if state_t >= 0.6:
+			# Big ones take a moment to gather themselves: a window to hit back.
+			if state_t >= (0.9 if is_heavy() else 0.6):
 				cooldown = randf_range(_base_cooldown.x, _base_cooldown.y)
 				_set_state(S.APPROACH)
 	if state == S.DEAD and move == "explode":
@@ -199,8 +242,18 @@ func _set_state(s: S) -> void:
 	if s == S.RECOVER and _body == "insect" and move in ["swipe", "combo"] and is_on_floor():
 		# Hit and run: hop back out of reach after biting.
 		knock = Vector3(-facing * 14.0, 7.0, 0)
+	if (state == S.WINDUP and s != S.ACT or s == S.DEAD) and _tele:
+		# Interrupted before letting go.
+		_tele.cancel()
+		_tele = null
 	state = s
 	state_t = 0.0
+	if s == S.WINDUP:
+		_aim_locked = false
+		var p := Game.nearest_player(global_position)
+		_aim = p.global_position if p else global_position + Vector3(facing * 8.0, 0, 0)
+		if is_heavy() and move in DIRECT:
+			_new_telegraph()
 
 
 func _melee_range() -> float:
@@ -318,6 +371,9 @@ func _swipe(mul: float) -> void:
 
 
 func _begin_act(p: Kaiju) -> void:
+	if _tele:
+		_tele.release(_telegraph_hold())
+		_tele = null
 	_set_state(S.ACT)
 	match move:
 		"swipe":
@@ -329,7 +385,7 @@ func _begin_act(p: Kaiju) -> void:
 			_charge_hit = false
 		"hurl":
 			if p:
-				_hurl(p)
+				_hurl(_aim)
 		"slam":
 			# Ground shockwave around the kaiju. Jumping players dodge it.
 			var r := 7.0 * size_mul / 1.5
@@ -346,7 +402,7 @@ func _begin_act(p: Kaiju) -> void:
 			_fire_t = 0.0
 		"spit":
 			if p:
-				_spit(p)
+				_glob_at(Vector3(_aim.x, 0.2, _aim.z))
 		"summon":
 			_do_summon()
 		"leap", "frenzy", "dive":
@@ -370,7 +426,7 @@ func _begin_act(p: Kaiju) -> void:
 			var z := p.global_position.z if p else global_position.z
 			for k in range(1, 7):
 				for side in [-1.0, 1.0]:
-					_hazard("blast", Vector3(global_position.x + side * k * 4.0, 0, z), 2.6, 0.25 + k * 0.2, dmg * 0.8,
+					_hazard("blast", Vector3(global_position.x + side * k * 4.0, 0, z), 2.6, 0.45 + k * 0.22, dmg * 0.8,
 						Color(1.0, 0.6, 0.3), "")
 		"storm":
 			FX.bolt(hit_center() + Vector3(0, 3, 0), hit_center() + Vector3(0, 18, -1), _elem_color())
@@ -382,7 +438,10 @@ func _begin_act(p: Kaiju) -> void:
 		"venom_rain":
 			if p:
 				for i in 5:
-					_glob_at(Vector3(p.global_position.x + (i - 2) * 3.2, 0.2, p.global_position.z + randf_range(-2, 2)))
+					var to := Vector3(p.global_position.x + (i - 2) * 3.2, 0.2, p.global_position.z + randf_range(-2, 2))
+					_glob_at(to)
+					if is_heavy():
+						_mark(to, 2.6, _glob_time(to), _elem_color())
 		"sweep":
 			# Full spin with the tail: hits all round, jumping clears it.
 			var r := 4.5 * size_mul
@@ -420,11 +479,6 @@ func _begin_act(p: Kaiju) -> void:
 				h.global_position = Vector3(q.global_position.x + lead.x, 0.0, q.global_position.z)
 
 
-## Lobs an arcing glob that bursts where the target stands.
-func _spit(p: Kaiju) -> void:
-	_glob_at(Vector3(p.global_position.x, 0.2, p.global_position.z))
-
-
 func _glob_at(to: Vector3) -> void:
 	var b := Projectile.new()
 	b.style = "glob"
@@ -437,15 +491,20 @@ func _glob_at(to: Vector3) -> void:
 	get_parent().add_child(b)
 	var start := global_position + Vector3(facing * 2.0 * size_mul, 4.4 * size_mul * _tall, 0)
 	b.global_position = start
-	var t := clampf(absf(to.x - start.x) / 15.0, 0.6, 1.3)
+	var t := _glob_time(to)
 	var v := (to - start) / t
 	v.y += 0.5 * b.gravity * t
 	b.velocity = v
 	FX.light_flash(start, b.color, 4.0, 6.0, 0.15)
 
 
-## Throws a boulder (magma rock for a fire golem) in an arc at the target.
-func _hurl(p: Kaiju) -> void:
+## Seconds an arcing glob takes to reach `to`.
+func _glob_time(to: Vector3) -> float:
+	return clampf(absf(to.x - (global_position.x + facing * 2.0 * size_mul)) / 15.0, 0.6, 1.3)
+
+
+## Throws a boulder (magma rock for a fire golem) in an arc at a spot.
+func _hurl(at: Vector3) -> void:
 	var b := Projectile.new()
 	b.style = "boulder"
 	b.element = _element if _body == "golem" else ""
@@ -457,7 +516,7 @@ func _hurl(p: Kaiju) -> void:
 	get_parent().add_child(b)
 	var start := global_position + Vector3(facing * 1.0 * size_mul, 6.0 * size_mul * _tall, 0)
 	b.global_position = start
-	var to := Vector3(p.global_position.x, 0.2, p.global_position.z)
+	var to := Vector3(at.x, 0.2, at.z)
 	var t := clampf(absf(to.x - start.x) / 16.0, 0.7, 1.4)
 	var v := (to - start) / t
 	v.y += 0.5 * b.gravity * t
@@ -468,9 +527,126 @@ func _hurl(p: Kaiju) -> void:
 
 func _jump_at(p: Kaiju, vy: float) -> void:
 	velocity.y = vy
-	var target_x := p.global_position.x if p else global_position.x + facing * 10.0
+	# The first jump comes down where the wind-up aimed; frenzy's follow-up
+	# pounces go for wherever the player is now.
+	var target_x := _aim.x
+	if _combo_n > 1:
+		target_x = p.global_position.x if p else global_position.x + facing * 10.0
+	_leap_vx = _leap_speed(target_x, vy)
+
+
+## Sideways speed of a leap that should come down at target_x.
+func _leap_speed(target_x: float, vy: float) -> float:
 	var t := 2.0 * vy / GRAVITY
-	_leap_vx = clampf((target_x - global_position.x) / t, -26.0, 26.0) if move == "dive" else clampf(target_x - global_position.x, -22.0, 22.0)
+	if move == "dive":
+		return clampf((target_x - global_position.x) / t, -26.0, 26.0)
+	return clampf(target_x - global_position.x, -22.0, 22.0)
+
+
+# --- ground warnings for big enemies --------------------------------------
+
+func _new_telegraph() -> void:
+	var th := _threat()
+	if th.is_empty():
+		return
+	_tele = Telegraph.new()
+	_tele.shape = th[0]
+	if th[0] == "lane":
+		_tele.length = th[2]
+		_tele.width = th[3]
+	else:
+		_tele.radius = th[2]
+	_tele.duration = wind_time()
+	_tele.color = _elem_color() if move in ["breath", "spit", "sandstorm"] else Color(1.0, 0.22, 0.08)
+	get_parent().add_child(_tele)
+	_place_telegraph()
+
+
+## A ground warning that lets go by itself after `secs` (for things already
+## on their way).
+func _mark(at: Vector3, r: float, secs: float, c: Color) -> void:
+	var w := Telegraph.new()
+	w.radius = r
+	w.duration = secs
+	w.color = c
+	w.auto = true
+	get_parent().add_child(w)
+	w.global_position = Vector3(at.x, 0.0, at.z)
+
+
+## Keeps the warning on the area the move will hit (it stops following the
+## player once the aim locks).
+func _place_telegraph() -> void:
+	if not _tele:
+		return
+	var th := _threat()
+	if th.is_empty():
+		return
+	var at: Vector3 = th[1]
+	at.y = 0.0
+	_tele.global_position = at
+	if th[0] == "lane":
+		var dir := Vector3(facing, 0, 0)
+		if move == "breath":
+			dir = Vector3(_aim.x - global_position.x, 0, _aim.z - global_position.z)
+			if dir.length() < 0.5 or signf(dir.x) != facing:
+				dir = Vector3(facing, 0, 0)
+		_tele.rotation.y = atan2(-dir.z, dir.x)
+
+
+## What the current move will hit: [shape, ground point, radius] for a
+## circle or [shape, start, length, width] for a lane along the facing.
+func _threat() -> Array:
+	var g := Vector3(global_position.x, 0.0, global_position.z)
+	var reach := 2.8 * size_mul * maxf(_shape.x, 1.0)
+	match move:
+		"swipe":
+			return ["circle", g + Vector3(facing * reach, 0, 0), 2.3 * size_mul + 0.8]
+		"combo":
+			return ["lane", g, reach + 2.3 * size_mul + 4.0, 4.6 * size_mul]
+		"slam":
+			return ["circle", g, 7.0 * size_mul / 1.5]
+		"sweep":
+			return ["circle", g, 4.5 * size_mul]
+		"explode":
+			return ["circle", g, 4.5 * maxf(size_mul, 0.8)]
+		"charge":
+			return ["lane", g, 24.0 * 0.9 + 2.5 + 2.0 * size_mul, 3.0 + 2.0 * size_mul]
+		"lunge":
+			return ["lane", g, 26.0 * 0.3 + 2.5 + 3.9 * size_mul, 4.8 * size_mul]
+		"breath", "sandstorm":
+			return ["lane", g, 20.0, 5.0]
+		"spit":
+			return ["circle", Vector3(_aim.x, 0, _aim.z), 2.4]
+		"hurl":
+			return ["circle", Vector3(_aim.x, 0, _aim.z), 2.8]
+		"leap", "frenzy", "dive":
+			var vy := 30.0 if move == "dive" else 19.0
+			var x := global_position.x + _leap_speed(_aim.x, vy) * 2.0 * vy / GRAVITY
+			var r := 5.5 * size_mul / 1.5 * (1.6 if move == "dive" else 1.0) + 1.0
+			return ["circle", Vector3(clampf(x, x_min, x_max), 0, global_position.z), r]
+	return []
+
+
+## How long the warning stays after the attack lets go: until the boulder,
+## glob or leap comes down, or the charge or breath is over.
+func _telegraph_hold() -> float:
+	match move:
+		"hurl":
+			return clampf(absf(_aim.x - global_position.x) / 16.0, 0.7, 1.4)
+		"spit":
+			return clampf(absf(_aim.x - global_position.x) / 15.0, 0.6, 1.3)
+		"leap", "frenzy":
+			return 1.0
+		"dive":
+			return 1.6
+		"charge", "combo":
+			return 0.8
+		"breath":
+			return 1.0
+		"sandstorm":
+			return 1.4
+	return 0.0
 
 
 func _hazard(style: String, pos: Vector3, radius: float, delay: float, damage: float, color: Color, element: String) -> void:
@@ -588,6 +764,8 @@ func _act(delta: float, p: Kaiju) -> Vector3:
 				b.splash = 2.0
 				b.homing = 2.4
 				b.homing_delay = 0.5
+				if is_heavy():
+					b.homing_until = 1.2
 				b.target = Game.living_players().pick_random() if not Game.living_players().is_empty() else p
 				b.velocity = Vector3(-facing * randf_range(2.0, 6.0), 16.0, randf_range(-3.0, 3.0))
 				get_parent().add_child(b)
@@ -653,7 +831,8 @@ func _act(delta: float, p: Kaiju) -> Vector3:
 				b.damage = dmg * 0.5
 				get_parent().add_child(b)
 				b.global_position = global_position + Vector3(facing * 2.4 * size_mul * _shape.x, 4.6 * size_mul * _tall, 0)
-				var aim := (p.hit_center() - b.global_position).normalized()
+				var to := _aim + Vector3(0, 3.0, 0) if _aim_locked else p.hit_center()
+				var aim := (to - b.global_position).normalized()
 				b.velocity = aim.rotated(Vector3.UP, randf_range(-0.12, 0.12)) * 22.0
 			if state_t >= 1.0:
 				_set_state(S.RECOVER)
@@ -698,6 +877,11 @@ func _act(delta: float, p: Kaiju) -> Vector3:
 					if p:
 						face_toward(p.global_position.x - global_position.x)
 					_jump_at(p, 16.0)
+					if is_heavy():
+						# Each pounce marks where it will come down.
+						var air := 2.0 * 16.0 / GRAVITY
+						var lx := clampf(global_position.x + _leap_vx * air, x_min, x_max)
+						_mark(Vector3(lx, 0.0, global_position.z), 5.5 * size_mul / 1.5 + 1.0, air, Color(1.0, 0.22, 0.08))
 					return Vector3(_leap_vx, 0, 0)
 				_set_state(S.RECOVER)
 				return Vector3.ZERO
@@ -716,6 +900,12 @@ func _on_hurt(_dmg: float, _from: Node3D) -> void:
 	_set_state(S.HURT)
 
 
+func _exit_tree() -> void:
+	if _tele and is_instance_valid(_tele):
+		_tele.cancel()
+	_tele = null
+
+
 func _on_death() -> void:
 	_set_state(S.DEAD)
 	if _burrowed:
@@ -728,17 +918,38 @@ func _on_death() -> void:
 	if is_boss() or kind == "elite" or size_mul >= 1.3:
 		FX.explosion(hit_center(), 2.5 if is_boss() else 1.5)
 		Game.shake(1.0 if is_boss() else 0.5)
+	# Staggers back on buckling legs, topples over and bounces once on the
+	# ground. Bigger bodies go down slower.
+	model.crouch = 1.0
+	model.lean = -0.5
+	model.arm_r = 2.0
+	model.arm_l = 1.4
+	model.jaw = 1.0
+	model.eye_glow = 0.0
+	var h := model.heft
 	var tw := create_tween()
-	tw.tween_property(model, "rotation:z", 1.5, 0.8).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
+	tw.tween_property(model, "rotation:z", -0.18, 0.3 * h).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(model, "rotation:z", 1.5, 0.7 * h).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
 	tw.tween_callback(func() -> void:
 		FX.dust(global_position, 1.5 * size_mul)
-		Game.shake(0.4))
-	tw.tween_interval(1.6)
+		Game.shake(0.4)
+		model.kick("squash", 4.0)
+		model.arm_r = 0.25
+		model.arm_l = 0.25
+		model.jaw = 0.3)
+	tw.tween_property(model, "rotation:z", 1.32, 0.12).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+	tw.tween_property(model, "rotation:z", 1.5, 0.2).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
+	tw.tween_interval(1.3)
 	tw.tween_property(self, "position:y", -8.0 * size_mul, 2.0)
 	tw.tween_callback(queue_free)
 
 
 func _animate(delta: float, mv: Vector3) -> void:
+	if state == S.DEAD:
+		# The death tween owns the pose.
+		model.walk_amount = 0.0
+		model.tremble = 0.0
+		return
 	model.walk_amount = clampf(Vector2(mv.x, mv.z).length() / speed, 0.0, 1.0) if state == S.APPROACH else 0.0
 	model.walk_speed = _walk_speed
 	var ar := 0.25
@@ -853,9 +1064,31 @@ func _animate(delta: float, mv: Vector3) -> void:
 		S.RECOVER:
 			ar = 0.6
 			lean = 0.15
+			if is_heavy():
+				# Spent: head low, heaving breaths.
+				lean = 0.3
+				jaw = 0.35 + 0.25 * sin(state_t * 9.0)
+				ar = 0.4
+				al = 0.4
 		S.HURT:
 			lean = -0.35
 			jaw = 0.5
+	model.tremble = 0.0
+	if state == S.WINDUP:
+		# Gather into the wind-up pose instead of snapping to it: small ones
+		# coil quickly, big ones rise slowly, hold it, and shake with effort
+		# while the eyes blink faster just before they let go.
+		var k := clampf(state_t / maxf(wind_time(), 0.01), 0.0, 1.0)
+		var a := 1.0 - pow(1.0 - minf(k / (0.7 if is_heavy() else 0.45), 1.0), 2.0)
+		ar = lerpf(0.25, ar, a)
+		al = lerpf(0.25, al, a)
+		jaw = lerpf(0.0, jaw, a)
+		lean = lerpf(0.0, lean, a)
+		model.eye_glow = a
+		if is_heavy():
+			model.tremble = smoothstep(0.5, 1.0, k)
+			if k > 0.7:
+				model.eye_glow = 1.0 if fmod(state_t, lerpf(0.2, 0.08, k)) < 0.05 else 0.3
 	model.arm_r = ar
 	model.arm_l = al
 	model.jaw = jaw

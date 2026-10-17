@@ -273,6 +273,10 @@ Bosserne er en blanding af kaiju, monstre og en kæmperobot. De er meget større
 
 Fjenderne bliver stærkere bane for bane, og bosserne bliver større og hårdere land for land. Jordslag kan undgås ved at hoppe.
 
+**Store fjender varsler deres angreb.** Bosserne og de store kaijuer (Mossback, Broodmother, Shellback, Titanodon, Voltwyrm, Mechadon og Warbot) lader deres direkte angreb op langsommere (60-75 % længere), ryster af anstrengelse og blinker med øjnene lige før de slår. Imens viser et rødt felt på gaden, hvor slaget rammer: en cirkel for slag, jordstød, hop og kastede kampesten, en bane for stormløb, udfald og ånde. Feltet fyldes op mens angrebet nærmer sig. Lidt over halvvejs låser fjenden sigtet, så feltet bliver liggende, og man kan nå at gå ud af det. Bossernes missiler holder op med at styre efter et sekund, og giftregn og flere spring i træk markerer også hvor de lander. Efter et angreb står de store fjender lidt længere og puster ud, og det er et godt øjeblik at slå igen.
+
+Fjendernes kroppe bevæger sig med vægt: store monstre svinger langsommere og længere, halen løfter sig når de rejser sig og følger efter bevægelsen, slag får dem til at rykke tilbage, og når de dør vakler de, falder om og hopper en gang mod jorden. Soldater vugger når de løber og får rekyl når de skyder, kampvogne vipper bagud ved hvert skud, og Mech Walker trækker benet op før det sparker.
+
 ## Op til 4 spillere
 
 - Spiller 1 bruger tastatur eller den første controller.
@@ -335,6 +339,7 @@ scripts/autoload/game.gd   Global tilstand, point, hitstop, input-mapping
 scripts/kaiju.gd           Fælles krop for kaijuer: liv, knockback, strike()
 scripts/player.gd          Spillerens kaiju og angreb
 scripts/brute.gd           Fjende-kaijuer (crawler, brute, elite) og bosser
+scripts/telegraph.gd       Rødt felt på gaden der viser hvor et stort angreb rammer
 scripts/flyer.gd           Drone-fjende
 scripts/sky_wave.gd        Klo-bølgen fra Sky Claw (hop + let)
 scripts/projectile.gd      Plasma-skud
@@ -365,6 +370,8 @@ godot --headless --path . res://tests/trophy_test.tscn   # trofæer, kroner og k
 godot --headless --path . res://tests/skill_tree_test.tscn   # alle færdighedstræer følger reglerne
 godot --headless --path . res://tests/sustain_test.tscn   # mindst 6 waves, tidlig livsstjæl, udødelig super
 xvfb-run godot --path . --write-movie /tmp/lab.avi --fixed-fps 30 res://tests/anim_lab.tscn   # optag heltens animationer (gang, løb, vending, hop, angreb)
+ENEMY_ID=boss3 xvfb-run godot --path . --write-movie /tmp/enemy.avi --fixed-fps 30 res://tests/enemy_lab.tscn   # optag én fjende i kamp (bossN = land N+1's boss)
+ENEMY_ID=titanodon ENEMY_DODGE=1 godot --headless --fixed-fps 60 --path . res://tests/enemy_lab.tscn   # kan en spiller der går ud af felterne undgå angrebene?
 COSMETIC_IDS=gold_crown,halo godot --path . res://tests/cosmetic_shots.tscn   # billeder af tingene på kaijuerne
 godot --headless --path . res://tests/hero_rage_test.tscn   # hver helts rage-angreb og super
 godot --headless --path . res://tests/hero_moves_test.tscn  # hver helts combos og ground stomp

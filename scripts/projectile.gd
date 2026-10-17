@@ -20,6 +20,9 @@ var size := 1.0
 ## Turn rate toward `target` (0 = straight). Homing starts after `homing_delay`.
 var homing := 0.0
 var homing_delay := 0.3
+## After this many seconds it stops steering and flies straight on, so a
+## player who moves at the last moment gets out of the way.
+var homing_until := INF
 var target: Node3D
 var _life := 4.0
 var _t := 0.0
@@ -96,7 +99,7 @@ func _mesh(m: Mesh, mat: Material, pos: Vector3, rot: Vector3 = Vector3.ZERO) ->
 func _physics_process(delta: float) -> void:
 	_t += delta
 	velocity.y -= gravity * delta
-	if homing > 0.0 and _t > homing_delay:
+	if homing > 0.0 and _t > homing_delay and _t < homing_until:
 		if target == null or not is_instance_valid(target) or target.dead:
 			target = Game.nearest_player(global_position)
 		if target:

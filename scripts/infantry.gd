@@ -25,6 +25,10 @@ var _walk := 0.0
 var _z_bias := 0.0
 var _panic := 0.0
 var _vyaw := 0.0
+## 1 right after a shot, decays: the weapon kicks up and the soldier rocks.
+var _recoil := 0.0
+var _t := 0.0
+var _arm_rest := 0.5
 var _mats: Array[StandardMaterial3D] = []
 var _muzzle_mat: StandardMaterial3D
 
@@ -180,6 +184,7 @@ func _muzzle() -> Vector3:
 
 
 func _flash_muzzle() -> void:
+	_recoil = 1.0
 	_muzzle_mat.emission_energy_multiplier = 8.0
 	FX.light_flash(_muzzle(), Color(1.0, 0.75, 0.3), 2.0, 3.0, 0.05)
 
@@ -220,16 +225,23 @@ func _on_death() -> void:
 
 
 func _animate(delta: float, mv: Vector3) -> void:
+	_t += delta
 	var moving := clampf(Vector2(mv.x, mv.z).length() / maxf(speed, 0.1), 0.0, 1.5)
 	_walk += delta * moving * 14.0
+	_recoil = maxf(_recoil - delta * 9.0, 0.0)
 	for i in _legs.size():
 		_legs[i].rotation.z = sin(_walk + i * PI) * 0.8 * moving
-	_vis.position.y = absf(cos(_walk)) * 0.1 * moving
+	# Bob twice per stride, rock over the standing leg, breathe when still.
+	_vis.position.y = absf(cos(_walk)) * 0.1 * moving + sin(_t * 2.4) * 0.015 * (1.0 - minf(moving, 1.0))
+	_vis.rotation.x = sin(_walk) * 0.08 * moving
 	var aiming := _act_t >= 0.0
-	_vis.rotation.z = lerpf(_vis.rotation.z, -0.25 * moving if not aiming else 0.0, 1.0 - exp(-10.0 * delta))
-	# Arms raise the weapon to aim; while panicking they flail.
-	var want := 0.0 if aiming else (sin(_walk * 2.0) * 0.6 if _panic > 0.0 else 0.5)
-	_arms.rotation.z = lerpf(_arms.rotation.z, want, 1.0 - exp(-12.0 * delta))
+	var lean := -0.25 * moving if not aiming else _recoil * 0.12
+	_vis.rotation.z = lerpf(_vis.rotation.z, lean, 1.0 - exp(-10.0 * delta))
+	# Arms raise the weapon to aim and kick up with each shot; walking they
+	# sway with the stride, while panicking they flail.
+	var want := 0.0 if aiming else (sin(_walk * 2.0) * 0.6 if _panic > 0.0 else 0.5 + sin(_walk) * 0.1 * moving)
+	_arm_rest = lerpf(_arm_rest, want, 1.0 - exp(-12.0 * delta))
+	_arms.rotation.z = _arm_rest + _recoil * _recoil * 0.06
 
 
 # --- model -------------------------------------------------------------------

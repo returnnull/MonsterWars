@@ -39,6 +39,9 @@ var _z_bias := 0.0
 var _beam_dir := 1.0
 var _beam_tick := 0.0
 var _deployed := false
+## 1 right after a shot, decays: rocks the hull back.
+var _recoil := 0.0
+var _kick_leg := 0.0
 
 
 func _ready() -> void:
@@ -237,6 +240,7 @@ func _deploy() -> void:
 
 
 func _fire_shell(p: Kaiju) -> void:
+	_recoil = 1.0
 	var b := Projectile.new()
 	b.style = "shell"
 	b.color = Color(1.0, 0.6, 0.2)
@@ -259,6 +263,7 @@ func _fire_shell(p: Kaiju) -> void:
 
 
 func _lob(p: Kaiju) -> void:
+	_recoil = 1.0
 	var muzzle := _muzzle(1.6, 2.6)
 	FX.light_flash(muzzle, Color(1.0, 0.7, 0.3), 6.0, 7.0, 0.12)
 	FX.smoke(muzzle, 0.6, Color(0.6, 0.6, 0.6))
@@ -283,6 +288,7 @@ func _lob(p: Kaiju) -> void:
 
 
 func _launch_missile(p: Kaiju) -> void:
+	_recoil = 1.0
 	var b := Projectile.new()
 	b.style = "missile"
 	b.color = Color(1.0, 0.55, 0.2)
@@ -298,6 +304,7 @@ func _launch_missile(p: Kaiju) -> void:
 
 
 func _bullet(p: Kaiju) -> void:
+	_recoil = maxf(_recoil, 0.35)
 	var b := Projectile.new()
 	b.style = "bullet"
 	b.color = Color(1.0, 0.85, 0.3)
@@ -374,15 +381,30 @@ func _on_death() -> void:
 func _animate(delta: float, mv: Vector3) -> void:
 	var moving := Vector2(mv.x, mv.z).length() / maxf(speed, 0.1)
 	_walk += delta * moving * 8.0
+	_recoil = maxf(_recoil - delta * 4.0, 0.0)
+	# Shots rock the hull back, then it settles.
+	var rock := _recoil * _recoil * 0.12
 	if kind == "mech":
 		for i in _legs.size():
 			_legs[i].rotation.z = sin(_walk + i * PI) * 0.5 * moving
 		_vis.position.y = absf(cos(_walk)) * 0.15 * moving
+		# Weight shifts over the standing leg.
+		_vis.rotation.x = sin(_walk) * 0.05 * moving
+		var tilt := rock
 		if _act == "kick" and _legs.size() > 0:
-			_legs[0].rotation.z = -1.2 if _act_t > 0.45 else 0.5
+			# Chambers the leg and leans back, then snaps the kick out.
+			var want := 0.7 if _act_t < 0.45 else (-1.3 if _act_t < 0.65 else 0.0)
+			_kick_leg = lerpf(_kick_leg, want, 1.0 - exp(-(7.0 if _act_t < 0.45 else 22.0) * delta))
+			tilt += 0.12 if _act_t < 0.45 else -0.1
+		else:
+			_kick_leg = lerpf(_kick_leg, 0.0, 1.0 - exp(-10.0 * delta))
+		if _legs.size() > 0:
+			_legs[0].rotation.z += _kick_leg
+		_vis.rotation.z = lerpf(_vis.rotation.z, tilt, 1.0 - exp(-12.0 * delta))
 	else:
-		# Engine rumble.
+		# Engine rumble, a nod when starting or stopping, and recoil.
 		_vis.position.y = sin(_walk * 3.0) * 0.03 * moving
+		_vis.rotation.z = lerpf(_vis.rotation.z, rock - moving * 0.02, 1.0 - exp(-10.0 * delta))
 	if kind == "artillery" and _act == "" and _barrel:
 		_barrel.rotation.z = lerpf(_barrel.rotation.z, 0.5, 1.0 - exp(-3.0 * delta))
 	if kind == "missile" and _act == "" and _turret:
