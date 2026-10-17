@@ -393,6 +393,14 @@ static func xp_to_next(lvl: int) -> int:
 	return 80 + 40 * lvl
 
 
+## Total XP from level 1 to reach level `lvl`.
+static func xp_for_level(lvl: int) -> int:
+	var xp := 0
+	for l in range(1, clampi(lvl, 1, MAX_LEVEL)):
+		xp += xp_to_next(l)
+	return xp
+
+
 static func level_for_xp(xp: int) -> int:
 	var lvl := 1
 	while lvl < MAX_LEVEL and xp >= xp_to_next(lvl):

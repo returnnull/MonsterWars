@@ -22,6 +22,8 @@ Al grafik er original og genereres i kode (primitive meshes, procedurale shaders
 
 Tryk **F9** i menuen for at låse alle baner op, hvis du vil teste.
 
+**Cheats:** under **Settings > CHEATS** kan man indtaste en kode på et taltastatur (med controller, touch-knapperne eller tal-tasterne). Koden **1337** gør alle kaijuer level 25 med alle færdighedspoint og hele super-træet. Det gælder det rigtige gem.
+
 ## Level, evner og færdighedstræ
 
 - Hver helt har sin egen XP og kan nå **level 25**. XP får man for hver fjende der bliver besejret (alle spillere på banen får den) og en bonus når banen er klaret. Man beholder XP selv om man taber.

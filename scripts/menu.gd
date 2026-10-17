@@ -1,9 +1,9 @@
 extends Control
-## Front end: title menu (play / trophies / settings / quit) -> difficulty -> hero select (1-4 players)
+## Front end: title menu (play / trophies / settings (cheats) / quit) -> difficulty -> hero select (1-4 players)
 ## -> world map (10 countries) -> level select (10 levels each). Any controller can navigate; in hero
 ## select every controller drives its own slot, and can open its kaiju's skill tree or wardrobe.
 
-enum Screen { TITLE, SETTINGS, DIFFICULTY, HEROES, MAP, LEVELS, SKILLS, SUPERS, WARDROBE, TROPHIES }
+enum Screen { TITLE, SETTINGS, CHEATS, DIFFICULTY, HEROES, MAP, LEVELS, SKILLS, SUPERS, WARDROBE, TROPHIES }
 
 const SLOT_W := 460.0
 
@@ -62,6 +62,14 @@ var _wd_model: KaijuModel
 var _tr_cards: Array[Panel] = []
 var _tr_sel := 0
 var _tr_info: Label
+# Cheats: the code typed so far, the selected keypad key and its cards.
+const CHEAT_KEYS := ["1", "2", "3", "4", "5", "6", "7", "8", "9", "DEL", "0", "OK"]
+const CHEAT_MAX := 8
+var _ch_code := ""
+var _ch_sel := 0
+var _ch_cards: Array[Panel] = []
+var _ch_shown: Label
+var _ch_result: Label
 
 
 func _ready() -> void:
@@ -105,6 +113,8 @@ func _process(delta: float) -> void:
 			_title_input()
 		Screen.SETTINGS:
 			_settings_input()
+		Screen.CHEATS:
+			_cheats_input()
 		Screen.DIFFICULTY:
 			_difficulty_input()
 		Screen.HEROES:
@@ -132,6 +142,16 @@ func _unhandled_input(event: InputEvent) -> void:
 			_show_map()
 		elif screen == Screen.LEVELS:
 			_show_levels()
+	# A keyboard can type cheat codes straight in.
+	if screen == Screen.CHEATS and event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode >= KEY_0 and event.keycode <= KEY_9:
+			_cheat_key(str(event.keycode - KEY_0))
+		elif event.keycode >= KEY_KP_0 and event.keycode <= KEY_KP_9:
+			_cheat_key(str(event.keycode - KEY_KP_0))
+		elif event.keycode == KEY_BACKSPACE:
+			_cheat_key("DEL")
+		elif event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
+			_cheat_key("OK")
 
 
 func _clear() -> void:
@@ -142,6 +162,7 @@ func _clear() -> void:
 	_level_cards.clear()
 	_diff_cards.clear()
 	_sk_cards.clear()
+	_ch_cards.clear()
 	_wd_rows.clear()
 	_tr_cards.clear()
 	_footer = null
@@ -409,9 +430,9 @@ func _show_settings() -> void:
 	_set_stage_visible(true)
 	_label(_root, "SETTINGS", Vector2(110, 150), 110, Color(1.0, 0.88, 0.7))
 	_items.clear()
-	_item_actions = Game.setting_keys() + ["back"]
+	_item_actions = Game.setting_keys() + ["cheats", "back"]
 	for i in _item_actions.size():
-		_items.append(_menu_item("", Vector2(110, 360 + i * 110), 760))
+		_items.append(_menu_item("", Vector2(110, 330 + i * 98), 760))
 	_sel = 0
 	_refresh_settings()
 	_hint("Up/Down: choose    Left/Right: change    A / Shift: back", "MOVE: choose and change    OK: change    BACK: back",
@@ -421,8 +442,8 @@ func _show_settings() -> void:
 func _refresh_settings() -> void:
 	for i in _item_actions.size():
 		var key: String = _item_actions[i]
-		_items[i]["label"].text = Game.SETTING_NAMES.get(key, "BACK")
-		_items[i]["value"].text = Game.setting_text(key) if key != "back" else ""
+		_items[i]["label"].text = Game.SETTING_NAMES.get(key, key.to_upper())
+		_items[i]["value"].text = Game.setting_text(key) if Game.SETTING_NAMES.has(key) else ""
 	_highlight_items()
 
 
@@ -439,14 +460,93 @@ func _settings_input() -> void:
 		if key == "back":
 			_show_title()
 			return
+		if key == "cheats":
+			_show_cheats()
+			return
 		step = 1
 	elif _any_just("dodge"):
 		_show_title()
 		return
-	if step == 0 or key == "back":
+	if step == 0 or not Game.SETTING_NAMES.has(key):
 		return
 	Game.step_setting(key, step)
 	_refresh_settings()
+
+
+# --- cheats ----------------------------------------------------------------
+
+## A number pad for cheat codes (see Game.CHEATS), so a controller or the
+## touch buttons can type them too.
+func _show_cheats() -> void:
+	_clear()
+	screen = Screen.CHEATS
+	_set_stage_visible(true)
+	_label(_root, "CHEATS", Vector2(110, 150), 110, Color(1.0, 0.88, 0.7))
+	_label(_root, "Enter a code", Vector2(120, 300), 34, Color(0.8, 0.85, 1.0))
+	var box := Panel.new()
+	box.position = Vector2(110, 360)
+	box.size = Vector2(560, 110)
+	box.add_theme_stylebox_override("panel", _card_style(Color(0.03, 0.03, 0.07, 0.85), Color(1.0, 0.8, 0.4, 0.6)))
+	_root.add_child(box)
+	_ch_shown = _label(box, "", Vector2(0, 14), 64, Color(1.0, 0.95, 0.75))
+	_ch_shown.size.x = box.size.x
+	_ch_shown.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_ch_result = _label(_root, "", Vector2(120, 490), 34, Color.WHITE)
+	for i in CHEAT_KEYS.size():
+		var card := Panel.new()
+		card.position = Vector2(860 + (i % 3) * 190, 300 + (i / 3) * 150)
+		card.size = Vector2(170, 130)
+		_root.add_child(card)
+		var l := _label(card, CHEAT_KEYS[i], Vector2(0, 32), 52, Color.WHITE)
+		l.size.x = card.size.x
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_ch_cards.append(card)
+	_ch_code = ""
+	_ch_sel = 0
+	_refresh_cheats()
+	_highlight(_ch_cards, _ch_sel)
+	_hint("Move: choose key    B / Space: press    0-9 / Enter: type    A / Shift: back", "MOVE: choose key    OK: press    BACK: back",
+		{"JUMP": "OK", "DODGE": "BACK"}, false)
+
+
+func _refresh_cheats() -> void:
+	_ch_shown.text = _ch_code if _ch_code != "" else "_ _ _ _"
+
+
+func _cheats_input() -> void:
+	var prev := _ch_sel
+	if _any_just("move_left"):
+		_ch_sel = _ch_sel - 1 if _ch_sel % 3 > 0 else _ch_sel + 2
+	elif _any_just("move_right"):
+		_ch_sel = _ch_sel + 1 if _ch_sel % 3 < 2 else _ch_sel - 2
+	elif _any_just("move_up"):
+		_ch_sel = posmod(_ch_sel - 3, CHEAT_KEYS.size())
+	elif _any_just("move_down"):
+		_ch_sel = posmod(_ch_sel + 3, CHEAT_KEYS.size())
+	if _ch_sel != prev:
+		_highlight(_ch_cards, _ch_sel)
+	if _any_just("jump"):
+		_cheat_key(CHEAT_KEYS[_ch_sel])
+	elif _any_just("dodge"):
+		_show_settings()
+
+
+## One key of the pad: a digit, DEL (remove the last digit) or OK (try the code).
+func _cheat_key(key: String) -> void:
+	match key:
+		"DEL":
+			_ch_code = _ch_code.left(-1)
+		"OK":
+			if _ch_code == "":
+				return
+			var done := Game.enter_cheat(_ch_code)
+			_ch_result.text = done if done != "" else "WRONG CODE"
+			_ch_result.label_settings.font_color = Color(0.45, 0.95, 0.6) if done != "" else Color(1.0, 0.4, 0.35)
+			_ch_code = ""
+		_:
+			if _ch_code.length() < CHEAT_MAX:
+				_ch_code += key
+	_refresh_cheats()
 
 
 # --- difficulty ------------------------------------------------------------
