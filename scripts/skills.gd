@@ -36,7 +36,8 @@ const KINDS := {
 	"frugal": {"v": 6.0, "desc": "Rage skills and rage mode cost %s%% less rage"},
 	"deep_rage": {"v": 10.0, "desc": "+%s max rage"},
 	"armor": {"v": 5.0, "desc": "-%s%% damage taken"},
-	"leech": {"v": 2.0, "desc": "Heal %s%% of damage dealt"},
+	"leech": {"v": 3.0, "desc": "Heal %s%% of damage dealt"},
+	"ability_leech": {"v": 4.0, "desc": "Rage attacks and supers heal %s%% of the damage they deal"},
 	"focus": {"v": 10.0, "desc": "+%s%% rage skill and super damage"},
 	"wrecker": {"v": 25.0, "desc": "+%s%% damage to buildings, more rage from them"},
 	"crit": {"v": 5.0, "desc": "%s%% chance to deal double damage"},
@@ -77,7 +78,8 @@ const KINDS := {
 ## Each node is [name, kind, row, column, ranks, parents], where parents are
 ## the columns in the row above it hangs from (any one of them will do). Every tree has at least one
 ## rage modifier (fury, bloodrage, rampage, frugal, deep_rage, blood_pact,
-## wrath or overdrive).
+## wrath or overdrive), and a way to heal in row 1 (leech or ability_leech).
+## Saves store ranks by node index, so new nodes go at the end of a list.
 const TREES := [
 	{"super": {"name": "OMEGA BREATH", "pattern": "mega_beam"}, "nodes": [  # GORRAX, atom
 		["Atomic Heart", "focus", 0, 2, 3, []],
@@ -98,7 +100,8 @@ const TREES := [
 		["Reactor Core", "deep_rage", 5, 2, 1, [1, 2, 3]],
 		["Endless Breath", "long_special", 5, 4, 1, [3]],
 		["King Never Falls", "second_wind", 6, 1, 1, [0, 2]],
-		["Meltdown", "meltdown", 6, 3, 1, [2, 4]]]},
+		["Meltdown", "meltdown", 6, 3, 1, [2, 4]],
+		["Atomic Siphon", "ability_leech", 1, 4, 3, [2]]]},
 	{"super": {"name": "THUNDERSTORM", "pattern": "storm"}, "nodes": [  # VOLTRA, storm
 		["Static Charge", "swift", 0, 1, 3, []],
 		["Spark Gap", "static", 0, 3, 3, []],
@@ -119,7 +122,8 @@ const TREES := [
 		["Ozone Shield", "vitality", 5, 3, 1, [3, 4]],
 		["Living Storm", "aura", 6, 0, 1, [1]],
 		["Overdrive", "overdrive", 6, 2, 1, [1, 2, 3]],
-		["Eye of the Storm", "wrath", 6, 4, 1, [3]]]},
+		["Eye of the Storm", "wrath", 6, 4, 1, [3]],
+		["Siphon Claws", "leech", 1, 1, 3, [1]]]},
 	{"super": {"name": "MAGMA RAIN", "pattern": "meteors"}, "nodes": [  # MAGMOS, magma
 		["Molten Core", "burn", 0, 2, 3, []],
 		["Lava Fists", "power", 1, 0, 5, [2]],
@@ -139,7 +143,8 @@ const TREES := [
 		["Lava Lake", "aura", 5, 3, 1, [3, 4]],
 		["Meteor Stomp", "meteor", 6, 0, 1, [1]],
 		["Caldera", "inferno", 6, 2, 1, [1, 2, 3]],
-		["Pyroclasm", "long_special", 6, 4, 1, [3]]]},
+		["Pyroclasm", "long_special", 6, 4, 1, [3]],
+		["Ember Feast", "ability_leech", 1, 3, 3, [2]]]},
 	{"super": {"name": "SINGULARITY", "pattern": "vortex"}, "nodes": [  # SYLVARA, venom
 		["Void Sight", "crit", 0, 1, 3, []],
 		["Toxic Glands", "venom", 0, 3, 3, []],
@@ -159,7 +164,8 @@ const TREES := [
 		["Miasma", "aura", 5, 2, 1, [1, 3]],
 		["Blight Hide", "vitality", 5, 4, 1, [3]],
 		["Void Hunger", "vampire", 6, 1, 1, [0, 2]],
-		["Plague Empress", "wrath", 6, 3, 1, [2, 4]]]},
+		["Plague Empress", "wrath", 6, 3, 1, [2, 4]],
+		["Venom Siphon", "ability_leech", 1, 1, 3, [1]]]},
 	{"super": {"name": "TECTONIC RIFT", "pattern": "rift"}, "nodes": [  # TERRAXA, earth
 		["Bedrock", "vitality", 0, 2, 3, []],
 		["Fault Line", "quake_slam", 1, 1, 1, [2]],
@@ -179,7 +185,8 @@ const TREES := [
 		["Rumble", "fury", 5, 2, 1, [2]],
 		["World Tree", "second_wind", 5, 3, 1, [2, 4]],
 		["Unbreakable", "bulwark", 6, 1, 1, [1, 2]],
-		["Tectonic Rage", "rampage", 6, 3, 1, [2, 3]]]},
+		["Tectonic Rage", "rampage", 6, 3, 1, [2, 3]],
+		["Earth Drink", "ability_leech", 1, 4, 3, [2]]]},
 	{"super": {"name": "ABSOLUTE ZERO", "pattern": "freeze"}, "nodes": [  # GLACIOR, frost
 		["Permafrost", "frost", 0, 1, 3, []],
 		["Ice Armor", "armor", 0, 3, 3, []],
@@ -200,7 +207,8 @@ const TREES := [
 		["Frozen Fury", "fury", 5, 3, 1, [2, 4]],
 		["Hailstorm", "meteor", 6, 0, 1, [1]],
 		["Ice Age", "wrath", 6, 2, 1, [1, 2, 3]],
-		["Glacier Heart", "second_wind", 6, 4, 1, [3]]]},
+		["Glacier Heart", "second_wind", 6, 4, 1, [3]],
+		["Frozen Bite", "leech", 1, 1, 3, [1]]]},
 	{"super": {"name": "SHADOW FRENZY", "pattern": "frenzy"}, "nodes": [  # NOCTYR, shadow and blood
 		["Killer Instinct", "execute", 0, 2, 3, []],
 		["Razor Claws", "crit", 1, 0, 3, [2]],
@@ -220,7 +228,8 @@ const TREES := [
 		["Gloom Hide", "vitality", 5, 4, 1, [3, 4]],
 		["Soul Eater", "vampire", 6, 1, 1, [0, 2]],
 		["Endless Hunt", "killrush", 6, 2, 3, [2]],
-		["Blood Moon", "overdrive", 6, 3, 1, [2, 4]]]},
+		["Blood Moon", "overdrive", 6, 3, 1, [2, 4]],
+		["Crimson Drain", "ability_leech", 1, 3, 3, [2]]]},
 	{"super": {"name": "TIDAL WAVE", "pattern": "wave"}, "nodes": [  # CORALIS, water
 		["Tidal Heart", "regen", 0, 1, 3, []],
 		["Pressure Beam", "focus", 0, 3, 3, []],
@@ -241,7 +250,8 @@ const TREES := [
 		["Kelp Hide", "leech", 5, 3, 1, [3, 4]],
 		["Maelstrom", "aura", 6, 0, 1, [1]],
 		["Call of the Deep", "second_wind", 6, 2, 1, [1, 3]],
-		["Tidal Fury", "wrath", 6, 4, 1, [3]]]},
+		["Tidal Fury", "wrath", 6, 4, 1, [3]],
+		["Tidal Siphon", "ability_leech", 1, 1, 3, [1]]]},
 	{"super": {"name": "SUPERNOVA", "pattern": "supernova"}, "nodes": [  # SOLAR REX, sun
 		["Sun King", "power", 0, 2, 5, []],
 		["Solar Flare", "burn", 1, 1, 3, [2]],
@@ -261,7 +271,8 @@ const TREES := [
 		["Tyrant's Roar", "rampage", 5, 3, 1, [2, 4]],
 		["Corona", "aura", 6, 0, 1, [1]],
 		["Eternal Sun", "overdrive", 6, 2, 1, [1, 2, 3]],
-		["Solar Throne", "second_wind", 6, 4, 1, [3]]]},
+		["Solar Throne", "second_wind", 6, 4, 1, [3]],
+		["Sun Feast", "leech", 1, 2, 3, [2]]]},
 	{"super": {"name": "SCRAP BARRAGE", "pattern": "scrap"}, "nodes": [  # RUSTFANG, scrap
 		["Scrap Armor", "armor", 0, 1, 3, []],
 		["Piston Fists", "power", 0, 3, 3, []],
@@ -283,7 +294,8 @@ const TREES := [
 		["Junk Rage", "bloodrage", 5, 3, 1, [2, 3, 4]],
 		["Scrap Storm", "meteor", 6, 0, 1, [1]],
 		["Rust Engine", "overdrive", 6, 2, 1, [1, 3]],
-		["Recycler", "wrath", 6, 4, 1, [3]]]},
+		["Recycler", "wrath", 6, 4, 1, [3]],
+		["Siphon Pump", "leech", 1, 2, 3, [1, 3]]]},
 ]
 
 ## Fallback kill XP; regular enemies take theirs from Enemies.DEFS.
